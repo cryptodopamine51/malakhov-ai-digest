@@ -11,6 +11,7 @@ KNOWN_WEBSITE_FEED_OVERRIDES: dict[str, str] = {
     "https://venturebeat.com/category/ai/": "https://venturebeat.com/category/ai/feed",
     "https://news.crunchbase.com/sections/ai/": "https://news.crunchbase.com/sections/ai/feed/",
     "https://www.theneurondaily.com/": "https://rss.beehiiv.com/feeds/N4eCstxvgX.xml",
+    "https://tldr.tech/ai/": "https://tldr.tech/api/rss/ai",
     "https://www.bensbites.com/": "https://www.bensbites.com/feed",
     "https://github.blog/changelog/label/copilot/": "https://github.blog/changelog/label/copilot/feed/",
 }
@@ -48,8 +49,6 @@ class WebsiteFeedAdapter(SourceAdapter):
         if "thedaily" in normalized:
             return None
         if "therundown.ai" in normalized:
-            return None
-        if "tldr.tech/ai" in normalized:
             return None
         if "reuters.com/technology/artificial-intelligence" in normalized:
             return None

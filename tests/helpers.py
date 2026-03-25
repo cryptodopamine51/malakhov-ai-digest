@@ -40,6 +40,27 @@ OFFICIAL_BLOG_HTML = """<!doctype html>
 </html>
 """
 
+ANTHROPIC_NEWSROOM_HTML = """<!doctype html>
+<html>
+  <body>
+    <a href="/news/claude-opus-4-6">Claude Opus 4.6</a>
+    <a href="/news/claude-sonnet-4-6">Claude Sonnet 4.6</a>
+  </body>
+</html>
+"""
+
+ANTHROPIC_ARTICLE_HTML = """<!doctype html>
+<html>
+  <head>
+    <link rel="canonical" href="https://www.anthropic.com/news/claude-opus-4-6" />
+    <meta property="og:title" content="Claude Opus 4.6" />
+    <meta name="description" content="Anthropic released Claude Opus 4.6 for advanced AI workflows." />
+    <meta property="article:published_time" content="2026-03-25T09:30:00Z" />
+  </head>
+  <body>article</body>
+</html>
+"""
+
 
 def build_http_client(responses: dict[str, httpx.Response]) -> SourceHttpClient:
     def handler(request: httpx.Request) -> httpx.Response:

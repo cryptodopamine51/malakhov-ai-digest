@@ -10,7 +10,7 @@ from app.services.ingestion.service import IngestionService
 from app.services.sources.base import SourceAdapter
 from app.services.sources.registry import SourceRegistry
 from app.services.sources.schemas import FetchResult, FetchedItem
-from tests.helpers import OFFICIAL_BLOG_HTML, RSS_FEED_XML, build_http_client, build_registry
+from tests.helpers import ANTHROPIC_ARTICLE_HTML, ANTHROPIC_NEWSROOM_HTML, OFFICIAL_BLOG_HTML, RSS_FEED_XML, build_http_client, build_registry
 
 
 class DuplicateBatchAdapter(SourceAdapter):
@@ -197,6 +197,106 @@ async def test_website_ingestion_uses_known_feed_override(session_factory):
     assert raw_item_count == 2
     assert source_run is not None
     assert "known feed override" in (source_run.error_message or "")
+
+
+async def test_website_ingestion_supports_tldr_feed_override(session_factory):
+    async with session_factory() as session:
+        source = Source(
+            source_type=SourceType.WEBSITE,
+            title="TLDR AI",
+            handle_or_url="https://tldr.tech/ai",
+            priority_weight=78,
+            is_active=True,
+            language="en",
+            country_scope="global",
+        )
+        session.add(source)
+        await session.commit()
+        source_id = source.id
+
+    http_client = build_http_client(
+        {
+            "https://tldr.tech/api/rss/ai": httpx.Response(200, text=RSS_FEED_XML),
+        }
+    )
+    ingestion_service = IngestionService(session_factory=session_factory, source_registry=build_registry(http_client))
+
+    result = await ingestion_service.ingest_source(source_id)
+
+    await http_client.aclose()
+
+    assert result.status == SourceRunStatus.PARTIAL
+    assert result.inserted_count == 2
+    assert any("known feed override" in warning for warning in result.warnings)
+
+
+async def test_official_blog_ingestion_supports_openai_known_feed_override(session_factory):
+    async with session_factory() as session:
+        source = Source(
+            source_type=SourceType.OFFICIAL_BLOG,
+            title="OpenAI News",
+            handle_or_url="https://openai.com/news/",
+            priority_weight=100,
+            is_active=True,
+            language="en",
+            country_scope="global",
+        )
+        session.add(source)
+        await session.commit()
+        source_id = source.id
+
+    http_client = build_http_client(
+        {
+            "https://openai.com/news/rss.xml": httpx.Response(200, text=RSS_FEED_XML),
+        }
+    )
+    ingestion_service = IngestionService(session_factory=session_factory, source_registry=build_registry(http_client))
+
+    result = await ingestion_service.ingest_source(source_id)
+
+    await http_client.aclose()
+
+    assert result.status == SourceRunStatus.PARTIAL
+    assert result.inserted_count == 2
+    assert any("known feed override" in warning for warning in result.warnings)
+
+
+async def test_official_blog_ingestion_falls_back_to_listing_parser(session_factory):
+    async with session_factory() as session:
+        source = Source(
+            source_type=SourceType.OFFICIAL_BLOG,
+            title="Anthropic News",
+            handle_or_url="https://www.anthropic.com/news",
+            priority_weight=98,
+            is_active=True,
+            language="en",
+            country_scope="global",
+        )
+        session.add(source)
+        await session.commit()
+        source_id = source.id
+
+    http_client = build_http_client(
+        {
+            "https://www.anthropic.com/news": httpx.Response(200, text=ANTHROPIC_NEWSROOM_HTML),
+            "https://www.anthropic.com/feed": httpx.Response(404, text="not found"),
+            "https://www.anthropic.com/news/claude-opus-4-6": httpx.Response(200, text=ANTHROPIC_ARTICLE_HTML),
+            "https://www.anthropic.com/news/claude-sonnet-4-6": httpx.Response(200, text=ANTHROPIC_ARTICLE_HTML.replace("Opus", "Sonnet").replace("opus", "sonnet")),
+        }
+    )
+    ingestion_service = IngestionService(session_factory=session_factory, source_registry=build_registry(http_client))
+
+    result = await ingestion_service.ingest_source(source_id)
+
+    async with session_factory() as session:
+        raw_item_count = await session.scalar(select(func.count()).select_from(RawItem))
+
+    await http_client.aclose()
+
+    assert result.status == SourceRunStatus.PARTIAL
+    assert result.inserted_count == 2
+    assert raw_item_count == 2
+    assert any("listing fallback" in warning for warning in result.warnings)
 
 
 async def test_ingestion_deduplicates_duplicate_items_within_single_fetch(session_factory):
