@@ -48,30 +48,37 @@ def _parse_bool(value: str) -> bool:
     return value.strip() in {"1", "true", "True", "yes"}
 
 
-def _validate_section_bias(section_bias: str | None) -> None:
+def _sanitize_section_bias(section_bias: str | None) -> tuple[str | None, list[str]]:
     if section_bias is None:
-        return
+        return None, []
 
-    invalid_sections = [
-        section
-        for section in section_bias.split("|")
-        if section and section not in PUBLIC_SECTIONS
-    ]
-    if invalid_sections:
-        raise ValueError(
-            "invalid section_bias values: "
-            f"{', '.join(invalid_sections)}; supported values: {', '.join(PUBLIC_SECTIONS)}"
-        )
+    valid_sections: list[str] = []
+    invalid_sections: list[str] = []
+    for section in section_bias.split("|"):
+        normalized = section.strip()
+        if not normalized:
+            continue
+        if normalized in PUBLIC_SECTIONS:
+            valid_sections.append(normalized)
+        else:
+            invalid_sections.append(normalized)
+    return ("|".join(valid_sections) or None), invalid_sections
 
 
 def load_source_seeds(csv_path: Path) -> tuple[list[SourceSeedRow], list[SourceSeedRow]]:
     supported_rows: list[SourceSeedRow] = []
     skipped_rows: list[SourceSeedRow] = []
+    invalid_section_bias_warnings: list[str] = []
 
     with csv_path.open("r", encoding="utf-8", newline="") as file_obj:
         reader = csv.DictReader(file_obj)
         for row in reader:
             source_type = SourceType(row["source_type"])
+            section_bias, invalid_sections = _sanitize_section_bias(row.get("section_bias", "").strip() or None)
+            if invalid_sections:
+                invalid_section_bias_warnings.append(
+                    f"{row['title'].strip()}: dropped unsupported section_bias values [{', '.join(invalid_sections)}]"
+                )
             seed_row = SourceSeedRow(
                 title=row["title"].strip(),
                 source_type=source_type,
@@ -80,14 +87,15 @@ def load_source_seeds(csv_path: Path) -> tuple[list[SourceSeedRow], list[SourceS
                 language=row["language"].strip() or None,
                 country_scope=row["country_scope"].strip() or None,
                 is_active=_parse_bool(row["is_active"]),
-                section_bias=row.get("section_bias", "").strip() or None,
+                section_bias=section_bias,
             )
-            _validate_section_bias(seed_row.section_bias)
             if source_type in SUPPORTED_SEED_SOURCE_TYPES:
                 supported_rows.append(seed_row)
             else:
                 skipped_rows.append(seed_row)
 
+    for warning in invalid_section_bias_warnings:
+        print(f"warning: {warning}")
     return supported_rows, skipped_rows
 
 
