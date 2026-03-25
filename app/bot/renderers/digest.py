@@ -37,6 +37,8 @@ def render_daily_main(issue: DigestIssue, items_by_section: dict[DigestSection, 
         items = items_by_section.get(section, [])[:DAILY_SECTION_LIMIT]
         if section is DigestSection.IMPORTANT and has_non_empty_signal_section and _is_empty_section(items):
             continue
+        if section is DigestSection.ALPHA and _is_empty_section(items):
+            continue
         if not items and section not in (DigestSection.IMPORTANT, DigestSection.ALPHA):
             continue
         if _is_empty_section(items) and section not in (DigestSection.IMPORTANT, DigestSection.ALPHA):

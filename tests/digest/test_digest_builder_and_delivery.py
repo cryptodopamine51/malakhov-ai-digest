@@ -225,6 +225,7 @@ async def test_renderers_and_empty_alpha(session_factory):
     assert "Новости ИИ" not in rendered_daily
     assert "Кодинг" in rendered_daily
     assert "Инвестиции" in rendered_daily
+    assert "Альфа" not in rendered_daily
     visible_daily = re.sub(r'href="https?://[^"]+"', 'href=""', rendered_daily)
     visible_all = re.sub(r'href="https?://[^"]+"', 'href=""', rendered_all)
 
