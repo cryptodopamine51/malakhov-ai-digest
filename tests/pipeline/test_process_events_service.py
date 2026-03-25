@@ -17,6 +17,7 @@ from app.db.models import (
     Source,
     SourceType,
 )
+from app.services.events.summary import SummaryBuilder
 from app.services.events.service import ProcessEventsService
 from app.services.normalization.service import NormalizationService
 
@@ -389,3 +390,100 @@ async def test_process_events_updates_existing_event_without_duplicate_categorie
     assert event_count == 1
     assert event_source_count == 2
     assert category_rows >= 1
+
+
+async def test_summary_builder_fallback_returns_russian_text(session_factory):
+    async with session_factory() as session:
+        source = build_source(
+            title="OpenAI News",
+            url="https://openai.com/news/",
+            source_type=SourceType.OFFICIAL_BLOG,
+            priority_weight=100,
+            section_bias="ai_news|important",
+        )
+        session.add(source)
+        await session.flush()
+        raw_item = build_raw_item(
+            source_id=source.id,
+            source_type=source.source_type,
+            title="OpenAI launches GPT-5 for developers",
+            text="OpenAI launches GPT-5 with enterprise and coding support.",
+            url="https://openai.com/news/gpt-5-launch",
+            external_id="gpt5-openai",
+            published_at=datetime(2026, 3, 25, 9, 0, tzinfo=UTC),
+        )
+        raw_item.normalized_title = raw_item.raw_title
+        raw_item.normalized_text = raw_item.raw_text
+        raw_item.status = RawItemStatus.NORMALIZED
+        session.add(raw_item)
+        await session.commit()
+
+    async with session_factory() as session:
+        event = Event(
+            event_date=datetime(2026, 3, 25, 9, 0, tzinfo=UTC).date(),
+            title="OpenAI launches GPT-5 for developers",
+            primary_source_id=source.id,
+            primary_source_url="https://openai.com/news/gpt-5-launch",
+            importance_score=0,
+            market_impact_score=0,
+            ai_news_score=0,
+            coding_score=0,
+            investment_score=0,
+            confidence_score=0,
+            is_highlight=False,
+        )
+        event.primary_source = source
+        payload = await SummaryBuilder().build(event, [raw_item])
+
+    assert "Инфоповод подтвержден" in payload.short_summary
+    assert "Событие собрано" in payload.long_summary
+
+
+async def test_process_events_uses_async_summary_builder_output(session_factory):
+    class StubSummaryBuilder:
+        async def build(self, event: Event, raw_items: list[RawItem]):
+            return type(
+                "StubPayload",
+                (),
+                {
+                    "title": "OpenAI запустила GPT-5 для разработчиков",
+                    "short_summary": "OpenAI представила GPT-5 и новые инструменты для разработчиков.",
+                    "long_summary": "OpenAI представила GPT-5 и обновила набор инструментов для разработчиков и enterprise-клиентов.",
+                },
+            )()
+
+    async with session_factory() as session:
+        source = build_source(
+            title="OpenAI News",
+            url="https://openai.com/news/",
+            source_type=SourceType.OFFICIAL_BLOG,
+            priority_weight=100,
+            section_bias="ai_news|important",
+        )
+        session.add(source)
+        await session.flush()
+        session.add(
+            build_raw_item(
+                source_id=source.id,
+                source_type=source.source_type,
+                title="OpenAI launches GPT-5 for developers",
+                text="OpenAI launches GPT-5 with enterprise and coding support.",
+                url="https://openai.com/news/gpt-5-launch",
+                external_id="gpt5-openai",
+                published_at=datetime(2026, 3, 25, 9, 0, tzinfo=UTC),
+            )
+        )
+        await session.commit()
+
+    service = ProcessEventsService(
+        session_factory=session_factory,
+        summary_builder=StubSummaryBuilder(),
+    )
+    await service.process()
+
+    async with session_factory() as session:
+        event = await session.scalar(select(Event))
+
+    assert event is not None
+    assert event.title == "OpenAI запустила GPT-5 для разработчиков"
+    assert event.short_summary == "OpenAI представила GPT-5 и новые инструменты для разработчиков."

@@ -116,6 +116,11 @@ APP_PORT=8000
 DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/malakhov_ai_digest
 BOT_TOKEN=replace_me
 BOT_POLLING_ENABLED=false
+OPENAI_API_KEY=
+OPENAI_SUMMARY_ENABLED=true
+OPENAI_SUMMARY_MODEL=gpt-5-mini
+OPENAI_API_BASE=https://api.openai.com/v1
+OPENAI_SUMMARY_TIMEOUT_SECONDS=20
 DEFAULT_TIMEZONE=Europe/Moscow
 INGESTION_INTERVAL_MINUTES=30
 INGESTION_SCHEDULER_ENABLED=true
@@ -183,6 +188,18 @@ Render free-plan note:
 - Render free currently allows this project to run reliably as a single `web service`.
 - In that mode FastAPI, scheduler jobs, and Telegram polling run in the same process.
 - Set `BOT_POLLING_ENABLED=true` on the web service and do not create a separate worker.
+
+## Russian summaries
+
+The bot is configured to render digest cards in Russian from the event layer.
+
+- If `OPENAI_API_KEY` is set, the process-events pipeline uses OpenAI to generate Russian event titles and summaries.
+- If the key is missing or the model call fails, the system falls back to a rule-based Russian summary builder.
+- To refresh existing events after enabling `OPENAI_API_KEY`, rerun:
+
+```bash
+curl -X POST http://localhost:8000/internal/jobs/process-events
+```
 
 ## Database migrations
 

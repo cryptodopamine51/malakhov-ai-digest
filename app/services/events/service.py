@@ -191,10 +191,11 @@ class ProcessEventsService:
 
         categories, tags = self.classification_service.classify(raw_items)
         scores = self.scoring_service.score(raw_items, categories)
-        short_summary, long_summary = self.summary_builder.build(event, raw_items)
+        summary = await self.summary_builder.build(event, raw_items)
 
-        event.short_summary = short_summary
-        event.long_summary = long_summary
+        event.title = summary.title
+        event.short_summary = summary.short_summary
+        event.long_summary = summary.long_summary
         event.importance_score = scores.importance_score
         event.market_impact_score = scores.market_impact_score
         event.ai_news_score = scores.ai_news_score
