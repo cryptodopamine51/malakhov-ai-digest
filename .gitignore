@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.db
+.pytest_cache/
+.mypy_cache/
+.venv/
+.venv311/
+.env
+.DS_Store
+keys.env.rtf

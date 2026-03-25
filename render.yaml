@@ -1,0 +1,79 @@
+services:
+  - name: malakhov-ai-digest-api
+    type: web
+    runtime: python
+    plan: starter
+    region: frankfurt
+    repo: https://github.com/cryptodopamine51/malakhov-ai-digest
+    branch: deploy/render-bootstrap
+    buildCommand: pip install -e .
+    preDeployCommand: alembic upgrade head && python scripts/seed_sources.py
+    startCommand: uvicorn app.api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: APP_ENV
+        value: prod
+      - key: APP_HOST
+        value: 0.0.0.0
+      - key: APP_PORT
+        value: "10000"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: malakhov-ai-digest-db
+          property: connectionString
+      - key: BOT_TOKEN
+        sync: false
+      - key: DEFAULT_TIMEZONE
+        value: Europe/Moscow
+      - key: INGESTION_INTERVAL_MINUTES
+        value: "30"
+      - key: INGESTION_SCHEDULER_ENABLED
+        value: "true"
+      - key: INGESTION_HTTP_TIMEOUT_SECONDS
+        value: "10"
+      - key: PROCESS_EVENTS_INTERVAL_MINUTES
+        value: "15"
+      - key: PROCESS_EVENTS_SCHEDULER_ENABLED
+        value: "true"
+      - key: DAILY_DIGEST_HOUR
+        value: "9"
+      - key: WEEKLY_DIGEST_WEEKDAY
+        value: mon
+      - key: WEEKLY_DIGEST_HOUR
+        value: "9"
+
+  - name: malakhov-ai-digest-bot
+    type: worker
+    runtime: python
+    plan: starter
+    region: frankfurt
+    repo: https://github.com/cryptodopamine51/malakhov-ai-digest
+    branch: deploy/render-bootstrap
+    buildCommand: pip install -e .
+    startCommand: python -m app.bot.runner
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: APP_ENV
+        value: prod
+      - key: DATABASE_URL
+        fromDatabase:
+          name: malakhov-ai-digest-db
+          property: connectionString
+      - key: BOT_TOKEN
+        sync: false
+      - key: DEFAULT_TIMEZONE
+        value: Europe/Moscow
+      - key: INGESTION_SCHEDULER_ENABLED
+        value: "false"
+      - key: PROCESS_EVENTS_SCHEDULER_ENABLED
+        value: "false"
+
+databases:
+  - name: malakhov-ai-digest-db
+    plan: basic-256mb
+    region: frankfurt
+    databaseName: malakhov_ai_digest
+    user: malakhov_ai_digest

@@ -1,0 +1,186 @@
+from __future__ import annotations
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.bot.renderers import render_daily_main, render_section, render_weekly_main
+from app.bot.texts import ABOUT_TEXT
+from app.db.models import (
+    Delivery,
+    DeliveryType,
+    DigestIssueType,
+    DigestSection,
+    SubscriptionMode,
+    User,
+)
+from app.services.delivery_service import DeliveryService
+from app.services.digest import DigestBuilderService
+from app.services.rendering import TelegramRenderingService
+
+
+class IssueDeliveryService:
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self.session_factory = session_factory
+        self.digest_builder = DigestBuilderService(session_factory)
+        self.rendering = TelegramRenderingService()
+
+    async def send_daily_issue_to_daily_users(self, bot) -> int:
+        issue = await self.digest_builder.get_latest_issue(DigestIssueType.DAILY)
+        if issue is None:
+            return 0
+        sent_count = await self._broadcast_issue(bot=bot, issue_type=DigestIssueType.DAILY, issue_id=issue.id)
+        if sent_count > 0:
+            await self.digest_builder.mark_issue_sent(issue.id)
+        return sent_count
+
+    async def send_weekly_issue_to_weekly_users(self, bot) -> int:
+        issue = await self.digest_builder.get_latest_issue(DigestIssueType.WEEKLY)
+        if issue is None:
+            return 0
+        sent_count = await self._broadcast_issue(bot=bot, issue_type=DigestIssueType.WEEKLY, issue_id=issue.id)
+        if sent_count > 0:
+            await self.digest_builder.mark_issue_sent(issue.id)
+        return sent_count
+
+    async def send_issue_to_user(self, *, bot, issue_id: int, telegram_user_id: int, telegram_chat_id: int) -> int | None:
+        issue = await self.digest_builder.get_issue(issue_id)
+        if issue is None:
+            return None
+        items = await self.digest_builder.get_section_items(
+            issue_id=issue_id,
+            section=DigestSection.IMPORTANT if issue.issue_type is DigestIssueType.DAILY else DigestSection.ALL,
+        )
+        if issue.issue_type is DigestIssueType.DAILY:
+            from app.bot.keyboards.inline import daily_sections_keyboard
+
+            messages = await self._send_chunks(
+                bot=bot,
+                chat_id=telegram_chat_id,
+                chunks=render_daily_main(issue, items),
+                first_reply_markup=daily_sections_keyboard(issue.id),
+            )
+            delivery_type = DeliveryType.DAILY_MAIN
+        else:
+            messages = await self._send_chunks(
+                bot=bot,
+                chat_id=telegram_chat_id,
+                chunks=render_weekly_main(issue, items),
+            )
+            delivery_type = DeliveryType.WEEKLY_MAIN
+
+        async with self.session_factory() as session:
+            user = await session.scalar(select(User).where(User.telegram_user_id == telegram_user_id))
+            if user is None:
+                return messages[0].message_id if messages else None
+            await DeliveryService(session).log_delivery(
+                user_id=user.id,
+                issue_id=issue.id,
+                delivery_type=delivery_type,
+                telegram_message_id=messages[0].message_id if messages else None,
+            )
+            await session.commit()
+        return messages[0].message_id if messages else None
+
+    async def send_section_message(
+        self,
+        *,
+        bot,
+        issue_id: int,
+        section: DigestSection,
+        telegram_user_id: int,
+        telegram_chat_id: int,
+    ) -> int | None:
+        issue = await self.digest_builder.get_issue(issue_id)
+        if issue is None:
+            return None
+        items = await self.digest_builder.get_section_items(issue_id=issue_id, section=section)
+        messages = await self._send_chunks(bot=bot, chat_id=telegram_chat_id, chunks=render_section(issue, section, items))
+
+        async with self.session_factory() as session:
+            user = await session.scalar(select(User).where(User.telegram_user_id == telegram_user_id))
+            if user is not None:
+                await DeliveryService(session).log_delivery(
+                    user_id=user.id,
+                    issue_id=issue.id,
+                    delivery_type=DeliveryType.SECTION_OPEN,
+                    telegram_message_id=messages[0].message_id if messages else None,
+                    section=section.value,
+                )
+                await session.commit()
+        return messages[0].message_id if messages else None
+
+    async def send_about_message(self, *, bot, telegram_user_id: int, telegram_chat_id: int) -> int:
+        messages = await self._send_chunks(
+            bot=bot,
+            chat_id=telegram_chat_id,
+            chunks=self.rendering.chunk_blocks(self.rendering.escape_text(ABOUT_TEXT), []),
+        )
+        async with self.session_factory() as session:
+            user = await session.scalar(select(User).where(User.telegram_user_id == telegram_user_id))
+            if user is not None:
+                await DeliveryService(session).log_delivery(
+                    user_id=user.id,
+                    delivery_type=DeliveryType.ABOUT,
+                    telegram_message_id=messages[0].message_id if messages else None,
+                )
+                await session.commit()
+        return messages[0].message_id if messages else 0
+
+    async def _broadcast_issue(self, *, bot, issue_type: DigestIssueType, issue_id: int) -> int:
+        mode = SubscriptionMode.DAILY if issue_type is DigestIssueType.DAILY else SubscriptionMode.WEEKLY
+        async with self.session_factory() as session:
+            users = list(
+                (
+                    await session.scalars(
+                        select(User).where(User.subscription_mode == mode, User.is_active.is_(True))
+                    )
+                ).all()
+            )
+
+        sent_count = 0
+        for user in users:
+            if await self._has_existing_delivery(user_id=user.id, issue_id=issue_id, issue_type=issue_type):
+                continue
+            message_id = await self.send_issue_to_user(
+                bot=bot,
+                issue_id=issue_id,
+                telegram_user_id=user.telegram_user_id,
+                telegram_chat_id=user.telegram_chat_id,
+            )
+            if message_id is not None:
+                sent_count += 1
+        return sent_count
+
+    async def resend_issue(
+        self,
+        *,
+        bot,
+        issue_id: int,
+        telegram_user_id: int,
+        telegram_chat_id: int,
+    ) -> int | None:
+        return await self.send_issue_to_user(
+            bot=bot,
+            issue_id=issue_id,
+            telegram_user_id=telegram_user_id,
+            telegram_chat_id=telegram_chat_id,
+        )
+
+    async def _has_existing_delivery(self, *, user_id: int, issue_id: int, issue_type: DigestIssueType) -> bool:
+        delivery_type = DeliveryType.DAILY_MAIN if issue_type is DigestIssueType.DAILY else DeliveryType.WEEKLY_MAIN
+        async with self.session_factory() as session:
+            delivery = await session.scalar(
+                select(Delivery).where(
+                    Delivery.user_id == user_id,
+                    Delivery.issue_id == issue_id,
+                    Delivery.delivery_type == delivery_type,
+                )
+            )
+            return delivery is not None
+
+    async def _send_chunks(self, *, bot, chat_id: int, chunks: list[str], first_reply_markup=None) -> list:
+        messages = []
+        for index, chunk in enumerate(chunks):
+            kwargs = {"reply_markup": first_reply_markup} if index == 0 and first_reply_markup is not None else {}
+            messages.append(await bot.send_message(chat_id=chat_id, text=chunk, **kwargs))
+        return messages

@@ -1,0 +1,15 @@
+title,source_type,handle_or_url,priority_weight,language,country_scope,section_bias,is_active
+OpenAI News,official_blog,https://openai.com/news/,1.00,en,global,ai_news|important,1
+OpenAI Engineering,official_blog,https://openai.com/news/engineering/,0.95,en,global,coding|ai_news,1
+OpenAI Research,official_blog,https://openai.com/news/research/,0.95,en,global,ai_news,1
+Anthropic News,official_blog,https://www.anthropic.com/news,1.00,en,global,ai_news|important,1
+Anthropic Engineering,official_blog,https://www.anthropic.com/engineering,0.95,en,global,coding|ai_news,1
+Mistral News,official_blog,https://mistral.ai/news,0.95,en,global,ai_news|important,1
+Hugging Face Blog,official_blog,https://huggingface.co/blog,0.90,en,global,coding|ai_news,1
+GitHub Changelog Copilot,website,https://github.blog/changelog/label/copilot/,0.95,en,global,coding,1
+GitHub Changelog,website,https://github.blog/changelog/,0.85,en,global,coding|ai_news,1
+The Batch,website,https://www.deeplearning.ai/the-batch/,0.85,en,global,ai_news|important,1
+TechCrunch AI,website,https://techcrunch.com/category/artificial-intelligence/,0.80,en,global,ai_news|investments,1
+Yandex Cloud Blog,official_blog,https://yandex.cloud/en/blog,0.85,en,ru_cis,ai_news|coding,1
+vc.ru AI,website,https://vc.ru/tag/ai,0.60,ru,ru_cis,ai_news|investments,1
+Habr AI Hub,website,https://habr.com/en/hubs/artificial_intelligence/posts/,0.70,ru,ru_cis,coding|ai_news,1
