@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from aiogram.types import LinkPreviewOptions
 
 from app.bot.renderers import render_daily_main, render_section, render_weekly_main
 from app.bot.texts import ABOUT_TEXT
@@ -46,13 +47,10 @@ class IssueDeliveryService:
         issue = await self.digest_builder.get_issue(issue_id)
         if issue is None:
             return None
-        items = await self.digest_builder.get_section_items(
-            issue_id=issue_id,
-            section=DigestSection.IMPORTANT if issue.issue_type is DigestIssueType.DAILY else DigestSection.ALL,
-        )
         if issue.issue_type is DigestIssueType.DAILY:
             from app.bot.keyboards.inline import daily_sections_keyboard
 
+            items = await self._load_daily_main_sections(issue.id)
             messages = await self._send_chunks(
                 bot=bot,
                 chat_id=telegram_chat_id,
@@ -61,6 +59,7 @@ class IssueDeliveryService:
             )
             delivery_type = DeliveryType.DAILY_MAIN
         else:
+            items = await self.digest_builder.get_section_items(issue_id=issue_id, section=DigestSection.ALL)
             messages = await self._send_chunks(
                 bot=bot,
                 chat_id=telegram_chat_id,
@@ -178,9 +177,25 @@ class IssueDeliveryService:
             )
             return delivery is not None
 
+    async def _load_daily_main_sections(self, issue_id: int) -> dict[DigestSection, list[object]]:
+        section_items: dict[DigestSection, list[object]] = {}
+        for section in (
+            DigestSection.IMPORTANT,
+            DigestSection.AI_NEWS,
+            DigestSection.CODING,
+            DigestSection.INVESTMENTS,
+            DigestSection.ALPHA,
+        ):
+            section_items[section] = await self.digest_builder.get_section_items(issue_id=issue_id, section=section)
+        return section_items
+
     async def _send_chunks(self, *, bot, chat_id: int, chunks: list[str], first_reply_markup=None) -> list:
         messages = []
         for index, chunk in enumerate(chunks):
-            kwargs = {"reply_markup": first_reply_markup} if index == 0 and first_reply_markup is not None else {}
+            kwargs = {
+                "link_preview_options": LinkPreviewOptions(is_disabled=True),
+            }
+            if index == 0 and first_reply_markup is not None:
+                kwargs["reply_markup"] = first_reply_markup
             messages.append(await bot.send_message(chat_id=chat_id, text=chunk, **kwargs))
         return messages

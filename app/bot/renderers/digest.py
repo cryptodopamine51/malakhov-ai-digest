@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 from app.db.models import DigestIssue, DigestIssueItem, DigestSection
 from app.services.rendering import TelegramRenderingService
 
@@ -11,35 +13,73 @@ SECTION_TITLES = {
     DigestSection.ALPHA: "Альфа",
     DigestSection.ALL: "Все за день",
 }
+DAILY_SECTION_ORDER = [
+    DigestSection.IMPORTANT,
+    DigestSection.AI_NEWS,
+    DigestSection.CODING,
+    DigestSection.INVESTMENTS,
+    DigestSection.ALPHA,
+]
+DAILY_SECTION_LIMIT = 3
+WEEKLY_LIMIT = 5
 
 _rendering = TelegramRenderingService()
 
 
-def render_daily_main(issue: DigestIssue, items: list[DigestIssueItem]) -> list[str]:
-    return _render_issue(issue, DigestSection.IMPORTANT, items)
+def render_daily_main(issue: DigestIssue, items_by_section: dict[DigestSection, list[DigestIssueItem]]) -> list[str]:
+    header = f"<b>Malakhov AI Digest • {_format_date(issue.issue_date)}</b>"
+    section_blocks = [
+        _render_section_block(section, items_by_section.get(section, [])[:DAILY_SECTION_LIMIT])
+        for section in DAILY_SECTION_ORDER
+    ]
+    return _rendering.chunk_blocks(header, section_blocks)
 
 
 def render_weekly_main(issue: DigestIssue, items: list[DigestIssueItem]) -> list[str]:
-    header = f"<b>{_rendering.escape_text(issue.title)}</b>\n\n<b>Итоги недели</b>"
-    return _join_render(header, items)
+    header = f"<b>Malakhov AI Digest • {_format_date(issue.issue_date)}</b>\n<b>Итоги недели</b>"
+    blocks = [_render_item(item, DigestSection.ALL) for item in items[:WEEKLY_LIMIT]]
+    return _rendering.chunk_blocks(header, blocks)
 
 
 def render_section(issue: DigestIssue, section: DigestSection, items: list[DigestIssueItem]) -> list[str]:
-    return _render_issue(issue, section, items)
-
-
-def _render_issue(issue: DigestIssue, section: DigestSection, items: list[DigestIssueItem]) -> list[str]:
-    header = f"<b>{_rendering.escape_text(issue.title)}</b>\n\n<b>{SECTION_TITLES[section]}</b>"
-    return _join_render(header, items)
-
-
-def _join_render(header: str, items: list[DigestIssueItem]) -> list[str]:
-    blocks: list[str] = []
-    for item in items:
-        links = item.card_links_json or []
-        source_line = f"\nИсточник: {_rendering.escape_text(links[0])}" if links else ""
-        blocks.append(
-            f"<b>{_rendering.escape_text(item.card_title)}</b>\n"
-            f"{_rendering.escape_text(item.card_text)}{source_line}"
-        )
+    header = f"<b>{SECTION_TITLES[section]} • {_format_date(issue.issue_date)}</b>"
+    blocks = [_render_item(item, section) for item in items]
     return _rendering.chunk_blocks(header, blocks)
+
+
+def _render_section_block(section: DigestSection, items: list[DigestIssueItem]) -> str:
+    title = SECTION_TITLES[section]
+    rendered_items = "\n\n".join(_render_item(item, section) for item in items)
+    return f"<b>{title}</b>\n{rendered_items}".strip()
+
+
+def _render_item(item: DigestIssueItem, section: DigestSection) -> str:
+    title = _rendering.escape_text(_rendering.compact_headline(item.card_title))
+    if item.event_id is None and not item.card_links_json:
+        summary = _rendering.escape_text(_rendering.trim_text(item.card_text, 220))
+        return f"• <b>{title}</b>\n{summary}"
+
+    summary = _rendering.escape_text(
+        _rendering.compact_summary(item.card_text, section_title=SECTION_TITLES[section])
+    )
+    links = _rendering.format_source_links(item.card_links_json or [])
+    source_suffix = f" {links}" if links else ""
+    return f"• <b>{title}</b>\n{summary}{source_suffix}"
+
+
+def _format_date(value: date) -> str:
+    months = {
+        1: "января",
+        2: "февраля",
+        3: "марта",
+        4: "апреля",
+        5: "мая",
+        6: "июня",
+        7: "июля",
+        8: "августа",
+        9: "сентября",
+        10: "октября",
+        11: "ноября",
+        12: "декабря",
+    }
+    return f"{value.day} {months[value.month]}"

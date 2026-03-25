@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+import re
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
@@ -39,8 +40,8 @@ class FakeBot:
         self.messages: list[dict[str, object]] = []
         self._next_id = 100
 
-    async def send_message(self, chat_id: int, text: str, reply_markup=None):
-        message = {"chat_id": chat_id, "text": text, "reply_markup": reply_markup}
+    async def send_message(self, chat_id: int, text: str, reply_markup=None, **kwargs):
+        message = {"chat_id": chat_id, "text": text, "reply_markup": reply_markup, **kwargs}
         self.messages.append(message)
         self._next_id += 1
         return FakeSentMessage(message_id=self._next_id)
@@ -205,19 +206,39 @@ async def test_renderers_and_empty_alpha(session_factory):
     issue = await service.get_issue(result.issue_id)
     assert issue is not None
 
-    important_items = await service.get_section_items(issue.id, DigestSection.IMPORTANT)
+    items_by_section = {
+        DigestSection.IMPORTANT: await service.get_section_items(issue.id, DigestSection.IMPORTANT),
+        DigestSection.AI_NEWS: await service.get_section_items(issue.id, DigestSection.AI_NEWS),
+        DigestSection.CODING: await service.get_section_items(issue.id, DigestSection.CODING),
+        DigestSection.INVESTMENTS: await service.get_section_items(issue.id, DigestSection.INVESTMENTS),
+        DigestSection.ALPHA: await service.get_section_items(issue.id, DigestSection.ALPHA),
+    }
     all_items = await service.get_section_items(issue.id, DigestSection.ALL)
     alpha_items = await service.get_section_items(issue.id, DigestSection.ALPHA)
 
-    daily_text = render_daily_main(issue, important_items)
+    daily_text = render_daily_main(issue, items_by_section)
     all_text = render_section(issue, DigestSection.ALL, all_items)
     alpha_text = render_section(issue, DigestSection.ALPHA, alpha_items)
     weekly_text = render_weekly_main(issue, all_items)
 
-    assert "Важное" in "\n".join(daily_text)
-    assert "Все за день" in "\n".join(all_text)
-    assert "новых находок пока нет" in "\n".join(alpha_text)
-    assert "Итоги недели" in "\n".join(weekly_text)
+    rendered_daily = "\n".join(daily_text)
+    rendered_all = "\n".join(all_text)
+    rendered_alpha = "\n".join(alpha_text)
+    rendered_weekly = "\n".join(weekly_text)
+
+    assert "Важное" in rendered_daily
+    assert "Новости ИИ" in rendered_daily
+    assert "Кодинг" in rendered_daily
+    assert "Инвестиции" in rendered_daily
+    visible_daily = re.sub(r'href="https?://[^"]+"', 'href=""', rendered_daily)
+    visible_all = re.sub(r'href="https?://[^"]+"', 'href=""', rendered_all)
+
+    assert "https://" not in visible_daily
+    assert ">Источник<" in rendered_daily
+    assert "Все за день" in rendered_all
+    assert "https://" not in visible_all
+    assert "новых находок пока нет" in rendered_alpha
+    assert "Итоги недели" in rendered_weekly
 
 
 async def test_send_daily_and_weekly_and_log_deliveries(session_factory):
@@ -237,6 +258,7 @@ async def test_send_daily_and_weekly_and_log_deliveries(session_factory):
     assert daily_sent == 1
     assert weekly_sent == 1
     assert len(bot.messages) == 2
+    assert all(message["link_preview_options"].is_disabled is True for message in bot.messages)
     assert any(delivery.delivery_type == DeliveryType.DAILY_MAIN and delivery.issue_id == daily.issue_id for delivery in deliveries)
     assert any(delivery.delivery_type == DeliveryType.WEEKLY_MAIN and delivery.issue_id == weekly.issue_id for delivery in deliveries)
 
@@ -257,6 +279,7 @@ async def test_callback_handler_sends_new_section_message_and_logs_delivery(sess
     assert callback.answered is True
     assert len(bot.messages) == 1
     assert "Кодинг" in bot.messages[0]["text"]
+    assert bot.messages[0]["link_preview_options"].is_disabled is True
     assert delivery is not None
     assert delivery.section == "coding"
 
