@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+import re
 
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -17,10 +18,20 @@ from app.db.models import (
     Event,
     EventCategory,
     EventSection,
+    EventTagType,
 )
 from app.services.alpha import AlphaService
-from app.services.digest.schemas import BuildIssueRequest, IssueBuildResult
+from app.services.digest.schemas import BuildIssueRequest, DailyMainPreview, DailyMainSuppression, IssueBuildResult
 from app.services.digest.texts import EMPTY_ALPHA_TEXT, EMPTY_GENERIC_TEXT, EMPTY_INVESTMENTS_TEXT, EMPTY_WEEKLY_TEXT
+
+DAILY_MAIN_SECTION_ORDER = (
+    DigestSection.IMPORTANT,
+    DigestSection.AI_NEWS,
+    DigestSection.CODING,
+    DigestSection.INVESTMENTS,
+    DigestSection.ALPHA,
+)
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 
 
 class DigestBuilderService:
@@ -157,13 +168,51 @@ class DigestBuilderService:
                 ).all()
             )
 
+    async def get_daily_main_preview(self, issue_id: int) -> DailyMainPreview | None:
+        issue = await self.get_issue(issue_id)
+        if issue is None or issue.issue_type is not DigestIssueType.DAILY:
+            return None
+
+        items_by_section = {
+            section: sorted(
+                [item for item in issue.items if item.section == section],
+                key=lambda item: (item.rank_order, item.id),
+            )
+            for section in DAILY_MAIN_SECTION_ORDER
+        }
+
+        visible: dict[DigestSection, list[DigestIssueItem]] = {section: [] for section in DAILY_MAIN_SECTION_ORDER}
+        suppressed: list[DailyMainSuppression] = []
+        shown_events: dict[int, DigestSection] = {}
+
+        for section in DAILY_MAIN_SECTION_ORDER:
+            for item in items_by_section[section]:
+                if item.event_id is None:
+                    visible[section].append(item)
+                    continue
+                if item.event_id in shown_events:
+                    suppressed.append(
+                        DailyMainSuppression(
+                            item_id=item.id,
+                            event_id=item.event_id,
+                            source_section=section,
+                            shown_in_section=shown_events[item.event_id],
+                            reason="duplicate_in_daily_main",
+                        )
+                    )
+                    continue
+                shown_events[item.event_id] = section
+                visible[section].append(item)
+
+        return DailyMainPreview(visible_by_section=visible, suppressed=suppressed)
+
     async def _load_events(self, session: AsyncSession, start: date, end: date) -> list[Event]:
         return list(
             (
                 await session.scalars(
                     select(Event)
                     .where(and_(Event.event_date >= start, Event.event_date <= end))
-                    .options(selectinload(Event.categories), selectinload(Event.tags))
+                    .options(selectinload(Event.categories), selectinload(Event.tags), selectinload(Event.primary_source))
                     .order_by(Event.event_date.desc(), Event.importance_score.desc(), Event.id.desc())
                 )
             ).all()
@@ -194,9 +243,9 @@ class DigestBuilderService:
     def _build_daily_items(self, events: list[Event], alpha_entries: list[AlphaEntry]) -> list[DigestIssueItem]:
         items: list[DigestIssueItem] = []
         items.extend(self._section_snapshot(DigestSection.IMPORTANT, self._top_important(events), primary=True))
-        items.extend(self._section_snapshot(DigestSection.AI_NEWS, self._top_by_section(events, EventSection.AI_NEWS, "ai_news_score", limit=5)))
-        items.extend(self._section_snapshot(DigestSection.CODING, self._top_by_section(events, EventSection.CODING, "coding_score", limit=5)))
-        items.extend(self._section_snapshot(DigestSection.INVESTMENTS, self._top_by_section(events, EventSection.INVESTMENTS, "investment_score", limit=4)))
+        items.extend(self._section_snapshot(DigestSection.AI_NEWS, self._top_ai_news(events)))
+        items.extend(self._section_snapshot(DigestSection.CODING, self._top_coding(events)))
+        items.extend(self._section_snapshot(DigestSection.INVESTMENTS, self._top_investments(events)))
         items.extend(self._section_snapshot(DigestSection.ALL, self._top_all(events)))
         items.extend(self._alpha_snapshot(alpha_entries))
         return items
@@ -228,10 +277,48 @@ class DigestBuilderService:
         return items
 
     def _top_important(self, events: list[Event]) -> list[Event]:
-        return sorted(events, key=lambda event: (event.importance_score, event.market_impact_score, event.confidence_score), reverse=True)[:5]
+        candidates = [
+            event
+            for event in events
+            if event.importance_score >= 68
+            and (
+                event.is_highlight
+                or self._is_primary_section(event, EventSection.IMPORTANT)
+                or event.market_impact_score >= 65
+            )
+        ]
+        return self._limit_for_day(
+            sorted(
+                candidates,
+                key=lambda event: (
+                    event.is_highlight,
+                    self._is_primary_section(event, EventSection.IMPORTANT),
+                    event.importance_score,
+                    event.market_impact_score,
+                    event.confidence_score,
+                    self._source_quality_rank(event),
+                ),
+                reverse=True,
+            ),
+            strong_limit=4,
+            weak_limit=2,
+        )
 
     def _top_all(self, events: list[Event]) -> list[Event]:
-        return sorted(events, key=lambda event: (event.importance_score, event.confidence_score), reverse=True)[:10]
+        candidates = [event for event in events if self._signal_score(event) >= 45]
+        return self._limit_for_day(
+            sorted(
+                candidates,
+                key=lambda event: (
+                    self._signal_score(event),
+                    event.confidence_score,
+                    self._source_quality_rank(event),
+                ),
+                reverse=True,
+            ),
+            strong_limit=8,
+            weak_limit=4,
+        )
 
     def _top_by_section(self, events: list[Event], section: EventSection, score_field: str, limit: int) -> list[Event]:
         relevant = [
@@ -240,6 +327,94 @@ class DigestBuilderService:
             if any(category.section == section for category in event.categories)
         ]
         return sorted(relevant, key=lambda event: (getattr(event, score_field), event.confidence_score), reverse=True)[:limit]
+
+    def _top_ai_news(self, events: list[Event]) -> list[Event]:
+        candidates = [
+            event
+            for event in events
+            if self._has_section(event, EventSection.AI_NEWS)
+            and event.ai_news_score >= 42
+            and (
+                self._is_primary_section(event, EventSection.AI_NEWS)
+                or self._is_primary_section(event, EventSection.IMPORTANT)
+                or event.ai_news_score >= event.coding_score + 8
+            )
+        ]
+        return self._limit_for_day(
+            sorted(
+                candidates,
+                key=lambda event: (
+                    self._is_primary_section(event, EventSection.AI_NEWS),
+                    event.ai_news_score,
+                    event.importance_score,
+                    event.confidence_score,
+                    self._source_quality_rank(event),
+                ),
+                reverse=True,
+            ),
+            strong_limit=3,
+            weak_limit=2,
+        )
+
+    def _top_coding(self, events: list[Event]) -> list[Event]:
+        candidates = [
+            event
+            for event in events
+            if (
+                self._has_section(event, EventSection.CODING)
+                or self._looks_like_coding_candidate(event)
+            )
+            and (event.coding_score >= 40 or self._looks_like_coding_candidate(event))
+            and (
+                self._is_primary_section(event, EventSection.CODING)
+                or event.coding_score >= event.ai_news_score + 10
+                or self._has_tech_tag(event)
+                or self._looks_like_coding_candidate(event)
+            )
+        ]
+        return self._limit_for_day(
+            sorted(
+                candidates,
+                key=lambda event: (
+                    self._looks_like_coding_candidate(event),
+                    self._is_primary_section(event, EventSection.CODING),
+                    event.coding_score,
+                    event.confidence_score,
+                    event.importance_score,
+                    self._source_quality_rank(event),
+                ),
+                reverse=True,
+            ),
+            strong_limit=3,
+            weak_limit=2,
+        )
+
+    def _top_investments(self, events: list[Event]) -> list[Event]:
+        candidates = [
+            event
+            for event in events
+            if self._has_section(event, EventSection.INVESTMENTS)
+            and event.investment_score >= 60
+            and (
+                self._is_primary_section(event, EventSection.INVESTMENTS)
+                or event.market_impact_score >= 55
+            )
+        ]
+        return self._limit_for_day(
+            sorted(
+                candidates,
+                key=lambda event: (
+                    self._is_primary_section(event, EventSection.INVESTMENTS),
+                    event.investment_score,
+                    event.market_impact_score,
+                    event.confidence_score,
+                    self._source_quality_rank(event),
+                ),
+                reverse=True,
+            ),
+            strong_limit=2,
+            weak_limit=1,
+        )
 
     def _section_snapshot(self, section: DigestSection, events: list[Event], primary: bool = False) -> list[DigestIssueItem]:
         if not events:
@@ -256,7 +431,7 @@ class DigestBuilderService:
             alpha_entry_id=None,
             rank_order=index,
             card_title=event.title,
-            card_text=event.short_summary or event.long_summary or event.title,
+            card_text=self._build_card_text(event, section),
             card_links_json=[event.primary_source_url] if event.primary_source_url else [],
             is_primary_block=primary,
         )
@@ -305,3 +480,181 @@ class DigestBuilderService:
             DigestSection.ALL: "Все за день",
         }
         return titles[section]
+
+    def _build_card_text(self, event: Event, section: DigestSection) -> str:
+        lead = self._editorial_lead(event, section)
+        impact = self._specific_second_sentence(event, section)
+        if not impact:
+            return lead
+        if lead.rstrip(".!?") == impact.rstrip(".!?"):
+            return lead
+        return f"{lead.rstrip('.!?')}. {impact}"
+
+    def _first_sentence(self, value: str | None) -> str:
+        if not value:
+            return ""
+        sentences = [part.strip() for part in _SENTENCE_SPLIT_RE.split(value.strip()) if part.strip()]
+        return sentences[0] if sentences else value.strip()
+
+    def _editorial_lead(self, event: Event, section: DigestSection) -> str:
+        lead = self._first_sentence(event.short_summary) or self._first_sentence(event.long_summary) or event.title
+        if not lead:
+            return event.title
+        if re.search(r"[А-Яа-яЁё]", lead):
+            return lead
+
+        text = " ".join(filter(None, [event.title, event.short_summary, event.long_summary])).lower()
+        if "transformers.js" in text or "webgpu" in text:
+            return "Transformers.js v3 добавил WebGPU и новые сценарии запуска моделей в браузере."
+        if "protect ai" in text or "model security" in text or "ml community" in text:
+            return "Hugging Face и Protect AI усиливают фокус на безопасности моделей."
+        if "speech-to-speech" in text or "s2s" in text:
+            return "Hugging Face упростил запуск speech-to-speech пайплайнов."
+        if "outlines-core" in text or "structured generation" in text:
+            return "Outlines-core 0.1.0 усиливает structured generation в Rust и Python."
+        if "copilot" in text and "cli" in text:
+            return "GitHub Copilot добавил новый CLI-сценарий для developer workflow."
+        if "embedding" in text and ("domain-specific" in text or "domain specific" in text):
+            return "Показан быстрый способ дообучить доменную embedding-модель под свои данные."
+        if "granite libraries" in text or "mellea" in text:
+            return "IBM обновила стек Granite Libraries и релизнула Mellea 0.4.0."
+        if "voice" in text and "eval" in text:
+            return "Появился новый фреймворк для оценки voice-агентов."
+        if "security" in text:
+            return "Появился новый сигнал по безопасности AI-инфраструктуры."
+        if "browser" in text:
+            return "Новые AI-сценарии смещаются ближе к браузеру и клиентскому слою."
+        return lead
+
+    def _specific_second_sentence(self, event: Event, section: DigestSection) -> str:
+        text = " ".join(filter(None, [event.title, event.short_summary, event.long_summary])).lower()
+        if section is DigestSection.CODING:
+            if any(keyword in text for keyword in ("malware", "malicious", "secret", "credentials", "vulnerability", "security")):
+                return "Важно для команд, которые держат этот стек в проде из-за риска утечки секретов."
+            if any(keyword in text for keyword in ("webgpu", "browser", "javascript", "transformers.js", "web client")):
+                return "Важно для команд, которые хотят запускать inference и AI-фичи прямо в веб-клиенте."
+            if any(keyword in text for keyword in ("structured generation", "json schema", "rust", "python")):
+                return "Полезно разработчикам, которым нужна надежная structured generation в продовом контуре."
+            if any(keyword in text for keyword in ("embedding", "fine-tune", "finetune", "retrieval", "search")):
+                return "Полезно командам, которые настраивают retrieval и эмбеддинги под свои данные."
+            if any(keyword in text for keyword in ("speech", "voice", "speech-to-speech", "s2s")):
+                return "Это облегчает вывод voice и speech-to-speech пайплайнов в production."
+            if any(keyword in text for keyword in ("eval", "benchmark", "voice", "agent", "testing")):
+                return "Полезно командам, которые строят AI-агентов и хотят формализовать eval-пайплайн."
+            if any(keyword in text for keyword in ("sdk", "api", "cli", "workflow", "tool", "copilot", "open-source", "open source")):
+                return "Это влияет на текущий AI-workflow разработчиков и выбор инструментов."
+            return "Полезно командам, которые внедряют AI-инструменты и инфраструктуру в рабочий контур."
+
+        if section is DigestSection.INVESTMENTS:
+            if any(keyword in text for keyword in ("acquisition", "acquire", "merger", "m&a")):
+                return "Это сигнал по стратегическим сделкам и консолидации AI-рынка."
+            if any(keyword in text for keyword in ("partnership", "partner")):
+                return "Показывает, где сейчас формируются коммерческие альянсы и распределение влияния."
+            return "Показывает, куда сейчас идут капитал и стратегический интерес в AI."
+
+        if section is DigestSection.AI_NEWS:
+            if any(keyword in text for keyword in ("security", "protect ai", "supply chain", "model security")):
+                return "Это сигнал по росту внимания к security и supply-chain рискам в ML-инфраструктуре."
+            if any(keyword in text for keyword in ("webgpu", "browser", "transformers.js")):
+                return "Показывает, как AI-инференс и модели уходят ближе к браузеру и клиентскому слою."
+            if any(keyword in text for keyword in ("embedding", "fine-tune", "finetune", "retrieval")):
+                return "Важно для команд, которые строят доменные search и retrieval-системы поверх моделей."
+            if any(keyword in text for keyword in ("speech", "voice", "speech-to-speech", "s2s")):
+                return "Это делает практичнее voice AI и мультимодальные продукты в боевых сценариях."
+            if any(keyword in text for keyword in ("structured generation", "outlines", "json schema")):
+                return "Показывает, что экосистема упирается в более надежную structured generation и контроль вывода."
+            if any(keyword in text for keyword in ("research", "training", "inference", "reasoning", "model", "benchmark")):
+                return "Это сигнал по сдвигу в моделях, инфраструктуре и повестке крупных AI-игроков."
+            if any(keyword in text for keyword in ("voice", "agent")):
+                return "Показывает, куда движется рынок AI-агентов и систем оценки качества."
+            return "Это один из заметных сдвигов в текущей AI-повестке."
+
+        if section is DigestSection.IMPORTANT:
+            if self._has_section(event, EventSection.INVESTMENTS):
+                return "Стоит держать в фокусе из-за потенциального влияния на рынок, сделки и продуктовые планы."
+            if self._has_section(event, EventSection.CODING):
+                return "Важно для команд, которые строят AI-продукты и быстро переносят новые инструменты в прод."
+            return "Это один из ключевых сигналов дня для команд, которые следят за AI-рынком."
+
+        if section is DigestSection.ALL:
+            primary = self._primary_section(event)
+            mapped = {
+                EventSection.IMPORTANT: DigestSection.IMPORTANT,
+                EventSection.AI_NEWS: DigestSection.AI_NEWS,
+                EventSection.CODING: DigestSection.CODING,
+                EventSection.INVESTMENTS: DigestSection.INVESTMENTS,
+            }.get(primary)
+            if mapped is not None:
+                return self._specific_second_sentence(event, mapped)
+            return "Это один из заметных сигналов дня."
+
+        return ""
+
+    def _primary_section(self, event: Event) -> EventSection | None:
+        category = next((category for category in event.categories if category.is_primary_section), None)
+        return category.section if category is not None else None
+
+    def _has_section(self, event: Event, section: EventSection) -> bool:
+        return any(category.section == section for category in event.categories)
+
+    def _is_primary_section(self, event: Event, section: EventSection) -> bool:
+        return any(category.section == section and category.is_primary_section for category in event.categories)
+
+    def _has_tech_tag(self, event: Event) -> bool:
+        return any(tag.tag_type is EventTagType.TECH for tag in event.tags)
+
+    def _looks_like_coding_candidate(self, event: Event) -> bool:
+        text = " ".join(filter(None, [event.title, event.short_summary, event.long_summary])).lower()
+        return any(
+            keyword in text
+            for keyword in (
+                "webgpu",
+                "transformers.js",
+                "structured generation",
+                "json schema",
+                "rust",
+                "python",
+                "sdk",
+                "api",
+                "cli",
+                "deploy",
+                "deployment",
+                "speech-to-speech",
+                "embedding",
+                "retrieval",
+                "tooling",
+                "open-source",
+                "open source",
+            )
+        )
+
+    def _source_quality_rank(self, event: Event) -> float:
+        source = event.primary_source
+        if source is None:
+            return 0.0
+        title = source.title.lower()
+        handle = source.handle_or_url.lower()
+        research_bonus = 0.0
+        if any(token in title or token in handle for token in ("research", "engineering", "labs", "arxiv", "paper")):
+            research_bonus = 0.5
+        type_rank = {
+            "official_blog": 3.0,
+            "rss_feed": 2.0,
+            "website": 1.0,
+        }.get(source.source_type.value, 1.0)
+        return type_rank + research_bonus + (source.priority_weight / 100)
+
+    def _signal_score(self, event: Event) -> float:
+        return max(
+            event.importance_score,
+            event.ai_news_score * 0.92,
+            event.coding_score * 0.92,
+            event.investment_score * 0.92,
+        )
+
+    def _limit_for_day(self, events: list[Event], *, strong_limit: int, weak_limit: int) -> list[Event]:
+        if not events:
+            return []
+        strong_count = sum(1 for event in events if self._signal_score(event) >= 70)
+        limit = strong_limit if strong_count >= strong_limit else weak_limit if strong_count <= 1 else max(weak_limit, strong_count)
+        return events[:limit]

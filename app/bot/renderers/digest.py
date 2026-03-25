@@ -28,10 +28,20 @@ _rendering = TelegramRenderingService()
 
 def render_daily_main(issue: DigestIssue, items_by_section: dict[DigestSection, list[DigestIssueItem]]) -> list[str]:
     header = f"<b>Malakhov AI Digest • {_format_date(issue.issue_date)}</b>"
-    section_blocks = [
-        _render_section_block(section, items_by_section.get(section, [])[:DAILY_SECTION_LIMIT])
-        for section in DAILY_SECTION_ORDER
-    ]
+    section_blocks = []
+    has_non_empty_signal_section = any(
+        items_by_section.get(section) and not _is_empty_section(items_by_section.get(section, []))
+        for section in (DigestSection.AI_NEWS, DigestSection.CODING, DigestSection.INVESTMENTS)
+    )
+    for section in DAILY_SECTION_ORDER:
+        items = items_by_section.get(section, [])[:DAILY_SECTION_LIMIT]
+        if section is DigestSection.IMPORTANT and has_non_empty_signal_section and _is_empty_section(items):
+            continue
+        if not items and section not in (DigestSection.IMPORTANT, DigestSection.ALPHA):
+            continue
+        if _is_empty_section(items) and section not in (DigestSection.IMPORTANT, DigestSection.ALPHA):
+            continue
+        section_blocks.append(_render_section_block(section, items))
     return _rendering.chunk_blocks(header, section_blocks)
 
 
@@ -83,3 +93,7 @@ def _format_date(value: date) -> str:
         12: "декабря",
     }
     return f"{value.day} {months[value.month]}"
+
+
+def _is_empty_section(items: list[DigestIssueItem]) -> bool:
+    return len(items) == 1 and items[0].event_id is None and items[0].alpha_entry_id is None

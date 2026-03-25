@@ -88,9 +88,9 @@ class ClassificationConfig:
 class ScoringConfig:
     source_type_quality: dict[SourceType, float] = field(
         default_factory=lambda: {
-            SourceType.OFFICIAL_BLOG: 1.0,
-            SourceType.RSS_FEED: 0.85,
-            SourceType.WEBSITE: 0.65,
+            SourceType.OFFICIAL_BLOG: 1.15,
+            SourceType.RSS_FEED: 0.82,
+            SourceType.WEBSITE: 0.5,
         }
     )
     highlight_threshold: float = 70.0

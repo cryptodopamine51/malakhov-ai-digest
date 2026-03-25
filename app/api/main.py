@@ -176,6 +176,25 @@ def _serialize_issue_item(item: DigestIssueItem) -> dict[str, object]:
     }
 
 
+def _serialize_daily_main_preview(preview) -> dict[str, object]:
+    return {
+        "visible_sections": {
+            section.value: [_serialize_issue_item(item) for item in items]
+            for section, items in preview.visible_by_section.items()
+        },
+        "suppressed": [
+            {
+                "item_id": item.item_id,
+                "event_id": item.event_id,
+                "source_section": item.source_section.value,
+                "shown_in_section": item.shown_in_section.value,
+                "reason": item.reason,
+            }
+            for item in preview.suppressed
+        ],
+    }
+
+
 def create_app(
     session_factory: async_sessionmaker[AsyncSession] | None = None,
     ingestion_job_runner: IngestionJobRunner | None = None,
@@ -432,10 +451,15 @@ def create_app(
         issue = await digest_builder.get_issue(issue_id)
         if issue is None:
             raise HTTPException(status_code=404, detail="issue not found")
-        return {
+        payload = {
             "issue": _serialize_issue(issue),
             "items": [_serialize_issue_item(item) for item in sorted(issue.items, key=lambda item: (item.section.value, item.rank_order, item.id))],
         }
+        if issue.issue_type is DigestIssueType.DAILY:
+            preview = await digest_builder.get_daily_main_preview(issue_id)
+            if preview is not None:
+                payload["daily_main_debug"] = _serialize_daily_main_preview(preview)
+        return payload
 
     @app.get("/internal/issues/{issue_id}/section/{section}")
     async def get_issue_section(issue_id: int, section: str) -> dict[str, object]:
@@ -447,11 +471,28 @@ def create_app(
         if issue is None:
             raise HTTPException(status_code=404, detail="issue not found")
         items = await digest_builder.get_section_items(issue_id, parsed_section)
-        return {
+        payload = {
             "issue": _serialize_issue(issue),
             "section": parsed_section.value,
             "items": [_serialize_issue_item(item) for item in items],
         }
+        if issue.issue_type is DigestIssueType.DAILY:
+            preview = await digest_builder.get_daily_main_preview(issue_id)
+            if preview is not None:
+                payload["main_section_visible"] = [
+                    _serialize_issue_item(item) for item in preview.visible_by_section.get(parsed_section, [])
+                ]
+                payload["suppressed_from_main"] = [
+                    {
+                        "item_id": item.item_id,
+                        "event_id": item.event_id,
+                        "shown_in_section": item.shown_in_section.value,
+                        "reason": item.reason,
+                    }
+                    for item in preview.suppressed
+                    if item.source_section is parsed_section
+                ]
+        return payload
 
     @app.post("/internal/jobs/build-daily")
     async def build_daily(date: str | None = None) -> dict[str, object]:

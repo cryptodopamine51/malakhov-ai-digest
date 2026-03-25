@@ -232,15 +232,18 @@ class ProcessEventsService:
             source = link.source
             raw_item = link.raw_item
             source_priority = float(source.priority_weight if source else 50)
-            source_type_score = {
-                SourceType.OFFICIAL_BLOG: 3.0,
-                SourceType.RSS_FEED: 2.0,
-                SourceType.WEBSITE: 1.0,
-            }.get(source.source_type if source else SourceType.WEBSITE, 1.0)
             source_title = (source.title if source else "").lower()
+            handle = (source.handle_or_url if source else "").lower()
+            source_type_score = {
+                SourceType.OFFICIAL_BLOG: 4.0,
+                SourceType.RSS_FEED: 2.4,
+                SourceType.WEBSITE: 1.2,
+            }.get(source.source_type if source else SourceType.WEBSITE, 1.2)
             editorial_bonus = 0.0
-            if "engineering" in source_title or "research" in source_title:
-                editorial_bonus = 0.6
+            if any(token in source_title or token in handle for token in ("engineering", "research", "labs", "paper", "arxiv")):
+                editorial_bonus = 0.8
+            elif source_priority >= 85:
+                editorial_bonus = 0.3
             published_score = -(
                 (raw_item.published_at or raw_item.fetched_at).timestamp()
                 if raw_item is not None

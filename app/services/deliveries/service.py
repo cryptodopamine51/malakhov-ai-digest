@@ -50,11 +50,13 @@ class IssueDeliveryService:
         if issue.issue_type is DigestIssueType.DAILY:
             from app.bot.keyboards.inline import daily_sections_keyboard
 
-            items = await self._load_daily_main_sections(issue.id)
+            preview = await self.digest_builder.get_daily_main_preview(issue.id)
+            if preview is None:
+                return None
             messages = await self._send_chunks(
                 bot=bot,
                 chat_id=telegram_chat_id,
-                chunks=render_daily_main(issue, items),
+                chunks=render_daily_main(issue, preview.visible_by_section),
                 first_reply_markup=daily_sections_keyboard(issue.id),
             )
             delivery_type = DeliveryType.DAILY_MAIN
@@ -176,18 +178,6 @@ class IssueDeliveryService:
                 )
             )
             return delivery is not None
-
-    async def _load_daily_main_sections(self, issue_id: int) -> dict[DigestSection, list[object]]:
-        section_items: dict[DigestSection, list[object]] = {}
-        for section in (
-            DigestSection.IMPORTANT,
-            DigestSection.AI_NEWS,
-            DigestSection.CODING,
-            DigestSection.INVESTMENTS,
-            DigestSection.ALPHA,
-        ):
-            section_items[section] = await self.digest_builder.get_section_items(issue_id=issue_id, section=section)
-        return section_items
 
     async def _send_chunks(self, *, bot, chat_id: int, chunks: list[str], first_reply_markup=None) -> list:
         messages = []

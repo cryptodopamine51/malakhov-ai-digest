@@ -206,17 +206,12 @@ async def test_renderers_and_empty_alpha(session_factory):
     issue = await service.get_issue(result.issue_id)
     assert issue is not None
 
-    items_by_section = {
-        DigestSection.IMPORTANT: await service.get_section_items(issue.id, DigestSection.IMPORTANT),
-        DigestSection.AI_NEWS: await service.get_section_items(issue.id, DigestSection.AI_NEWS),
-        DigestSection.CODING: await service.get_section_items(issue.id, DigestSection.CODING),
-        DigestSection.INVESTMENTS: await service.get_section_items(issue.id, DigestSection.INVESTMENTS),
-        DigestSection.ALPHA: await service.get_section_items(issue.id, DigestSection.ALPHA),
-    }
+    preview = await service.get_daily_main_preview(issue.id)
+    assert preview is not None
     all_items = await service.get_section_items(issue.id, DigestSection.ALL)
     alpha_items = await service.get_section_items(issue.id, DigestSection.ALPHA)
 
-    daily_text = render_daily_main(issue, items_by_section)
+    daily_text = render_daily_main(issue, preview.visible_by_section)
     all_text = render_section(issue, DigestSection.ALL, all_items)
     alpha_text = render_section(issue, DigestSection.ALPHA, alpha_items)
     weekly_text = render_weekly_main(issue, all_items)
@@ -227,7 +222,7 @@ async def test_renderers_and_empty_alpha(session_factory):
     rendered_weekly = "\n".join(weekly_text)
 
     assert "Важное" in rendered_daily
-    assert "Новости ИИ" in rendered_daily
+    assert "Новости ИИ" not in rendered_daily
     assert "Кодинг" in rendered_daily
     assert "Инвестиции" in rendered_daily
     visible_daily = re.sub(r'href="https?://[^"]+"', 'href=""', rendered_daily)
@@ -239,6 +234,37 @@ async def test_renderers_and_empty_alpha(session_factory):
     assert "https://" not in visible_all
     assert "новых находок пока нет" in rendered_alpha
     assert "Итоги недели" in rendered_weekly
+    assert rendered_daily.count("OpenAI launches GPT-5") == 1
+    assert "Это помогает понять, куда сейчас двигается AI-рынок" not in rendered_daily
+    assert preview.suppressed
+    assert preview.suppressed[0].reason == "duplicate_in_daily_main"
+
+
+async def test_daily_main_preview_suppresses_cross_section_duplicates(session_factory):
+    await seed_daily_event_data(session_factory)
+    service = DigestBuilderService(session_factory)
+    result = await service.build_daily_issue(date(2026, 3, 25))
+
+    preview = await service.get_daily_main_preview(result.issue_id)
+
+    assert preview is not None
+    assert len(preview.visible_by_section[DigestSection.IMPORTANT]) == 1
+    assert len(preview.visible_by_section[DigestSection.CODING]) == 1
+    assert len(preview.visible_by_section[DigestSection.INVESTMENTS]) == 1
+    assert not preview.visible_by_section[DigestSection.AI_NEWS]
+    assert any(item.source_section == DigestSection.AI_NEWS for item in preview.suppressed)
+
+
+async def test_historical_english_event_gets_russian_editorial_lead(session_factory):
+    await seed_daily_event_data(session_factory)
+    service = DigestBuilderService(session_factory)
+    result = await service.build_daily_issue(date(2026, 3, 25))
+
+    coding_items = await service.get_section_items(result.issue_id, DigestSection.CODING)
+
+    assert coding_items
+    assert "GitHub added a new Copilot CLI flow" not in coding_items[0].card_text
+    assert re.search(r"[А-Яа-яЁё]", coding_items[0].card_text)
 
 
 async def test_send_daily_and_weekly_and_log_deliveries(session_factory):

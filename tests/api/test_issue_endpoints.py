@@ -41,6 +41,7 @@ async def seed_issue_endpoint_data(session_factory):
         session.add(event)
         await session.flush()
         session.add(EventCategory(event_id=event.id, section=EventSection.IMPORTANT, score=0.9, is_primary_section=True))
+        session.add(EventCategory(event_id=event.id, section=EventSection.AI_NEWS, score=0.8, is_primary_section=False))
         session.add(User(telegram_user_id=1, telegram_chat_id=101, subscription_mode=SubscriptionMode.DAILY, is_active=True))
         session.add(User(telegram_user_id=2, telegram_chat_id=202, subscription_mode=SubscriptionMode.WEEKLY, is_active=True))
         await session.commit()
@@ -67,7 +68,10 @@ async def test_manual_issue_build_and_send_endpoints(session_factory):
     assert issues.status_code == 200
     assert len(issues.json()["items"]) == 2
     assert issue_detail.status_code == 200
+    assert "daily_main_debug" in issue_detail.json()
+    assert issue_detail.json()["daily_main_debug"]["suppressed"]
     assert section_detail.status_code == 200
+    assert "suppressed_from_main" in section_detail.json()
     assert send_daily.status_code == 200
     assert send_daily.json()["sent_count"] == 1
     assert send_weekly.status_code == 200

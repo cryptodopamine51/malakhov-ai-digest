@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-from app.db.models import DigestIssueStatus, DigestIssueType, DigestSection
+from app.db.models import DigestIssueItem, DigestIssueStatus, DigestIssueType, DigestSection
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,3 +28,18 @@ class IssueBuildResult:
     issue_date: date
     status: DigestIssueStatus
     reused_snapshot: bool
+
+
+@dataclass(frozen=True, slots=True)
+class DailyMainSuppression:
+    item_id: int
+    event_id: int | None
+    source_section: DigestSection
+    shown_in_section: DigestSection
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class DailyMainPreview:
+    visible_by_section: dict[DigestSection, list[DigestIssueItem]]
+    suppressed: list[DailyMainSuppression]

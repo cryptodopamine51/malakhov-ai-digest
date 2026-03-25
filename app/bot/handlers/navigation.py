@@ -37,14 +37,6 @@ from app.services.bot_interaction_service import BotInteractionService
 router = Router(name="navigation")
 logger = logging.getLogger(__name__)
 rendering_service = TelegramRenderingService()
-DAILY_MAIN_SECTIONS = (
-    DigestSection.IMPORTANT,
-    DigestSection.AI_NEWS,
-    DigestSection.CODING,
-    DigestSection.INVESTMENTS,
-    DigestSection.ALPHA,
-)
-
 
 @router.message(F.text == ONBOARDING_DAILY_BUTTON)
 async def onboarding_daily_handler(message: Message) -> None:
@@ -126,8 +118,11 @@ async def today_handler(message: Message) -> None:
     if issue is None:
         await message.answer("Сегодняшний выпуск пока не собран.", reply_markup=main_menu_keyboard())
         return
-    items_by_section = await _load_daily_main_sections(issue.id)
-    chunks = render_daily_main(issue, items_by_section)
+    preview = await DigestBuilderService(AsyncSessionLocal).get_daily_main_preview(issue.id)
+    if preview is None:
+        await message.answer("Сегодняшний выпуск пока не собран.", reply_markup=main_menu_keyboard())
+        return
+    chunks = render_daily_main(issue, preview.visible_by_section)
     sent = await _answer_chunks(
         message,
         chunks,
@@ -244,14 +239,6 @@ async def _get_or_build_weekly_issue():
         result = await builder.build_weekly_issue(date.today())
         issue = await builder.get_issue(result.issue_id)
     return issue
-
-
-async def _load_daily_main_sections(issue_id: int) -> dict[DigestSection, list[object]]:
-    builder = DigestBuilderService(AsyncSessionLocal)
-    items_by_section: dict[DigestSection, list[object]] = {}
-    for section in DAILY_MAIN_SECTIONS:
-        items_by_section[section] = await builder.get_section_items(issue_id, section)
-    return items_by_section
 
 
 async def _answer_chunks(message: Message, chunks: list[str], *, first_reply_markup=None):
