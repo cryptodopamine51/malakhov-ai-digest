@@ -22,7 +22,7 @@ from app.db.models import (
     EventTagType,
 )
 from app.services.alpha import AlphaService
-from app.services.digest.schemas import BuildIssueRequest, DailyMainPreview, DailyMainSuppression, IssueBuildResult
+from app.services.digest.schemas import BuildIssueRequest, DailyMainPreview, DailyMainSuppression, IssueBuildResult, IssueSelectionDebug
 from app.services.digest.texts import EMPTY_ALPHA_TEXT, EMPTY_GENERIC_TEXT, EMPTY_INVESTMENTS_TEXT, EMPTY_WEEKLY_TEXT
 from app.services.sources.reputation import score_event_source_quality
 import logging
@@ -113,6 +113,7 @@ class DigestBuilderService:
             await session.commit()
 
             preview = self._daily_main_preview_from_items(items) if request.issue_type is DigestIssueType.DAILY else None
+            selection_debug = self._issue_selection_debug(items, preview)
             log_structured(
                 logger,
                 "issue_built",
@@ -124,6 +125,19 @@ class DigestBuilderService:
                 events_considered=len(events),
                 shortlist_count=sum(1 for event in events if self._signal_score(event) >= 45),
                 section_counts=self._section_counts(items),
+                selected_event_ids_by_section={
+                    section.value: event_ids for section, event_ids in selection_debug.selected_event_ids_by_section.items()
+                },
+                suppressed_duplicates=[
+                    {
+                        "event_id": suppression.event_id,
+                        "source_section": suppression.source_section.value,
+                        "shown_in_section": suppression.shown_in_section.value,
+                        "reason": suppression.reason,
+                    }
+                    for suppressions in selection_debug.suppressed_by_section.values()
+                    for suppression in suppressions
+                ],
                 suppressed_duplicate_count=len(preview.suppressed) if preview is not None else 0,
                 weak_day_mode=self._is_weak_day(events),
             )
@@ -227,6 +241,25 @@ class DigestBuilderService:
                 visible[section].append(item)
 
         return DailyMainPreview(visible_by_section=visible, suppressed=suppressed)
+
+    def _issue_selection_debug(self, items: list[DigestIssueItem], preview: DailyMainPreview | None) -> IssueSelectionDebug:
+        if preview is None:
+            selected = {
+                section: [item.event_id for item in items if item.section is section and item.event_id is not None]
+                for section in DigestSection
+            }
+            suppressed = {section: [] for section in DigestSection}
+            return IssueSelectionDebug(selected_event_ids_by_section=selected, suppressed_by_section=suppressed)
+
+        selected = {
+            section: [item.event_id for item in visible_items if item.event_id is not None]
+            for section, visible_items in preview.visible_by_section.items()
+        }
+        selected[DigestSection.ALL] = [item.event_id for item in items if item.section is DigestSection.ALL and item.event_id is not None]
+        suppressed_by_section: dict[DigestSection, list[DailyMainSuppression]] = {section: [] for section in DigestSection}
+        for suppression in preview.suppressed:
+            suppressed_by_section[suppression.source_section].append(suppression)
+        return IssueSelectionDebug(selected_event_ids_by_section=selected, suppressed_by_section=suppressed_by_section)
 
     async def _load_events(self, session: AsyncSession, start: date, end: date) -> list[Event]:
         return list(

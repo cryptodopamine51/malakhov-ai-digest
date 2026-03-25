@@ -66,11 +66,14 @@ class ProcessEventsService:
                 updated_events = 0
                 shortlist_count = 0
                 llm_event_count = 0
+                shortlisted_event_ids: list[int] = []
                 for event_id in sorted(touched_event_ids):
                     shortlisted, llm_used = await self._refresh_event(session=session, event_id=event_id)
                     updated_events += 1
                     shortlist_count += int(shortlisted)
                     llm_event_count += int(llm_used)
+                    if shortlisted:
+                        shortlisted_event_ids.append(event_id)
 
                 finished_at = datetime.now(UTC)
                 process_run.finished_at = finished_at
@@ -102,6 +105,7 @@ class ProcessEventsService:
                     clusters_merged=clusters_merged,
                     ambiguous_count=ambiguous_count,
                     shortlist_count=shortlist_count,
+                    shortlisted_event_ids=shortlisted_event_ids,
                     llm_event_count=llm_event_count,
                     duration_ms=process_run.duration_ms,
                 )

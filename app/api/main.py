@@ -46,6 +46,7 @@ from app.services.events import ProcessEventsJobRunner, ProcessEventsService
 from app.services.ingestion import IngestionJobRunner, IngestionService
 from app.services.digest import DigestBuilderService
 from app.services.deliveries import IssueDeliveryService
+from app.services.sources.reputation import classify_source_pool_role, score_source
 from app.services.sources import OfficialBlogAdapter, RssFeedAdapter, SourceHttpClient, SourceRegistry, WebsiteFeedAdapter
 
 
@@ -54,6 +55,7 @@ def _serialize_datetime(value: datetime | None) -> str | None:
 
 
 def _serialize_source(source: Source) -> dict[str, object]:
+    reputation = score_source(source)
     return {
         "id": source.id,
         "source_type": source.source_type.value,
@@ -64,6 +66,9 @@ def _serialize_source(source: Source) -> dict[str, object]:
         "language": source.language,
         "country_scope": source.country_scope,
         "section_bias": source.section_bias,
+        "source_quality_tier": reputation.tier,
+        "source_quality_score": reputation.score,
+        "source_pool_role": classify_source_pool_role(source),
         "created_at": _serialize_datetime(source.created_at),
         "updated_at": _serialize_datetime(source.updated_at),
     }
@@ -138,9 +143,14 @@ def _serialize_event_tag(tag: EventTag) -> dict[str, object]:
 
 
 def _serialize_source_run(run: SourceRun) -> dict[str, object]:
+    source = run.source
+    reputation = score_source(source) if source is not None else None
     return {
         "id": run.id,
         "source_id": run.source_id,
+        "source_title": source.title if source is not None else None,
+        "source_pool_role": classify_source_pool_role(source) if source is not None else None,
+        "source_quality_tier": reputation.tier if reputation is not None else None,
         "started_at": _serialize_datetime(run.started_at),
         "finished_at": _serialize_datetime(run.finished_at),
         "status": run.status.value,
@@ -248,6 +258,18 @@ def _issue_debug_summary(issue: DigestIssue, preview) -> dict[str, object]:
         "issue_type": issue.issue_type.value,
         "issue_date": issue.issue_date.isoformat(),
         "section_counts": section_counts,
+        "selected_event_ids_by_section": {
+            section.value: [
+                item.event_id
+                for item in (
+                    preview.visible_by_section.get(section, [])
+                    if preview is not None
+                    else [item for item in issue.items if item.section is section]
+                )
+                if item.event_id is not None
+            ]
+            for section in DigestSection
+        },
         "suppressed_duplicates": [] if preview is None else [
             {
                 "item_id": item.item_id,
@@ -388,7 +410,7 @@ def create_app(
     @app.get("/internal/source-runs")
     async def list_source_runs(limit: int = 20) -> dict[str, list[dict[str, object]]]:
         safe_limit = max(1, min(limit, 100))
-        stmt = select(SourceRun).order_by(desc(SourceRun.started_at), desc(SourceRun.id)).limit(safe_limit)
+        stmt = select(SourceRun).options(selectinload(SourceRun.source)).order_by(desc(SourceRun.started_at), desc(SourceRun.id)).limit(safe_limit)
         async with db_session_factory() as session:
             runs = list((await session.scalars(stmt)).all())
         return {"items": [_serialize_source_run(run) for run in runs]}

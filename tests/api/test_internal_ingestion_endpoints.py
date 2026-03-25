@@ -44,10 +44,12 @@ async def test_internal_preview_endpoints_and_manual_ingest(session_factory):
     assert post_response.json()["duplicate_count"] == 0
     assert sources_response.status_code == 200
     assert len(sources_response.json()["items"]) == 1
+    assert sources_response.json()["items"][0]["source_pool_role"] == "verification_layer"
     assert raw_items_response.status_code == 200
     assert len(raw_items_response.json()["items"]) == 2
     assert runs_response.status_code == 200
     assert len(runs_response.json()["items"]) == 1
     assert runs_response.json()["items"][0]["status"] == "success"
     assert "duplicate_count" in runs_response.json()["items"][0]
+    assert runs_response.json()["items"][0]["source_pool_role"] == "verification_layer"
     assert debug_runs_response.status_code == 200

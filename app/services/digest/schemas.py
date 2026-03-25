@@ -43,3 +43,9 @@ class DailyMainSuppression:
 class DailyMainPreview:
     visible_by_section: dict[DigestSection, list[DigestIssueItem]]
     suppressed: list[DailyMainSuppression]
+
+
+@dataclass(frozen=True, slots=True)
+class IssueSelectionDebug:
+    selected_event_ids_by_section: dict[DigestSection, list[int]]
+    suppressed_by_section: dict[DigestSection, list[DailyMainSuppression]]

@@ -12,6 +12,7 @@ from app.core.logging import log_structured
 from app.db.models import RawItem, RawItemStatus, Source, SourceRun, SourceRunStatus
 from app.services.ingestion.schemas import BatchIngestionResult, SourceIngestionResult
 from app.services.sources import SourceRegistry, SourceService
+from app.services.sources.reputation import classify_source_pool_role, score_source
 from app.services.sources.schemas import FetchedItem
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,8 @@ class IngestionService:
                 raise ValueError(f"source {source_id} does not exist")
             resolved_source_id = source.id
             source_title = source.title
+            source_reputation = score_source(source)
+            source_pool_role = classify_source_pool_role(source)
 
             started_at = datetime.now(UTC)
             source_run = SourceRun(
@@ -83,6 +86,8 @@ class IngestionService:
                     "source_ingestion_skip",
                     source_id=resolved_source_id,
                     source_title=source_title,
+                    source_quality_tier=source_reputation.tier,
+                    source_pool_role=source_pool_role,
                     freshness_window_minutes=freshness_window,
                     started_at=started_at.isoformat(),
                     finished_at=finished_at.isoformat(),
@@ -120,6 +125,8 @@ class IngestionService:
                     "source_ingestion_completed",
                     source_id=resolved_source_id,
                     source_title=source_title,
+                    source_quality_tier=source_reputation.tier,
+                    source_pool_role=source_pool_role,
                     status=status.value,
                     started_at=started_at.isoformat(),
                     finished_at=finished_at.isoformat(),
@@ -157,6 +164,8 @@ class IngestionService:
                     "source_ingestion_failed",
                     source_id=resolved_source_id,
                     source_title=source_title,
+                    source_quality_tier=source_reputation.tier,
+                    source_pool_role=source_pool_role,
                     started_at=started_at.isoformat(),
                     finished_at=finished_at.isoformat(),
                     fetched_count=fetched_count,

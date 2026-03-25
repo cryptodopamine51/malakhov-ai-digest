@@ -14,6 +14,17 @@ class SourceReputation:
     is_research: bool
 
 
+def classify_source_pool_role(source: Source | None) -> str:
+    reputation = score_source(source)
+    if source is None:
+        return "verification_layer"
+    if reputation.is_official or reputation.is_engineering or reputation.is_research:
+        return "signal_feeder"
+    if source.priority_weight >= 88:
+        return "signal_feeder"
+    return "verification_layer"
+
+
 def score_source(source: Source | None) -> SourceReputation:
     if source is None:
         return SourceReputation(
