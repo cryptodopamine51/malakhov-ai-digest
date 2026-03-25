@@ -2,7 +2,7 @@ services:
   - name: malakhov-ai-digest-api
     type: web
     runtime: python
-    plan: starter
+    plan: free
     region: frankfurt
     repo: https://github.com/cryptodopamine51/malakhov-ai-digest
     branch: deploy/render-bootstrap
@@ -19,6 +19,8 @@ services:
         value: 0.0.0.0
       - key: APP_PORT
         value: "10000"
+      - key: BOT_POLLING_ENABLED
+        value: "true"
       - key: DATABASE_URL
         fromDatabase:
           name: malakhov-ai-digest-db
@@ -44,36 +46,9 @@ services:
       - key: WEEKLY_DIGEST_HOUR
         value: "9"
 
-  - name: malakhov-ai-digest-bot
-    type: worker
-    runtime: python
-    plan: starter
-    region: frankfurt
-    repo: https://github.com/cryptodopamine51/malakhov-ai-digest
-    branch: deploy/render-bootstrap
-    buildCommand: pip install -e .
-    startCommand: python -m app.bot.runner
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.12.8
-      - key: APP_ENV
-        value: prod
-      - key: DATABASE_URL
-        fromDatabase:
-          name: malakhov-ai-digest-db
-          property: connectionString
-      - key: BOT_TOKEN
-        sync: false
-      - key: DEFAULT_TIMEZONE
-        value: Europe/Moscow
-      - key: INGESTION_SCHEDULER_ENABLED
-        value: "false"
-      - key: PROCESS_EVENTS_SCHEDULER_ENABLED
-        value: "false"
-
 databases:
   - name: malakhov-ai-digest-db
-    plan: basic-256mb
+    plan: free
     region: frankfurt
     databaseName: malakhov_ai_digest
     user: malakhov_ai_digest

@@ -34,9 +34,9 @@ async def set_bot_commands(bot: Bot) -> None:
     )
 
 
-async def start_polling() -> None:
-    bot = create_bot()
+async def start_polling(bot: Bot | None = None, *, handle_signals: bool = True) -> None:
+    bot = bot or create_bot()
     dp = create_dispatcher()
     await set_bot_commands(bot)
     logger.info("Starting bot in polling mode")
-    await dp.start_polling(bot)
+    await dp.start_polling(bot, handle_signals=handle_signals)

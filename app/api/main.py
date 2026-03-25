@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from datetime import date as date_cls, datetime
 
@@ -36,7 +37,7 @@ from app.jobs import (
     send_daily_issue,
     send_weekly_issue,
 )
-from app.bot.dispatcher import create_bot
+from app.bot.dispatcher import create_bot, start_polling
 from app.api.routes.internal_alpha import register_internal_alpha_routes
 from app.services.alpha import AlphaService
 from app.services.events import ProcessEventsJobRunner, ProcessEventsService
@@ -209,6 +210,11 @@ def create_app(
     async def lifespan(_: FastAPI):
         scheduler = None
         runtime_bot = bot
+        bot_task: asyncio.Task[None] | None = None
+        if settings.bot_polling_enabled:
+            if runtime_bot is None:
+                runtime_bot = create_bot()
+            bot_task = asyncio.create_task(start_polling(runtime_bot, handle_signals=False))
         if scheduler_enabled:
             if runtime_bot is None:
                 runtime_bot = create_bot()
@@ -234,6 +240,12 @@ def create_app(
         finally:
             if scheduler is not None and scheduler.running:
                 scheduler.shutdown(wait=False)
+            if bot_task is not None:
+                bot_task.cancel()
+                try:
+                    await bot_task
+                except asyncio.CancelledError:
+                    pass
             if runtime_bot is not None and telegram_bot is None:
                 await runtime_bot.session.close()
             if http_client is None:

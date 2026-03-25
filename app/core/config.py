@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     app_port: int = Field(default=8000, alias="APP_PORT")
     database_url: str = Field(alias="DATABASE_URL")
     bot_token: str = Field(alias="BOT_TOKEN")
+    bot_polling_enabled: bool = Field(default=False, alias="BOT_POLLING_ENABLED")
     default_timezone: str = Field(default="Europe/Moscow", alias="DEFAULT_TIMEZONE")
     ingestion_interval_minutes: int = Field(default=30, alias="INGESTION_INTERVAL_MINUTES")
     ingestion_scheduler_enabled: bool = Field(default=True, alias="INGESTION_SCHEDULER_ENABLED")

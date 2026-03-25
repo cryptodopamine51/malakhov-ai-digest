@@ -115,6 +115,7 @@ APP_HOST=0.0.0.0
 APP_PORT=8000
 DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/malakhov_ai_digest
 BOT_TOKEN=replace_me
+BOT_POLLING_ENABLED=false
 DEFAULT_TIMEZONE=Europe/Moscow
 INGESTION_INTERVAL_MINUTES=30
 INGESTION_SCHEDULER_ENABLED=true
@@ -177,6 +178,11 @@ uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --reload
 ```bash
 python -m app.bot.runner
 ```
+
+Render free-plan note:
+- Render free currently allows this project to run reliably as a single `web service`.
+- In that mode FastAPI, scheduler jobs, and Telegram polling run in the same process.
+- Set `BOT_POLLING_ENABLED=true` on the web service and do not create a separate worker.
 
 ## Database migrations
 
