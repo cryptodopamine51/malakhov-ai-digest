@@ -99,12 +99,15 @@ def load_source_seeds(csv_path: Path) -> tuple[list[SourceSeedRow], list[SourceS
     return supported_rows, skipped_rows
 
 
-async def seed_sources(csv_path: Path) -> None:
+async def seed_sources(csv_path: Path, *, deactivate_missing: bool = False) -> None:
     source_seeds, skipped_rows = load_source_seeds(csv_path)
+    csv_handles = {row.handle_or_url for row in source_seeds}
+    csv_handles.update(row.handle_or_url for row in skipped_rows)
 
     async with AsyncSessionLocal() as session:
         created_count = 0
         updated_count = 0
+        deactivated_count = 0
 
         for source_seed in source_seeds:
             existing = await session.scalar(
@@ -135,6 +138,13 @@ async def seed_sources(csv_path: Path) -> None:
             existing.is_active = source_seed.is_active
             updated_count += 1
 
+        if deactivate_missing:
+            existing_sources = list((await session.scalars(select(Source))).all())
+            for source in existing_sources:
+                if source.handle_or_url not in csv_handles and source.is_active:
+                    source.is_active = False
+                    deactivated_count += 1
+
         await session.commit()
 
     skipped_count = len(skipped_rows)
@@ -143,6 +153,7 @@ async def seed_sources(csv_path: Path) -> None:
         f"csv={csv_path} "
         f"created={created_count} "
         f"updated={updated_count} "
+        f"deactivated_missing={deactivated_count} "
         f"skipped_unsupported={skipped_count}"
     )
     if skipped_rows:
@@ -159,9 +170,14 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_SEED_CSV_PATH,
         help=f"path to source seed csv (default: {DEFAULT_SEED_CSV_PATH})",
     )
+    parser.add_argument(
+        "--deactivate-missing",
+        action="store_true",
+        help="set is_active=false for sources not present in the CSV roster",
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    asyncio.run(seed_sources(csv_path=args.csv_path))
+    asyncio.run(seed_sources(csv_path=args.csv_path, deactivate_missing=args.deactivate_missing))
