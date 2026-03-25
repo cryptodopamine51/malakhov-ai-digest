@@ -14,22 +14,36 @@ _URL_RE = re.compile(r"https?://\S+")
 _DATE_RE = re.compile(r"\b\d{1,2}\s+[А-Яа-яЁё]+\s+\d{4}\s+года\b")
 _LEAD_PATTERNS = [
     re.compile(
-        r"^[^.]{0,120}\sопубликовал[а-я]*\s(?:блог-пост|пост|материал|запись|анонс)?\s*(?:о|про)\s+",
+        r"^.{0,120}?\bопубликовал[а-я]*\s+(?:блог-пост|пост|материал|запись|анонс)?\s*(?:о|про)\s+",
         re.IGNORECASE,
     ),
     re.compile(
-        r"^[^.]{0,120}\sпредставил[а-я]*\s(?:новый|новую|новые)?\s*",
+        r"^.{0,120}?\bпредставил[а-я]*\s+(?:новый|новую|новые)?\s*",
         re.IGNORECASE,
     ),
     re.compile(
-        r"^[^.]{0,120}\sвыпустил[а-я]*\s(?:новый|новую|новые)?\s*",
+        r"^.{0,120}?\bвыпустил[а-я]*\s+(?:новый|новую|новые)?\s*",
         re.IGNORECASE,
     ),
     re.compile(
-        r"^[^.]{0,120}\sобъявил[а-я]*\s(?:о|про)\s+",
+        r"^.{0,120}?\bобъявил[а-я]*\s+(?:о|про)\s+",
         re.IGNORECASE,
     ),
 ]
+_LEAD_REWRITES = {
+    "новом фреймворке": "Новый фреймворк",
+    "новом инструменте": "Новый инструмент",
+    "новом релизе": "Новый релиз",
+    "новом датасете": "Новый датасет",
+    "новом продукте": "Новый продукт",
+    "новом бенчмарке": "Новый бенчмарк",
+    "новом подходе": "Новый подход",
+    "новой модели": "Новая модель",
+    "новой версии": "Новая версия",
+    "новой функции": "Новая функция",
+    "новых функциях": "Новые функции",
+    "новых инструментах": "Новые инструменты",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,11 +85,16 @@ class TelegramRenderingService:
                 text = updated
                 break
         text = text.replace("  ", " ").strip(" .")
-        if text.lower().startswith("новом "):
-            text = f"Новый {text[6:]}"
-        elif text.lower().startswith("новая "):
+        lower_text = text.lower()
+        rewritten = False
+        for source_prefix, target_prefix in _LEAD_REWRITES.items():
+            if lower_text.startswith(source_prefix):
+                text = f"{target_prefix}{text[len(source_prefix):]}"
+                rewritten = True
+                break
+        if not rewritten and lower_text.startswith("новая "):
             text = f"Новая {text[6:]}"
-        elif text.lower().startswith("новые "):
+        elif not rewritten and lower_text.startswith("новые "):
             text = f"Новые {text[6:]}"
         if text:
             text = text[0].upper() + text[1:]
