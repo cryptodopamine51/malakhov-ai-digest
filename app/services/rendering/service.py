@@ -11,10 +11,10 @@ SUMMARY_MAX_LEN = 220
 
 _SPACE_RE = re.compile(r"\s+")
 _URL_RE = re.compile(r"https?://\S+")
-_DATE_RE = re.compile(r"\b\d{1,2}\s+[А-Яа-яЁё]+\s+\d{4}\s+года\b")
+_DATE_RE = re.compile(r"\b\d{1,2}\s+[А-Яа-яЁё]+\s+\d{4}(?:\s+года)?\b")
 _LEAD_PATTERNS = [
     re.compile(
-        r"^.{0,120}?\bопубликовал[а-я]*\s+(?:блог-пост|пост|материал|запись|анонс)?\s*(?:о|про)\s+",
+        r"^.{0,120}?\bопубликовал[а-я]*\s+(?:блог-пост|пост|материал|запись|анонс(?:\s+выпуска)?)?\s*(?:(?:о|про)\s+)?",
         re.IGNORECASE,
     ),
     re.compile(
