@@ -12,6 +12,7 @@ SUMMARY_MAX_LEN = 220
 _SPACE_RE = re.compile(r"\s+")
 _URL_RE = re.compile(r"https?://\S+")
 _DATE_RE = re.compile(r"\b\d{1,2}\s+[А-Яа-яЁё]+\s+\d{4}(?:\s+года)?\b")
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 _LEAD_PATTERNS = [
     re.compile(
         r"^.{0,120}?\bопубликовал[а-я]*\s+(?:блог-пост|пост|материал|запись|анонс(?:\s+выпуска)?)?\s*(?:(?:о|про)\s+)?",
@@ -67,6 +68,18 @@ class TelegramRenderingService:
         if len(normalized) <= limit:
             return normalized
         trimmed = normalized[:limit].rstrip()
+        preferred_breaks = [
+            trimmed.rfind(". "),
+            trimmed.rfind("! "),
+            trimmed.rfind("? "),
+            trimmed.rfind("; "),
+            trimmed.rfind(": "),
+        ]
+        split_at = max(preferred_breaks)
+        if split_at > 80:
+            trimmed = trimmed[: split_at + 1].rstrip()
+            return trimmed
+
         split_at = max(trimmed.rfind(" "), trimmed.rfind("—"), trimmed.rfind("-"), trimmed.rfind(","))
         if split_at > 40:
             trimmed = trimmed[:split_at].rstrip()
@@ -112,6 +125,21 @@ class TelegramRenderingService:
             }.get(section_title)
             if significance and significance.lower() not in text.lower():
                 text = f"{text} {significance}"
+
+        if len(text) > SUMMARY_MAX_LEN:
+            sentences = [part.strip() for part in _SENTENCE_SPLIT_RE.split(text) if part.strip()]
+            if len(sentences) >= 2:
+                lead = sentences[0]
+                tail = " ".join(sentences[1:]).strip()
+                reserved = len(tail) + 1
+                if reserved < SUMMARY_MAX_LEN - 20:
+                    lead_limit = max(48, SUMMARY_MAX_LEN - reserved)
+                    short_lead = self.trim_text(lead, lead_limit)
+                    if short_lead.endswith("."):
+                        short_lead = f"{short_lead[:-1]}…"
+                    combined = f"{short_lead} {tail}".strip()
+                    if len(combined) <= SUMMARY_MAX_LEN:
+                        return combined
 
         return self.trim_text(text or value or "", SUMMARY_MAX_LEN)
 
