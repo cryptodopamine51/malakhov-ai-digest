@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 
 from app.db.models import SourceType
-from app.services.sources import OfficialBlogAdapter, RssFeedAdapter, SourceHttpClient, SourceRegistry
+from app.services.sources import OfficialBlogAdapter, RssFeedAdapter, SourceHttpClient, SourceRegistry, WebsiteFeedAdapter
 
 
 RSS_FEED_XML = """<?xml version="1.0" encoding="UTF-8"?>
@@ -56,5 +56,6 @@ def build_registry(http_client: SourceHttpClient) -> SourceRegistry:
         {
             SourceType.RSS_FEED: RssFeedAdapter(http_client),
             SourceType.OFFICIAL_BLOG: OfficialBlogAdapter(http_client),
+            SourceType.WEBSITE: WebsiteFeedAdapter(http_client),
         }
     )

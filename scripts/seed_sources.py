@@ -21,6 +21,7 @@ DEFAULT_SEED_CSV_PATH = Path(__file__).resolve().parent / "data" / "seed_sources
 SUPPORTED_SEED_SOURCE_TYPES = {
     SourceType.RSS_FEED,
     SourceType.OFFICIAL_BLOG,
+    SourceType.WEBSITE,
 }
 
 

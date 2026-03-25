@@ -46,7 +46,7 @@ from app.services.events import ProcessEventsJobRunner, ProcessEventsService
 from app.services.ingestion import IngestionJobRunner, IngestionService
 from app.services.digest import DigestBuilderService
 from app.services.deliveries import IssueDeliveryService
-from app.services.sources import OfficialBlogAdapter, RssFeedAdapter, SourceHttpClient, SourceRegistry
+from app.services.sources import OfficialBlogAdapter, RssFeedAdapter, SourceHttpClient, SourceRegistry, WebsiteFeedAdapter
 
 
 def _serialize_datetime(value: datetime | None) -> str | None:
@@ -283,6 +283,7 @@ def create_app(
         {
             SourceType.RSS_FEED: RssFeedAdapter(source_http_client),
             SourceType.OFFICIAL_BLOG: OfficialBlogAdapter(source_http_client),
+            SourceType.WEBSITE: WebsiteFeedAdapter(source_http_client),
         }
     )
     job_runner = ingestion_job_runner or IngestionJobRunner(

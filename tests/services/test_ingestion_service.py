@@ -162,6 +162,43 @@ async def test_official_blog_ingestion_uses_feed_discovery(session_factory):
     assert "discovered feed" in (source_run.error_message or "")
 
 
+async def test_website_ingestion_uses_known_feed_override(session_factory):
+    async with session_factory() as session:
+        source = Source(
+            source_type=SourceType.WEBSITE,
+            title="TechCrunch AI",
+            handle_or_url="https://techcrunch.com/category/artificial-intelligence/",
+            priority_weight=90,
+            is_active=True,
+            language="en",
+            country_scope="global",
+        )
+        session.add(source)
+        await session.commit()
+        source_id = source.id
+
+    http_client = build_http_client(
+        {
+            "https://techcrunch.com/category/artificial-intelligence/feed/": httpx.Response(200, text=RSS_FEED_XML),
+        }
+    )
+    ingestion_service = IngestionService(session_factory=session_factory, source_registry=build_registry(http_client))
+
+    result = await ingestion_service.ingest_source(source_id)
+
+    async with session_factory() as session:
+        raw_item_count = await session.scalar(select(func.count()).select_from(RawItem))
+        source_run = await session.scalar(select(SourceRun).where(SourceRun.source_id == source_id))
+
+    await http_client.aclose()
+
+    assert result.status == SourceRunStatus.PARTIAL
+    assert result.inserted_count == 2
+    assert raw_item_count == 2
+    assert source_run is not None
+    assert "known feed override" in (source_run.error_message or "")
+
+
 async def test_ingestion_deduplicates_duplicate_items_within_single_fetch(session_factory):
     async with session_factory() as session:
         source = Source(
