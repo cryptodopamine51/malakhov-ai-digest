@@ -43,16 +43,26 @@ async def test_internal_event_preview_endpoints(session_factory):
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         process_response = await client.post("/internal/jobs/process-events")
+        process_runs_response = await client.get("/internal/debug/process-runs")
         events_response = await client.get("/internal/events")
         event_id = events_response.json()["items"][0]["id"]
         detail_response = await client.get(f"/internal/events/{event_id}")
+        debug_response = await client.get(f"/internal/debug/events/{event_id}")
+        llm_usage_response = await client.get("/internal/debug/llm-usage")
         preview_response = await client.get("/internal/events/preview/day/2026-03-25")
 
     assert process_response.status_code == 200
     assert process_response.json()["created_events"] == 1
+    assert "process_run_id" in process_response.json()
+    assert process_runs_response.status_code == 200
+    assert len(process_runs_response.json()["items"]) == 1
     assert events_response.status_code == 200
     assert len(events_response.json()["items"]) == 1
     assert detail_response.status_code == 200
     assert detail_response.json()["event"]["title"] == "OpenAI launches GPT-5 for developers"
+    assert debug_response.status_code == 200
+    assert "shortlist_passed" in debug_response.json()
+    assert "selected_for_issue" in debug_response.json()
+    assert llm_usage_response.status_code == 200
     assert preview_response.status_code == 200
     assert "important" in preview_response.json()["sections"]

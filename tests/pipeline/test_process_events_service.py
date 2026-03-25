@@ -12,12 +12,14 @@ from app.db.models import (
     EventSource,
     EventSourceRole,
     EventTag,
+    LlmUsageLog,
+    ProcessRun,
     RawItem,
     RawItemStatus,
     Source,
     SourceType,
 )
-from app.services.events.summary import SummaryBuilder
+from app.services.events.summary import SummaryBuildResult, SummaryBuilder
 from app.services.events.service import ProcessEventsService
 from app.services.normalization.service import NormalizationService
 
@@ -433,24 +435,27 @@ async def test_summary_builder_fallback_returns_russian_text(session_factory):
             is_highlight=False,
         )
         event.primary_source = source
-        payload = await SummaryBuilder().build(event, [raw_item])
+        result = await SummaryBuilder().build(event, [raw_item], use_llm=False)
 
-    assert "Инфоповод подтвержден" in payload.short_summary
-    assert "Событие собрано" in payload.long_summary
+    assert "Инфоповод подтвержден" in result.payload.short_summary
+    assert "Событие собрано" in result.payload.long_summary
 
 
 async def test_process_events_uses_async_summary_builder_output(session_factory):
     class StubSummaryBuilder:
-        async def build(self, event: Event, raw_items: list[RawItem]):
-            return type(
-                "StubPayload",
-                (),
-                {
-                    "title": "OpenAI запустила GPT-5 для разработчиков",
-                    "short_summary": "OpenAI представила GPT-5 и новые инструменты для разработчиков.",
-                    "long_summary": "OpenAI представила GPT-5 и обновила набор инструментов для разработчиков и enterprise-клиентов.",
-                },
-            )()
+        async def build(self, event: Event, raw_items: list[RawItem], *, use_llm: bool = True):
+            return SummaryBuildResult(
+                payload=type(
+                    "StubPayload",
+                    (),
+                    {
+                        "title": "OpenAI запустила GPT-5 для разработчиков",
+                        "short_summary": "OpenAI представила GPT-5 и новые инструменты для разработчиков.",
+                        "long_summary": "OpenAI представила GPT-5 и обновила набор инструментов для разработчиков и enterprise-клиентов.",
+                    },
+                )(),
+                llm_used=use_llm,
+            )
 
     async with session_factory() as session:
         source = build_source(
@@ -487,3 +492,77 @@ async def test_process_events_uses_async_summary_builder_output(session_factory)
     assert event is not None
     assert event.title == "OpenAI запустила GPT-5 для разработчиков"
     assert event.short_summary == "OpenAI представила GPT-5 и новые инструменты для разработчиков."
+
+
+async def test_process_events_uses_llm_only_for_shortlist(session_factory):
+    llm_calls: list[bool] = []
+
+    class StubSummaryBuilder:
+        async def build(self, event: Event, raw_items: list[RawItem], *, use_llm: bool = True):
+            llm_calls.append(use_llm)
+            return SummaryBuildResult(
+                payload=type(
+                    "StubPayload",
+                    (),
+                    {
+                        "title": event.title,
+                        "short_summary": "Короткое summary.",
+                        "long_summary": "Длинное summary.",
+                    },
+                )(),
+                llm_used=use_llm,
+            )
+
+    async with session_factory() as session:
+        official = build_source(
+            title="OpenAI News",
+            url="https://openai.com/news/",
+            source_type=SourceType.OFFICIAL_BLOG,
+            priority_weight=100,
+            section_bias="ai_news|important",
+        )
+        weak = build_source(
+            title="Small AI Blog",
+            url="https://example.com/blog",
+            source_type=SourceType.WEBSITE,
+            priority_weight=40,
+            section_bias="ai_news",
+        )
+        session.add_all([official, weak])
+        await session.flush()
+        session.add_all(
+            [
+                build_raw_item(
+                    source_id=official.id,
+                    source_type=official.source_type,
+                    title="OpenAI launches GPT-5 for developers",
+                    text="OpenAI launches GPT-5 with API updates and coding tools.",
+                    url="https://openai.com/news/gpt-5-launch",
+                    external_id="gpt5-openai",
+                    published_at=datetime(2026, 3, 25, 9, 0, tzinfo=UTC),
+                ),
+                build_raw_item(
+                    source_id=weak.id,
+                    source_type=weak.source_type,
+                    title="AI blog roundup",
+                    text="A small blog roundup about generic AI trends.",
+                    url="https://example.com/blog/roundup",
+                    external_id="roundup-1",
+                    published_at=datetime(2026, 3, 25, 10, 0, tzinfo=UTC),
+                ),
+            ]
+        )
+        await session.commit()
+
+    result = await ProcessEventsService(session_factory=session_factory, summary_builder=StubSummaryBuilder()).process()
+
+    async with session_factory() as session:
+        process_runs = list((await session.scalars(select(ProcessRun).order_by(ProcessRun.id.asc()))).all())
+        llm_logs = list((await session.scalars(select(LlmUsageLog))).all())
+
+    assert result.shortlist_count == 1
+    assert result.llm_event_count == 1
+    assert llm_calls.count(True) == 1
+    assert llm_calls.count(False) == 1
+    assert process_runs[-1].shortlist_count == 1
+    assert not llm_logs

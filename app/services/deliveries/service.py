@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from aiogram.types import LinkPreviewOptions
 
 from app.bot.renderers import render_daily_main, render_section, render_weekly_main
 from app.bot.texts import ABOUT_TEXT
+from app.core.logging import log_structured
 from app.db.models import (
     Delivery,
     DeliveryType,
@@ -17,6 +20,8 @@ from app.db.models import (
 from app.services.delivery_service import DeliveryService
 from app.services.digest import DigestBuilderService
 from app.services.rendering import TelegramRenderingService
+
+logger = logging.getLogger(__name__)
 
 
 class IssueDeliveryService:
@@ -80,6 +85,17 @@ class IssueDeliveryService:
                 telegram_message_id=messages[0].message_id if messages else None,
             )
             await session.commit()
+        log_structured(
+            logger,
+            "issue_delivery",
+            issue_id=issue.id,
+            telegram_user_id=telegram_user_id,
+            delivery_type=delivery_type.value,
+            section=None,
+            telegram_message_id=messages[0].message_id if messages else None,
+            status="sent",
+            resend=False,
+        )
         return messages[0].message_id if messages else None
 
     async def send_section_message(
@@ -108,6 +124,17 @@ class IssueDeliveryService:
                     section=section.value,
                 )
                 await session.commit()
+        log_structured(
+            logger,
+            "issue_delivery",
+            issue_id=issue.id,
+            telegram_user_id=telegram_user_id,
+            delivery_type=DeliveryType.SECTION_OPEN.value,
+            section=section.value,
+            telegram_message_id=messages[0].message_id if messages else None,
+            status="sent",
+            resend=False,
+        )
         return messages[0].message_id if messages else None
 
     async def send_about_message(self, *, bot, telegram_user_id: int, telegram_chat_id: int) -> int:
@@ -125,6 +152,17 @@ class IssueDeliveryService:
                     telegram_message_id=messages[0].message_id if messages else None,
                 )
                 await session.commit()
+        log_structured(
+            logger,
+            "issue_delivery",
+            issue_id=None,
+            telegram_user_id=telegram_user_id,
+            delivery_type=DeliveryType.ABOUT.value,
+            section=None,
+            telegram_message_id=messages[0].message_id if messages else None,
+            status="sent",
+            resend=False,
+        )
         return messages[0].message_id if messages else 0
 
     async def _broadcast_issue(self, *, bot, issue_type: DigestIssueType, issue_id: int) -> int:
@@ -160,12 +198,22 @@ class IssueDeliveryService:
         telegram_user_id: int,
         telegram_chat_id: int,
     ) -> int | None:
-        return await self.send_issue_to_user(
+        message_id = await self.send_issue_to_user(
             bot=bot,
             issue_id=issue_id,
             telegram_user_id=telegram_user_id,
             telegram_chat_id=telegram_chat_id,
         )
+        log_structured(
+            logger,
+            "issue_resend",
+            issue_id=issue_id,
+            telegram_user_id=telegram_user_id,
+            telegram_message_id=message_id,
+            status="sent" if message_id is not None else "missing_issue",
+            resend=True,
+        )
+        return message_id
 
     async def _has_existing_delivery(self, *, user_id: int, issue_id: int, issue_type: DigestIssueType) -> bool:
         delivery_type = DeliveryType.DAILY_MAIN if issue_type is DigestIssueType.DAILY else DeliveryType.WEEKLY_MAIN

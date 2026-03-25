@@ -58,6 +58,7 @@ async def test_manual_issue_build_and_send_endpoints(session_factory):
         issues = await client.get("/internal/issues")
         issue_id = build_daily.json()["issue_id"]
         issue_detail = await client.get(f"/internal/issues/{issue_id}")
+        debug_issue = await client.get(f"/internal/debug/issues/{issue_id}")
         section_detail = await client.get(f"/internal/issues/{issue_id}/section/important")
         send_daily = await client.post("/internal/jobs/send-daily")
         send_weekly = await client.post("/internal/jobs/send-weekly")
@@ -70,6 +71,8 @@ async def test_manual_issue_build_and_send_endpoints(session_factory):
     assert issue_detail.status_code == 200
     assert "daily_main_debug" in issue_detail.json()
     assert issue_detail.json()["daily_main_debug"]["suppressed"]
+    assert debug_issue.status_code == 200
+    assert "section_counts" in debug_issue.json()
     assert section_detail.status_code == 200
     assert "suppressed_from_main" in section_detail.json()
     assert send_daily.status_code == 200

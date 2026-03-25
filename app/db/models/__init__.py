@@ -6,6 +6,8 @@ from app.db.models.event import Event
 from app.db.models.event_category import EventCategory
 from app.db.models.event_source import EventSource
 from app.db.models.event_tag import EventTag
+from app.db.models.llm_usage_log import LlmUsageLog
+from app.db.models.process_run import ProcessRun
 from app.db.models.enums import (
     AlphaEntryStatus,
     DeliveryStatus,
@@ -16,6 +18,7 @@ from app.db.models.enums import (
     EventSection,
     EventSourceRole,
     EventTagType,
+    ProcessRunStatus,
     RawItemStatus,
     SourceRunStatus,
     SourceType,
@@ -44,6 +47,9 @@ __all__ = [
     "EventSourceRole",
     "EventTag",
     "EventTagType",
+    "LlmUsageLog",
+    "ProcessRun",
+    "ProcessRunStatus",
     "RawItem",
     "RawItemStatus",
     "Source",

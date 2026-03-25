@@ -42,6 +42,12 @@ class SourceRunStatus(str, Enum):
     FAILED = "failed"
 
 
+class ProcessRunStatus(str, Enum):
+    SUCCESS = "success"
+    PARTIAL = "partial"
+    FAILED = "failed"
+
+
 class EventSourceRole(str, Enum):
     PRIMARY = "primary"
     SUPPORTING = "supporting"

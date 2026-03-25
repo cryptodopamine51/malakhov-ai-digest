@@ -27,6 +27,7 @@ Editorial guidance already reflected in the ingestion foundation:
 - source links must be preserved through the pipeline;
 - one event should map to one future card after normalization/clustering;
 - `section_bias` from source seeds is stored as advisory editorial metadata and used by the classification layer.
+- cheap ingestion and expensive editorial intelligence are separated: LLM is reserved for shortlist events and final copy refinement, not for every fetched page.
 
 ## Slice status
 
@@ -125,8 +126,13 @@ DEFAULT_TIMEZONE=Europe/Moscow
 INGESTION_INTERVAL_MINUTES=30
 INGESTION_SCHEDULER_ENABLED=true
 INGESTION_HTTP_TIMEOUT_SECONDS=10
+RSS_FRESHNESS_WINDOW_MINUTES=30
+OFFICIAL_BLOG_FRESHNESS_WINDOW_MINUTES=20
+WEBSITE_FRESHNESS_WINDOW_MINUTES=90
 PROCESS_EVENTS_INTERVAL_MINUTES=15
 PROCESS_EVENTS_SCHEDULER_ENABLED=true
+EVENT_LLM_SHORTLIST_THRESHOLD=58
+EVENT_LLM_SHORTLIST_SECONDARY_THRESHOLD=48
 DAILY_DIGEST_HOUR=9
 WEEKLY_DIGEST_WEEKDAY=mon
 WEEKLY_DIGEST_HOUR=9
@@ -216,6 +222,8 @@ Current schema includes:
 - `digest_issues`
 - `digest_issue_items`
 - `alpha_entries`
+- `process_runs`
+- `llm_usage_logs`
 
 Run:
 
@@ -232,6 +240,12 @@ For each active source:
 4. deduplicate by `source_id + external_id`
 5. insert new `raw_items`
 6. finalize `source_run` with `success`, `partial`, or `failed`
+7. skip over-frequent polling through source-type freshness windows
+
+`source_runs` now also store:
+- `duplicate_count`
+- `failed_count`
+- `duration_ms`
 
 ## Event processing flow
 
@@ -241,14 +255,27 @@ For each `raw_item` with `status=fetched`:
 3. cluster related normalized items into `events`
 4. create `event_sources`
 5. assign section categories and tags
-6. calculate scores
-7. move processed items to `clustered`
+6. calculate cheap scores and source-quality signals
+7. pass only shortlist events to LLM summary generation
+8. store lightweight continuity via `related_previous_event_id`
+9. move processed items to `clustered`
 
 Statuses:
 - `fetched`
 - `normalized`
 - `clustered`
 - `discarded`
+
+Shortlist-before-LLM:
+- raw ingestion never calls the LLM
+- event processing uses only cheap scoring first
+- only shortlist events call OpenAI for RU summary refinement
+- fallback summary builder remains available when the API key is absent or the call fails
+
+Data layers:
+- `raw_items`: source-of-truth fetch layer
+- `events`: normalized editorial layer with scores, categories, tags, continuity
+- `digest_issues` and `digest_issue_items`: stable user-facing snapshots for Telegram and resend
 
 ## Digest issue flow
 
@@ -303,6 +330,7 @@ Preview source runs:
 
 ```bash
 curl http://localhost:8000/internal/source-runs
+curl http://localhost:8000/internal/debug/source-runs
 ```
 
 Run ingestion manually:
@@ -315,6 +343,7 @@ Run process-events manually:
 
 ```bash
 curl -X POST http://localhost:8000/internal/jobs/process-events
+curl http://localhost:8000/internal/debug/process-runs
 ```
 
 Build daily issue manually:
@@ -353,6 +382,7 @@ Event detail:
 
 ```bash
 curl http://localhost:8000/internal/events/1
+curl http://localhost:8000/internal/debug/events/1
 ```
 
 Day preview:
@@ -372,12 +402,19 @@ Issue detail:
 
 ```bash
 curl http://localhost:8000/internal/issues/1
+curl http://localhost:8000/internal/debug/issues/1
 curl http://localhost:8000/internal/issues/1/section/important
 curl http://localhost:8000/internal/issues/1/section/ai_news
 curl http://localhost:8000/internal/issues/1/section/coding
 curl http://localhost:8000/internal/issues/1/section/investments
 curl http://localhost:8000/internal/issues/1/section/alpha
 curl http://localhost:8000/internal/issues/1/section/all
+```
+
+LLM usage telemetry:
+
+```bash
+curl http://localhost:8000/internal/debug/llm-usage
 ```
 
 Resend an existing issue snapshot:
@@ -438,9 +475,9 @@ Behavior:
 - converts CSV `priority_weight` values like `0.95` into integer weights for the current DB schema
 - imports only source types currently supported by Slice 2: `rss_feed`, `official_blog`
 - skips unsupported `website` rows and prints them explicitly
-- accepts `section_bias` in the CSV as future-facing editorial metadata, but does not store it yet
+- stores `section_bias` as editorial metadata for classification and digest tuning
 
-This keeps the seed input aligned with editorial planning while avoiding schema creep inside Slice 2.
+This keeps the seed input aligned with editorial planning while keeping ingestion cheap and deterministic.
 
 ## Telegram behavior
 
@@ -480,6 +517,28 @@ Rendering hardening:
 - content text is HTML-escaped before sending
 - digest resend and section opens reuse the stored issue snapshot instead of rebuilding content
 
+## Observability and debug
+
+Structured logs now cover:
+- source ingestion runs
+- process-events runs
+- event-level decision summaries
+- issue build summaries
+- delivery events
+- LLM usage by pipeline step
+
+What to inspect:
+- why a source fetched nothing or was skipped:
+  - `/internal/debug/source-runs`
+- how many raw items became events and how many hit shortlist:
+  - `/internal/debug/process-runs`
+- why a specific event was selected or suppressed:
+  - `/internal/debug/events/{event_id}`
+- why a daily issue is short, weak-day, or duplicate-suppressed:
+  - `/internal/debug/issues/{issue_id}`
+- where tokens are spent:
+  - `/internal/debug/llm-usage`
+
 ## Tests
 
 Run:
@@ -509,6 +568,8 @@ Coverage in current test suite:
 - score calculation through process-events pipeline
 - internal events preview endpoints
 - repeated process-events run idempotency
+- shortlist-before-LLM behavior
+- process-runs and debug API responses
 - build daily issue
 - build weekly issue
 - section snapshot selection for `important`, `ai_news`, `coding`, `investments`

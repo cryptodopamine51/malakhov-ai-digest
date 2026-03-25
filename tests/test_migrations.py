@@ -58,4 +58,6 @@ async def test_alembic_upgrade_head_creates_core_tables(tmp_path):
         "digest_issues",
         "digest_issue_items",
         "alpha_entries",
+        "process_runs",
+        "llm_usage_logs",
     }.issubset(table_names)

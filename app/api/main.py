@@ -22,6 +22,8 @@ from app.db.models import (
     EventSection,
     EventSource,
     EventTag,
+    LlmUsageLog,
+    ProcessRun,
     RawItem,
     Source,
     SourceRun,
@@ -102,6 +104,7 @@ def _serialize_event(event: Event) -> dict[str, object]:
         "confidence_score": event.confidence_score,
         "is_highlight": event.is_highlight,
         "primary_section": primary_section,
+        "related_previous_event_id": event.related_previous_event_id,
         "created_at": _serialize_datetime(event.created_at),
         "updated_at": _serialize_datetime(event.updated_at),
     }
@@ -143,7 +146,47 @@ def _serialize_source_run(run: SourceRun) -> dict[str, object]:
         "status": run.status.value,
         "fetched_count": run.fetched_count,
         "inserted_count": run.inserted_count,
+        "duplicate_count": run.duplicate_count,
+        "failed_count": run.failed_count,
+        "duration_ms": run.duration_ms,
         "error_message": run.error_message,
+    }
+
+
+def _serialize_process_run(run: ProcessRun) -> dict[str, object]:
+    return {
+        "id": run.id,
+        "started_at": _serialize_datetime(run.started_at),
+        "finished_at": _serialize_datetime(run.finished_at),
+        "status": run.status.value,
+        "raw_items_considered": run.raw_items_considered,
+        "normalized_count": run.normalized_count,
+        "clustered_count": run.clustered_count,
+        "discarded_count": run.discarded_count,
+        "created_events": run.created_events,
+        "updated_events": run.updated_events,
+        "clusters_merged": run.clusters_merged,
+        "ambiguous_count": run.ambiguous_count,
+        "shortlist_count": run.shortlist_count,
+        "llm_event_count": run.llm_event_count,
+        "duration_ms": run.duration_ms,
+        "error_message": run.error_message,
+    }
+
+
+def _serialize_llm_usage(record: LlmUsageLog) -> dict[str, object]:
+    return {
+        "id": record.id,
+        "pipeline_step": record.pipeline_step,
+        "model_name": record.model_name,
+        "item_count": record.item_count,
+        "latency_ms": record.latency_ms,
+        "prompt_tokens": record.prompt_tokens,
+        "completion_tokens": record.completion_tokens,
+        "total_tokens": record.total_tokens,
+        "success": record.success,
+        "error_message": record.error_message,
+        "created_at": _serialize_datetime(record.created_at),
     }
 
 
@@ -192,6 +235,35 @@ def _serialize_daily_main_preview(preview) -> dict[str, object]:
             }
             for item in preview.suppressed
         ],
+    }
+
+
+def _issue_debug_summary(issue: DigestIssue, preview) -> dict[str, object]:
+    section_counts = {
+        section.value: sum(1 for item in issue.items if item.section is section and item.event_id is not None)
+        for section in DigestSection
+    }
+    return {
+        "issue_id": issue.id,
+        "issue_type": issue.issue_type.value,
+        "issue_date": issue.issue_date.isoformat(),
+        "section_counts": section_counts,
+        "suppressed_duplicates": [] if preview is None else [
+            {
+                "item_id": item.item_id,
+                "event_id": item.event_id,
+                "source_section": item.source_section.value,
+                "shown_in_section": item.shown_in_section.value,
+                "reason": item.reason,
+            }
+            for item in preview.suppressed
+        ],
+        "weak_day_mode": False if preview is None else sum(
+            1
+            for items in preview.visible_by_section.values()
+            if any(item.event_id is not None for item in items)
+        ) <= 2,
+        "selected_items": [_serialize_issue_item(item) for item in sorted(issue.items, key=lambda item: (item.section.value, item.rank_order, item.id))],
     }
 
 
@@ -320,6 +392,10 @@ def create_app(
             runs = list((await session.scalars(stmt)).all())
         return {"items": [_serialize_source_run(run) for run in runs]}
 
+    @app.get("/internal/debug/source-runs")
+    async def list_debug_source_runs(limit: int = 20) -> dict[str, list[dict[str, object]]]:
+        return await list_source_runs(limit=limit)
+
     @app.post("/internal/jobs/ingest")
     async def run_ingestion_job() -> dict[str, object]:
         result = await job_runner.run()
@@ -330,12 +406,17 @@ def create_app(
             "sources_processed": len(result.results),
             "fetched_count": result.total_fetched,
             "inserted_count": result.total_inserted,
+            "duplicate_count": result.total_duplicates,
             "results": [
                 {
                     "source_id": item.source_id,
                     "status": item.status.value,
                     "fetched_count": item.fetched_count,
                     "inserted_count": item.inserted_count,
+                    "duplicate_count": item.duplicate_count,
+                    "failed_count": item.failed_count,
+                    "duration_ms": item.duration_ms,
+                    "skipped": item.skipped,
                     "error_message": item.error_message,
                     "warnings": item.warnings,
                 }
@@ -397,6 +478,81 @@ def create_app(
             "sources": [_serialize_event_source(event_source) for event_source in event.event_sources],
         }
 
+    @app.get("/internal/debug/events/{event_id}")
+    async def get_event_debug(event_id: int) -> dict[str, object]:
+        stmt = (
+            select(Event)
+            .where(Event.id == event_id)
+            .options(
+                selectinload(Event.categories),
+                selectinload(Event.tags),
+                selectinload(Event.primary_source),
+                selectinload(Event.related_previous_event),
+                selectinload(Event.event_sources).selectinload(EventSource.source),
+                selectinload(Event.event_sources).selectinload(EventSource.raw_item),
+            )
+        )
+        async with db_session_factory() as session:
+            event = await session.scalar(stmt)
+            if event is None:
+                raise HTTPException(status_code=404, detail="event not found")
+
+            candidate_issues = list(
+                (
+                    await session.scalars(
+                        select(DigestIssue)
+                        .join(DigestIssue.items)
+                        .where(DigestIssueItem.event_id == event_id)
+                        .options(selectinload(DigestIssue.items))
+                        .order_by(DigestIssue.issue_date.desc(), DigestIssue.id.desc())
+                    )
+                ).unique().all()
+            )
+
+        selected_for_issue = False
+        suppression_reason = None
+        selected_issue_id = None
+        if candidate_issues:
+            selected_issue = candidate_issues[0]
+            selected_issue_id = selected_issue.id
+            if selected_issue.issue_type is DigestIssueType.DAILY:
+                preview = await digest_builder.get_daily_main_preview(selected_issue.id)
+                if preview is not None:
+                    selected_for_issue = any(item.event_id == event_id for items in preview.visible_by_section.values() for item in items)
+                    suppressed = next((item for item in preview.suppressed if item.event_id == event_id), None)
+                    suppression_reason = suppressed.reason if suppressed is not None else None
+            else:
+                selected_for_issue = any(item.event_id == event_id for item in selected_issue.items)
+
+        primary_section = next((category.section.value for category in event.categories if category.is_primary_section), None)
+        secondary_sections = [category.section.value for category in event.categories if not category.is_primary_section]
+        return {
+            "event": _serialize_event(event),
+            "sources": [_serialize_event_source(event_source) for event_source in event.event_sources],
+            "scores": {
+                "importance_score": event.importance_score,
+                "market_impact_score": event.market_impact_score,
+                "ai_news_score": event.ai_news_score,
+                "coding_score": event.coding_score,
+                "investment_score": event.investment_score,
+                "confidence_score": event.confidence_score,
+            },
+            "categories": [_serialize_event_category(category) for category in event.categories],
+            "tags": [_serialize_event_tag(tag) for tag in event.tags],
+            "shortlist_passed": max(
+                event.importance_score,
+                event.ai_news_score,
+                event.coding_score,
+                event.investment_score,
+            ) >= settings.event_llm_shortlist_secondary_threshold,
+            "selected_for_issue": selected_for_issue,
+            "suppression_reason": suppression_reason,
+            "primary_section": primary_section,
+            "secondary_sections": secondary_sections,
+            "related_previous_event": _serialize_event(event.related_previous_event) if event.related_previous_event else None,
+            "selected_issue_id": selected_issue_id,
+        }
+
     @app.get("/internal/events/preview/day/{day}")
     async def preview_events_by_day(day: str) -> dict[str, object]:
         try:
@@ -428,12 +584,26 @@ def create_app(
             raise HTTPException(status_code=409, detail="process-events already running")
         return {
             "status": "ok",
+            "process_run_id": result.process_run_id,
+            "raw_items_considered": result.raw_items_considered,
             "normalized_count": result.normalized_count,
             "clustered_count": result.clustered_count,
             "discarded_count": result.discarded_count,
             "created_events": result.created_events,
             "updated_events": result.updated_events,
+            "clusters_merged": result.clusters_merged,
+            "ambiguous_count": result.ambiguous_count,
+            "shortlist_count": result.shortlist_count,
+            "llm_event_count": result.llm_event_count,
         }
+
+    @app.get("/internal/debug/process-runs")
+    async def list_process_runs(limit: int = 20) -> dict[str, list[dict[str, object]]]:
+        safe_limit = max(1, min(limit, 100))
+        stmt = select(ProcessRun).order_by(desc(ProcessRun.started_at), desc(ProcessRun.id)).limit(safe_limit)
+        async with db_session_factory() as session:
+            runs = list((await session.scalars(stmt)).all())
+        return {"items": [_serialize_process_run(run) for run in runs]}
 
     @app.get("/internal/issues")
     async def list_issues(
@@ -460,6 +630,14 @@ def create_app(
             if preview is not None:
                 payload["daily_main_debug"] = _serialize_daily_main_preview(preview)
         return payload
+
+    @app.get("/internal/debug/issues/{issue_id}")
+    async def get_issue_debug(issue_id: int) -> dict[str, object]:
+        issue = await digest_builder.get_issue(issue_id)
+        if issue is None:
+            raise HTTPException(status_code=404, detail="issue not found")
+        preview = await digest_builder.get_daily_main_preview(issue_id) if issue.issue_type is DigestIssueType.DAILY else None
+        return _issue_debug_summary(issue, preview)
 
     @app.get("/internal/issues/{issue_id}/section/{section}")
     async def get_issue_section(issue_id: int, section: str) -> dict[str, object]:
@@ -558,6 +736,38 @@ def create_app(
         if message_id is None:
             raise HTTPException(status_code=404, detail="issue not found")
         return {"status": "ok", "message_id": message_id}
+
+    @app.get("/internal/debug/llm-usage")
+    async def list_llm_usage(limit: int = 50) -> dict[str, object]:
+        safe_limit = max(1, min(limit, 200))
+        stmt = select(LlmUsageLog).order_by(desc(LlmUsageLog.created_at), desc(LlmUsageLog.id)).limit(safe_limit)
+        async with db_session_factory() as session:
+            rows = list((await session.scalars(stmt)).all())
+
+        aggregate: dict[str, dict[str, int]] = {}
+        for row in rows:
+            bucket = aggregate.setdefault(
+                row.pipeline_step,
+                {
+                    "calls": 0,
+                    "items": 0,
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0,
+                    "failures": 0,
+                },
+            )
+            bucket["calls"] += 1
+            bucket["items"] += row.item_count
+            bucket["prompt_tokens"] += row.prompt_tokens or 0
+            bucket["completion_tokens"] += row.completion_tokens or 0
+            bucket["total_tokens"] += row.total_tokens or 0
+            bucket["failures"] += int(not row.success)
+
+        return {
+            "items": [_serialize_llm_usage(row) for row in rows],
+            "aggregate_by_step": aggregate,
+        }
 
     return app
 

@@ -12,11 +12,22 @@ from app.db.models import Event, EventSource, RawItem
 from app.services.normalization.utils import tokenize
 
 
+class ClusteringDecision:
+    def __init__(self, event: Event | None, best_score: float, candidate_count: int) -> None:
+        self.event = event
+        self.best_score = best_score
+        self.candidate_count = candidate_count
+
+
 class ClusteringService:
     def __init__(self) -> None:
         self.config = CLUSTERING_CONFIG
 
     async def find_matching_event(self, session: AsyncSession, raw_item: RawItem) -> Event | None:
+        decision = await self.analyze_match(session, raw_item)
+        return decision.event
+
+    async def analyze_match(self, session: AsyncSession, raw_item: RawItem) -> ClusteringDecision:
         stmt = self._recent_events_stmt(raw_item)
         candidate_events = list((await session.scalars(stmt)).unique().all())
 
@@ -29,8 +40,8 @@ class ClusteringService:
                 best_event = event
 
         if best_score >= self.config.match_threshold:
-            return best_event
-        return None
+            return ClusteringDecision(best_event, best_score, len(candidate_events))
+        return ClusteringDecision(None, best_score, len(candidate_events))
 
     def _recent_events_stmt(self, raw_item: RawItem) -> Select[tuple[Event]]:
         event_date = (raw_item.published_at or raw_item.fetched_at).date()

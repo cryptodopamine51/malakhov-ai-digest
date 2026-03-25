@@ -80,8 +80,9 @@ async def test_successful_rss_ingestion_and_dedup(session_factory):
     assert first_result.fetched_count == 2
     assert first_result.inserted_count == 2
     assert second_result.status == SourceRunStatus.SUCCESS
-    assert second_result.fetched_count == 2
+    assert second_result.fetched_count == 0
     assert second_result.inserted_count == 0
+    assert second_result.skipped is True
     assert raw_item_count == 2
     assert len(runs) == 2
     assert all(run.status == SourceRunStatus.SUCCESS for run in runs)

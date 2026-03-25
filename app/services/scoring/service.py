@@ -8,6 +8,7 @@ from app.db.models import EventSection, RawItem
 from app.services.classification.schemas import ClassifiedCategory
 from app.services.normalization.utils import entity_count
 from app.services.scoring.schemas import ScoreResult
+from app.services.sources.reputation import score_raw_item_source
 
 
 class ScoringService:
@@ -19,7 +20,7 @@ class ScoringService:
         max_priority = max(((item.source.priority_weight if item.source else 50) for item in raw_items), default=50)
         priority_signal = min(max_priority / 100, 1.5)
         official_signal = max(
-            (self.config.source_type_quality.get(item.source_type, 0.6) for item in raw_items),
+            (score_raw_item_source(item) for item in raw_items),
             default=0.6,
         )
         entity_signal = min(

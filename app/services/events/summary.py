@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from time import monotonic
 
 import httpx
 
@@ -17,6 +18,26 @@ class EventSummaryPayload:
     title: str
     short_summary: str
     long_summary: str
+
+
+@dataclass(slots=True)
+class LlmUsagePayload:
+    pipeline_step: str
+    model_name: str
+    item_count: int
+    latency_ms: int | None
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    total_tokens: int | None
+    success: bool
+    error_message: str | None = None
+
+
+@dataclass(slots=True)
+class SummaryBuildResult:
+    payload: EventSummaryPayload
+    llm_used: bool
+    usage: LlmUsagePayload | None = None
 
 
 class RuleBasedSummaryBuilder:
@@ -71,10 +92,11 @@ class OpenAIRuSummaryClient:
         self.timeout_seconds = timeout_seconds
         self.http_client = http_client
 
-    async def summarize(self, *, event: Event, raw_items: list[RawItem]) -> EventSummaryPayload:
+    async def summarize(self, *, event: Event, raw_items: list[RawItem]) -> tuple[EventSummaryPayload, LlmUsagePayload]:
         payload = self._build_payload(event=event, raw_items=raw_items)
         owned_client = self.http_client is None
         client = self.http_client or httpx.AsyncClient(timeout=self.timeout_seconds)
+        started = monotonic()
         try:
             response = await client.post(
                 f"{self.api_base}/chat/completions",
@@ -88,10 +110,23 @@ class OpenAIRuSummaryClient:
             data = response.json()
             content = data["choices"][0]["message"]["content"]
             parsed = json.loads(content)
-            return EventSummaryPayload(
-                title=str(parsed["title"]).strip(),
-                short_summary=str(parsed["short_summary"]).strip(),
-                long_summary=str(parsed["long_summary"]).strip(),
+            usage = data.get("usage") or {}
+            return (
+                EventSummaryPayload(
+                    title=str(parsed["title"]).strip(),
+                    short_summary=str(parsed["short_summary"]).strip(),
+                    long_summary=str(parsed["long_summary"]).strip(),
+                ),
+                LlmUsagePayload(
+                    pipeline_step="event_summary",
+                    model_name=self.model,
+                    item_count=len(raw_items),
+                    latency_ms=max(int((monotonic() - started) * 1000), 0),
+                    prompt_tokens=usage.get("prompt_tokens"),
+                    completion_tokens=usage.get("completion_tokens"),
+                    total_tokens=usage.get("total_tokens"),
+                    success=True,
+                ),
             )
         finally:
             if owned_client:
@@ -176,13 +211,35 @@ class SummaryBuilder:
                 timeout_seconds=settings.openai_summary_timeout_seconds,
             )
 
-    async def build(self, event: Event, raw_items: list[RawItem]) -> EventSummaryPayload:
-        if self.llm_client is None:
-            return self.fallback_builder.build(event, raw_items)
+    async def build(self, event: Event, raw_items: list[RawItem], *, use_llm: bool = True) -> SummaryBuildResult:
+        if self.llm_client is None or not use_llm:
+            return SummaryBuildResult(
+                payload=self.fallback_builder.build(event, raw_items),
+                llm_used=False,
+            )
         try:
-            payload = await self.llm_client.summarize(event=event, raw_items=raw_items)
+            payload, usage = await self.llm_client.summarize(event=event, raw_items=raw_items)
             if payload.title and payload.short_summary and payload.long_summary:
-                return payload
-        except Exception:
+                return SummaryBuildResult(payload=payload, llm_used=True, usage=usage)
+        except Exception as exc:
             logger.exception("openai ru summary failed; falling back to rule-based summary")
-        return self.fallback_builder.build(event, raw_items)
+            if self.llm_client is not None:
+                return SummaryBuildResult(
+                    payload=self.fallback_builder.build(event, raw_items),
+                    llm_used=False,
+                    usage=LlmUsagePayload(
+                        pipeline_step="event_summary",
+                        model_name=self.llm_client.model,
+                        item_count=len(raw_items),
+                        latency_ms=None,
+                        prompt_tokens=None,
+                        completion_tokens=None,
+                        total_tokens=None,
+                        success=False,
+                        error_message=str(exc),
+                    ),
+                )
+        return SummaryBuildResult(
+            payload=self.fallback_builder.build(event, raw_items),
+            llm_used=False,
+        )

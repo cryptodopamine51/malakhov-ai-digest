@@ -25,6 +25,9 @@ class SourceRun(Base):
     )
     fetched_count: Mapped[int] = mapped_column(nullable=False, default=0)
     inserted_count: Mapped[int] = mapped_column(nullable=False, default=0)
+    duplicate_count: Mapped[int] = mapped_column(nullable=False, default=0)
+    failed_count: Mapped[int] = mapped_column(nullable=False, default=0)
+    duration_ms: Mapped[int | None] = mapped_column(nullable=True)
     error_message: Mapped[str | None] = mapped_column(String(2000), nullable=True)
 
     source = relationship("Source", back_populates="runs")

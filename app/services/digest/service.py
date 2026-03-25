@@ -7,6 +7,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
+from app.core.logging import log_structured
 from app.db.models import (
     AlphaEntry,
     AlphaEntryStatus,
@@ -23,6 +24,8 @@ from app.db.models import (
 from app.services.alpha import AlphaService
 from app.services.digest.schemas import BuildIssueRequest, DailyMainPreview, DailyMainSuppression, IssueBuildResult
 from app.services.digest.texts import EMPTY_ALPHA_TEXT, EMPTY_GENERIC_TEXT, EMPTY_INVESTMENTS_TEXT, EMPTY_WEEKLY_TEXT
+from app.services.sources.reputation import score_event_source_quality
+import logging
 
 DAILY_MAIN_SECTION_ORDER = (
     DigestSection.IMPORTANT,
@@ -32,6 +35,7 @@ DAILY_MAIN_SECTION_ORDER = (
     DigestSection.ALPHA,
 )
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+logger = logging.getLogger(__name__)
 
 
 class DigestBuilderService:
@@ -108,6 +112,22 @@ class DigestBuilderService:
             issue.status = DigestIssueStatus.READY
             await session.commit()
 
+            preview = self._daily_main_preview_from_items(items) if request.issue_type is DigestIssueType.DAILY else None
+            log_structured(
+                logger,
+                "issue_built",
+                issue_id=issue.id,
+                issue_type=issue.issue_type.value,
+                issue_date=issue.issue_date.isoformat(),
+                period_start=issue.period_start.isoformat(),
+                period_end=issue.period_end.isoformat(),
+                events_considered=len(events),
+                shortlist_count=sum(1 for event in events if self._signal_score(event) >= 45),
+                section_counts=self._section_counts(items),
+                suppressed_duplicate_count=len(preview.suppressed) if preview is not None else 0,
+                weak_day_mode=self._is_weak_day(events),
+            )
+
             return IssueBuildResult(
                 issue_id=issue.id,
                 issue_type=issue.issue_type,
@@ -172,10 +192,12 @@ class DigestBuilderService:
         issue = await self.get_issue(issue_id)
         if issue is None or issue.issue_type is not DigestIssueType.DAILY:
             return None
+        return self._daily_main_preview_from_items(issue.items)
 
+    def _daily_main_preview_from_items(self, items: list[DigestIssueItem]) -> DailyMainPreview:
         items_by_section = {
             section: sorted(
-                [item for item in issue.items if item.section == section],
+                [item for item in items if item.section == section],
                 key=lambda item: (item.rank_order, item.id),
             )
             for section in DAILY_MAIN_SECTION_ORDER
@@ -629,20 +651,8 @@ class DigestBuilderService:
         )
 
     def _source_quality_rank(self, event: Event) -> float:
-        source = event.primary_source
-        if source is None:
-            return 0.0
-        title = source.title.lower()
-        handle = source.handle_or_url.lower()
-        research_bonus = 0.0
-        if any(token in title or token in handle for token in ("research", "engineering", "labs", "arxiv", "paper")):
-            research_bonus = 0.5
-        type_rank = {
-            "official_blog": 3.0,
-            "rss_feed": 2.0,
-            "website": 1.0,
-        }.get(source.source_type.value, 1.0)
-        return type_rank + research_bonus + (source.priority_weight / 100)
+        reputation = score_event_source_quality(event)
+        return reputation.score + (0.3 if reputation.is_official else 0.0) + (0.2 if reputation.is_engineering or reputation.is_research else 0.0)
 
     def _signal_score(self, event: Event) -> float:
         return max(
@@ -658,3 +668,12 @@ class DigestBuilderService:
         strong_count = sum(1 for event in events if self._signal_score(event) >= 70)
         limit = strong_limit if strong_count >= strong_limit else weak_limit if strong_count <= 1 else max(weak_limit, strong_count)
         return events[:limit]
+
+    def _section_counts(self, items: list[DigestIssueItem]) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for section in DigestSection:
+            counts[section.value] = sum(1 for item in items if item.section is section and item.event_id is not None)
+        return counts
+
+    def _is_weak_day(self, events: list[Event]) -> bool:
+        return sum(1 for event in events if self._signal_score(event) >= 65) <= 1

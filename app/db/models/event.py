@@ -16,6 +16,7 @@ class Event(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     event_date: Mapped[date] = mapped_column(Date, nullable=False)
+    related_previous_event_id: Mapped[int | None] = mapped_column(ForeignKey("events.id", ondelete="SET NULL"), nullable=True)
     title: Mapped[str] = mapped_column(String(1024), nullable=False)
     short_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     long_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -30,6 +31,7 @@ class Event(TimestampMixin, Base):
     is_highlight: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     primary_source = relationship("Source", back_populates="primary_events")
+    related_previous_event = relationship("Event", remote_side="Event.id")
     event_sources = relationship("EventSource", back_populates="event", cascade="all, delete-orphan")
     categories = relationship("EventCategory", back_populates="event", cascade="all, delete-orphan")
     tags = relationship("EventTag", back_populates="event", cascade="all, delete-orphan")
