@@ -1,0 +1,53 @@
+name: Weekly Digest Pipeline
+
+on:
+  schedule:
+    - cron: "15 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  weekly-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake API
+        env:
+          BASE_URL: https://malakhov-ai-digest-api.onrender.com
+        run: |
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent --show-error "$BASE_URL/health" >/dev/null; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "API did not wake in time" >&2
+          exit 1
+
+      - name: Run ingestion
+        env:
+          BASE_URL: https://malakhov-ai-digest-api.onrender.com
+        run: |
+          curl --fail --silent --show-error -X POST "$BASE_URL/internal/jobs/ingest"
+
+      - name: Process events until queue drains
+        env:
+          BASE_URL: https://malakhov-ai-digest-api.onrender.com
+        run: |
+          for attempt in $(seq 1 12); do
+            RESPONSE="$(curl --fail --silent --show-error -X POST "$BASE_URL/internal/jobs/process-events")"
+            echo "$RESPONSE"
+            RAW_ITEMS_CONSIDERED="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("raw_items_considered", 0))' "$RESPONSE")"
+            if [ "$RAW_ITEMS_CONSIDERED" = "0" ]; then
+              exit 0
+            fi
+          done
+          echo "process-events did not drain within 12 attempts" >&2
+          exit 1
+
+      - name: Build and send weekly digest
+        env:
+          BASE_URL: https://malakhov-ai-digest-api.onrender.com
+          TZ: Europe/Moscow
+        run: |
+          ISSUE_DATE="$(date +%F)"
+          curl --fail --silent --show-error -X POST "$BASE_URL/internal/jobs/build-weekly?date=$ISSUE_DATE"
+          curl --fail --silent --show-error -X POST "$BASE_URL/internal/jobs/send-weekly"

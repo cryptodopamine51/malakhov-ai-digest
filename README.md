@@ -464,6 +464,10 @@ curl -X POST http://localhost:8000/internal/alpha/1/publish
 - daily issue build/send hour is controlled by `DAILY_DIGEST_HOUR`
 - weekly issue build/send schedule is controlled by `WEEKLY_DIGEST_WEEKDAY` and `WEEKLY_DIGEST_HOUR`
 - scheduler can be disabled with `INGESTION_SCHEDULER_ENABLED=false`
+- production-safe external scheduling is available through:
+  - `.github/workflows/daily_digest.yml`
+  - `.github/workflows/weekly_digest.yml`
+  These workflows wake the API and run `ingest -> process-events -> build -> send`, so delivery does not depend on the Render web process staying awake.
 - duplicate overlapping batch runs are blocked in-process by an async lock
 
 ## Seeded starter sources
