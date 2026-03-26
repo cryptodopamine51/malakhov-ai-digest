@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
+from app.core.digest_dates import default_daily_issue_date, default_weekly_issue_date
 from app.core.logging import configure_logging
 from app.db.models import (
     DigestIssue,
@@ -697,7 +698,7 @@ def create_app(
 
     @app.post("/internal/jobs/build-daily")
     async def build_daily(date: str | None = None) -> dict[str, object]:
-        target_date = date_cls.fromisoformat(date) if date else date_cls.today()
+        target_date = date_cls.fromisoformat(date) if date else default_daily_issue_date(date_cls.today())
         result = await digest_builder.build_daily_issue(target_date)
         return {
             "status": "ok",
@@ -709,7 +710,7 @@ def create_app(
 
     @app.post("/internal/jobs/build-weekly")
     async def build_weekly(date: str | None = None) -> dict[str, object]:
-        target_date = date_cls.fromisoformat(date) if date else date_cls.today()
+        target_date = date_cls.fromisoformat(date) if date else default_weekly_issue_date(date_cls.today())
         result = await digest_builder.build_weekly_issue(target_date)
         return {
             "status": "ok",

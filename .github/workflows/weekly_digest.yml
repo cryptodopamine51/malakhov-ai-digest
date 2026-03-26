@@ -46,8 +46,6 @@ jobs:
       - name: Build and send weekly digest
         env:
           BASE_URL: https://malakhov-ai-digest-api.onrender.com
-          TZ: Europe/Moscow
         run: |
-          ISSUE_DATE="$(date +%F)"
-          curl --fail --silent --show-error -X POST "$BASE_URL/internal/jobs/build-weekly?date=$ISSUE_DATE"
+          curl --fail --silent --show-error -X POST "$BASE_URL/internal/jobs/build-weekly"
           curl --fail --silent --show-error -X POST "$BASE_URL/internal/jobs/send-weekly"

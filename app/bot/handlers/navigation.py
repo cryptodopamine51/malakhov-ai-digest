@@ -4,6 +4,7 @@ from datetime import date
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, LinkPreviewOptions, Message
 
+from app.core.digest_dates import default_daily_issue_date, default_weekly_issue_date
 from app.bot.keyboards.inline import daily_sections_keyboard
 from app.bot.keyboards.buttons import (
     MENU_ABOUT_BUTTON,
@@ -229,14 +230,14 @@ async def _set_mode_and_answer(
 
 async def _get_or_build_daily_issue():
     builder = DigestBuilderService(AsyncSessionLocal)
-    return await IssueSnapshotService(builder).get_or_build_daily_issue(date.today())
+    return await IssueSnapshotService(builder).get_or_build_daily_issue(default_daily_issue_date(date.today()))
 
 
 async def _get_or_build_weekly_issue():
     builder = DigestBuilderService(AsyncSessionLocal)
     issue = await builder.get_latest_issue(DigestIssueType.WEEKLY)
     if issue is None:
-        result = await builder.build_weekly_issue(date.today())
+        result = await builder.build_weekly_issue(default_weekly_issue_date(date.today()))
         issue = await builder.get_issue(result.issue_id)
     return issue
 
