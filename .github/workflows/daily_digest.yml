@@ -32,16 +32,19 @@ jobs:
         env:
           BASE_URL: https://malakhov-ai-digest-api.onrender.com
         run: |
-          for attempt in $(seq 1 12); do
+          DRAINED=false
+          for attempt in $(seq 1 20); do
             RESPONSE="$(curl --fail --silent --show-error -X POST "$BASE_URL/internal/jobs/process-events")"
             echo "$RESPONSE"
             RAW_ITEMS_CONSIDERED="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("raw_items_considered", 0))' "$RESPONSE")"
             if [ "$RAW_ITEMS_CONSIDERED" = "0" ]; then
-              exit 0
+              DRAINED=true
+              break
             fi
           done
-          echo "process-events did not drain within 12 attempts" >&2
-          exit 1
+          if [ "$DRAINED" != "true" ]; then
+            echo "process-events did not fully drain within 20 attempts; continuing with partial freshness"
+          fi
 
       - name: Build and send daily digest
         env:
