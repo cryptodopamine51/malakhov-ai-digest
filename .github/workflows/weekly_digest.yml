@@ -8,10 +8,11 @@ on:
 jobs:
   weekly-pipeline:
     runs-on: ubuntu-latest
+    env:
+      BASE_URL: https://malakhov-ai-digest-api.onrender.com
+      TZ: Europe/Moscow
     steps:
       - name: Wake API
-        env:
-          BASE_URL: https://malakhov-ai-digest-api.onrender.com
         run: |
           for attempt in $(seq 1 12); do
             if curl --fail --silent --show-error "$BASE_URL/health" >/dev/null; then
@@ -23,14 +24,10 @@ jobs:
           exit 1
 
       - name: Run ingestion
-        env:
-          BASE_URL: https://malakhov-ai-digest-api.onrender.com
         run: |
           curl --fail --silent --show-error -X POST "$BASE_URL/internal/jobs/ingest"
 
       - name: Process events until queue drains
-        env:
-          BASE_URL: https://malakhov-ai-digest-api.onrender.com
         run: |
           DRAINED=false
           for attempt in $(seq 1 20); do
@@ -47,8 +44,16 @@ jobs:
           fi
 
       - name: Build and send weekly digest
-        env:
-          BASE_URL: https://malakhov-ai-digest-api.onrender.com
         run: |
-          curl --fail --silent --show-error -X POST "$BASE_URL/internal/jobs/build-weekly"
-          curl --fail --silent --show-error -X POST "$BASE_URL/internal/jobs/send-weekly"
+          TARGET_DATE="$(python3 - <<'PY'
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+today_moscow = datetime.now(ZoneInfo("Europe/Moscow")).date()
+current_week_monday = today_moscow - timedelta(days=today_moscow.weekday())
+previous_week_sunday = current_week_monday - timedelta(days=1)
+print(previous_week_sunday.isoformat())
+PY
+          )"
+          echo "Building and sending weekly issue for week ending $TARGET_DATE"
+          curl --fail --silent --show-error -X POST "$BASE_URL/internal/jobs/build-weekly?date=$TARGET_DATE"
+          curl --fail --silent --show-error -X POST "$BASE_URL/internal/jobs/send-weekly?date=$TARGET_DATE"

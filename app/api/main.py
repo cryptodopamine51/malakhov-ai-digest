@@ -721,24 +721,26 @@ def create_app(
         }
 
     @app.post("/internal/jobs/send-daily")
-    async def send_daily() -> dict[str, object]:
+    async def send_daily(date: str | None = None) -> dict[str, object]:
+        target_date = date_cls.fromisoformat(date) if date else default_daily_issue_date(date_cls.today())
         runtime_bot = telegram_bot or create_bot()
         try:
-            sent_count = await send_daily_issue(db_session_factory, runtime_bot)
+            sent_count = await send_daily_issue(db_session_factory, runtime_bot, target_date)
         finally:
             if telegram_bot is None:
                 await runtime_bot.session.close()
-        return {"status": "ok", "sent_count": sent_count}
+        return {"status": "ok", "sent_count": sent_count, "issue_date": target_date.isoformat()}
 
     @app.post("/internal/jobs/send-weekly")
-    async def send_weekly() -> dict[str, object]:
+    async def send_weekly(date: str | None = None) -> dict[str, object]:
+        target_date = date_cls.fromisoformat(date) if date else default_weekly_issue_date(date_cls.today())
         runtime_bot = telegram_bot or create_bot()
         try:
-            sent_count = await send_weekly_issue(db_session_factory, runtime_bot)
+            sent_count = await send_weekly_issue(db_session_factory, runtime_bot, target_date)
         finally:
             if telegram_bot is None:
                 await runtime_bot.session.close()
-        return {"status": "ok", "sent_count": sent_count}
+        return {"status": "ok", "sent_count": sent_count, "issue_date": target_date.isoformat()}
 
     @app.post("/internal/issues/{issue_id}/resend")
     async def resend_issue(

@@ -159,6 +159,19 @@ class DigestBuilderService:
                 .options(selectinload(DigestIssue.items))
             )
 
+    async def get_issue_by_type_and_date(self, issue_type: DigestIssueType, issue_date: date) -> DigestIssue | None:
+        async with self.session_factory() as session:
+            return await session.scalar(
+                select(DigestIssue)
+                .where(
+                    DigestIssue.issue_type == issue_type,
+                    DigestIssue.issue_date == issue_date,
+                    DigestIssue.status.in_([DigestIssueStatus.READY, DigestIssueStatus.SENT]),
+                )
+                .order_by(DigestIssue.id.desc())
+                .options(selectinload(DigestIssue.items))
+            )
+
     async def get_issue(self, issue_id: int) -> DigestIssue | None:
         async with self.session_factory() as session:
             return await session.scalar(

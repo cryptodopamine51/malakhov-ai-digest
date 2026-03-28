@@ -15,5 +15,6 @@ async def build_weekly_issue(session_factory, issue_date: date | None = None) ->
     return result.issue_id
 
 
-async def send_weekly_issue(session_factory, bot: Bot) -> int:
-    return await IssueDeliveryService(session_factory).send_weekly_issue_to_weekly_users(bot)
+async def send_weekly_issue(session_factory, bot: Bot, issue_date: date | None = None) -> int:
+    target_date = issue_date or default_weekly_issue_date(date.today())
+    return await IssueDeliveryService(session_factory).send_weekly_issue_to_weekly_users(bot, issue_date=target_date)

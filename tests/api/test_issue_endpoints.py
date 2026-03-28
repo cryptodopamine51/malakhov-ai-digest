@@ -60,8 +60,8 @@ async def test_manual_issue_build_and_send_endpoints(session_factory):
         issue_detail = await client.get(f"/internal/issues/{issue_id}")
         debug_issue = await client.get(f"/internal/debug/issues/{issue_id}")
         section_detail = await client.get(f"/internal/issues/{issue_id}/section/important")
-        send_daily = await client.post("/internal/jobs/send-daily")
-        send_weekly = await client.post("/internal/jobs/send-weekly")
+        send_daily = await client.post("/internal/jobs/send-daily", params={"date": "2026-03-25"})
+        send_weekly = await client.post("/internal/jobs/send-weekly", params={"date": "2026-03-25"})
         resend = await client.post(f"/internal/issues/{issue_id}/resend", params={"telegram_user_id": 1, "telegram_chat_id": 101})
 
     assert build_daily.status_code == 200

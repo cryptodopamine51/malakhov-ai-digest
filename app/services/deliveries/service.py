@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 import logging
 
 from sqlalchemy import select
@@ -30,8 +31,12 @@ class IssueDeliveryService:
         self.digest_builder = DigestBuilderService(session_factory)
         self.rendering = TelegramRenderingService()
 
-    async def send_daily_issue_to_daily_users(self, bot) -> int:
-        issue = await self.digest_builder.get_latest_issue(DigestIssueType.DAILY)
+    async def send_daily_issue_to_daily_users(self, bot, *, issue_date: date | None = None) -> int:
+        issue = (
+            await self.digest_builder.get_issue_by_type_and_date(DigestIssueType.DAILY, issue_date)
+            if issue_date is not None
+            else await self.digest_builder.get_latest_issue(DigestIssueType.DAILY)
+        )
         if issue is None:
             return 0
         sent_count = await self._broadcast_issue(bot=bot, issue_type=DigestIssueType.DAILY, issue_id=issue.id)
@@ -39,8 +44,12 @@ class IssueDeliveryService:
             await self.digest_builder.mark_issue_sent(issue.id)
         return sent_count
 
-    async def send_weekly_issue_to_weekly_users(self, bot) -> int:
-        issue = await self.digest_builder.get_latest_issue(DigestIssueType.WEEKLY)
+    async def send_weekly_issue_to_weekly_users(self, bot, *, issue_date: date | None = None) -> int:
+        issue = (
+            await self.digest_builder.get_issue_by_type_and_date(DigestIssueType.WEEKLY, issue_date)
+            if issue_date is not None
+            else await self.digest_builder.get_latest_issue(DigestIssueType.WEEKLY)
+        )
         if issue is None:
             return 0
         sent_count = await self._broadcast_issue(bot=bot, issue_type=DigestIssueType.WEEKLY, issue_id=issue.id)

@@ -348,6 +348,19 @@ async def test_duplicate_mass_send_basic_protection(session_factory):
     assert delivery_count == 1
 
 
+async def test_send_daily_by_date_does_not_fall_back_to_latest_issue(session_factory):
+    await seed_daily_event_data(session_factory)
+    builder = DigestBuilderService(session_factory)
+    await builder.build_daily_issue(date(2026, 3, 25))
+    bot = FakeBot()
+    delivery_service = IssueDeliveryService(session_factory)
+
+    sent = await delivery_service.send_daily_issue_to_daily_users(bot, issue_date=date(2026, 3, 26))
+
+    assert sent == 0
+    assert not bot.messages
+
+
 def test_long_message_chunking_and_safe_rendering():
     rendering = TelegramRenderingService()
     long_block = "<b>" + ("very long text " * 500) + "</b>"

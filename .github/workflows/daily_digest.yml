@@ -8,10 +8,11 @@ on:
 jobs:
   daily-pipeline:
     runs-on: ubuntu-latest
+    env:
+      BASE_URL: https://malakhov-ai-digest-api.onrender.com
+      TZ: Europe/Moscow
     steps:
       - name: Wake API
-        env:
-          BASE_URL: https://malakhov-ai-digest-api.onrender.com
         run: |
           for attempt in $(seq 1 12); do
             if curl --fail --silent --show-error "$BASE_URL/health" >/dev/null; then
@@ -23,14 +24,10 @@ jobs:
           exit 1
 
       - name: Run ingestion
-        env:
-          BASE_URL: https://malakhov-ai-digest-api.onrender.com
         run: |
           curl --fail --silent --show-error -X POST "$BASE_URL/internal/jobs/ingest"
 
       - name: Process events until queue drains
-        env:
-          BASE_URL: https://malakhov-ai-digest-api.onrender.com
         run: |
           DRAINED=false
           for attempt in $(seq 1 20); do
@@ -47,8 +44,14 @@ jobs:
           fi
 
       - name: Build and send daily digest
-        env:
-          BASE_URL: https://malakhov-ai-digest-api.onrender.com
         run: |
-          curl --fail --silent --show-error -X POST "$BASE_URL/internal/jobs/build-daily"
-          curl --fail --silent --show-error -X POST "$BASE_URL/internal/jobs/send-daily"
+          TARGET_DATE="$(python3 - <<'PY'
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+today_moscow = datetime.now(ZoneInfo("Europe/Moscow")).date()
+print((today_moscow - timedelta(days=1)).isoformat())
+PY
+          )"
+          echo "Building and sending daily issue for $TARGET_DATE"
+          curl --fail --silent --show-error -X POST "$BASE_URL/internal/jobs/build-daily?date=$TARGET_DATE"
+          curl --fail --silent --show-error -X POST "$BASE_URL/internal/jobs/send-daily?date=$TARGET_DATE"
