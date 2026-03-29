@@ -195,6 +195,102 @@ Render free-plan note:
 - In that mode FastAPI, scheduler jobs, and Telegram polling run in the same process.
 - Set `BOT_POLLING_ENABLED=true` on the web service and do not create a separate worker.
 
+## VPS production foundation
+
+Target layout on the server:
+
+```text
+/opt/malakhov-ai-digest/
+├── app/        # git checkout / synced repository
+├── env/        # .env.production
+├── backups/    # pg_dump backups
+├── caddy/      # Caddyfile + placeholder site
+└── volumes/
+    ├── postgres/
+    ├── caddy-data/
+    └── caddy-config/
+```
+
+Production stack:
+- `db` — PostgreSQL 16 with persistent volume
+- `api` — FastAPI + migrations on startup
+- `bot` — Telegram polling process
+- `scheduler` — separate APScheduler process
+- `caddy` — reverse proxy / HTTPS foundation
+
+Key files:
+- [Dockerfile](/Users/malast/malakhov-ai-digest/Dockerfile)
+- [deploy/compose.production.yml](/Users/malast/malakhov-ai-digest/deploy/compose.production.yml)
+- [deploy/Caddyfile](/Users/malast/malakhov-ai-digest/deploy/Caddyfile)
+- [deploy/.env.production.example](/Users/malast/malakhov-ai-digest/deploy/.env.production.example)
+- [app/jobs/scheduler_runner.py](/Users/malast/malakhov-ai-digest/app/jobs/scheduler_runner.py)
+
+Prepare the env file on the server as:
+
+```bash
+/opt/malakhov-ai-digest/env/.env.production
+```
+
+The production compose commands must use the explicit env file:
+
+```bash
+docker compose --env-file /opt/malakhov-ai-digest/env/.env.production \
+  -f /opt/malakhov-ai-digest/app/deploy/compose.production.yml up -d
+```
+
+Ops helpers installed from `scripts/ops`:
+- `madigest-deploy`
+- `madigest-start`
+- `madigest-stop`
+- `madigest-restart`
+- `madigest-logs`
+- `madigest-status`
+- `madigest-backup`
+
+Examples:
+
+```bash
+madigest-status
+madigest-logs api
+madigest-restart api
+madigest-backup
+```
+
+What `madigest-deploy` does:
+- syncs / updates code in `/opt/malakhov-ai-digest/app`
+- rebuilds images
+- runs `docker compose up -d`
+
+Health checks in production:
+- API container healthcheck calls `/health`
+- DB container healthcheck uses `pg_isready`
+- manual DB/API verification:
+
+```bash
+docker exec malakhov_ai_digest_api curl --silent http://127.0.0.1:8000/health
+docker exec malakhov_ai_digest_api curl --silent http://127.0.0.1:8000/health/db
+```
+
+Backup:
+- script: [scripts/ops/backup_db.sh](/Users/malast/malakhov-ai-digest/scripts/ops/backup_db.sh)
+- output directory:
+
+```text
+/opt/malakhov-ai-digest/backups/
+```
+
+Restore note:
+- use `pg_restore` against the `db` container from a `.dump` file in `/opt/malakhov-ai-digest/backups`
+- stop write traffic first, then restore into the target database
+
+Reverse proxy / domain foundation:
+- `api.malakhov.ai` is wired to the API service through Caddy
+- `news.malakhov.ai` serves a temporary placeholder page until the public web frontend is ready
+
+Important current external blocker:
+- the VPS stack is up, but Caddy cannot issue certificates until DNS for `api.malakhov.ai` and `news.malakhov.ai` resolves to the VPS
+- current Caddy logs show `NXDOMAIN`, so this must be fixed in DNS before public HTTPS will work
+
 ## Russian summaries
 
 The bot is configured to render digest cards in Russian from the event layer.

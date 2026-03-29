@@ -1,0 +1,94 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: malakhov_ai_digest_db
+    restart: unless-stopped
+    env_file:
+      - /opt/malakhov-ai-digest/env/.env.production
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - /opt/malakhov-ai-digest/volumes/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: /opt/malakhov-ai-digest/app
+      dockerfile: Dockerfile
+    container_name: malakhov_ai_digest_api
+    restart: unless-stopped
+    env_file:
+      - /opt/malakhov-ai-digest/env/.env.production
+    environment:
+      BOT_POLLING_ENABLED: "false"
+      INGESTION_SCHEDULER_ENABLED: "false"
+      PROCESS_EVENTS_SCHEDULER_ENABLED: "false"
+    command: ["/bin/bash", "-lc", "bash ./scripts/run_api_prod.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8000/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  bot:
+    build:
+      context: /opt/malakhov-ai-digest/app
+      dockerfile: Dockerfile
+    container_name: malakhov_ai_digest_bot
+    restart: unless-stopped
+    env_file:
+      - /opt/malakhov-ai-digest/env/.env.production
+    environment:
+      BOT_POLLING_ENABLED: "false"
+      INGESTION_SCHEDULER_ENABLED: "false"
+      PROCESS_EVENTS_SCHEDULER_ENABLED: "false"
+    command: ["/bin/bash", "-lc", "bash ./scripts/run_bot.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+  scheduler:
+    build:
+      context: /opt/malakhov-ai-digest/app
+      dockerfile: Dockerfile
+    container_name: malakhov_ai_digest_scheduler
+    restart: unless-stopped
+    env_file:
+      - /opt/malakhov-ai-digest/env/.env.production
+    environment:
+      BOT_POLLING_ENABLED: "false"
+      INGESTION_SCHEDULER_ENABLED: "true"
+      PROCESS_EVENTS_SCHEDULER_ENABLED: "true"
+    command: ["/bin/bash", "-lc", "bash ./scripts/run_scheduler.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2.10-alpine
+    container_name: malakhov_ai_digest_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - /opt/malakhov-ai-digest/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /opt/malakhov-ai-digest/caddy/site:/srv:ro
+      - /opt/malakhov-ai-digest/volumes/caddy-data:/data
+      - /opt/malakhov-ai-digest/volumes/caddy-config:/config

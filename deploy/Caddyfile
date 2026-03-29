@@ -1,0 +1,10 @@
+api.malakhov.ai {
+	encode zstd gzip
+	reverse_proxy api:8000
+}
+
+news.malakhov.ai {
+	encode zstd gzip
+	root * /srv/news-placeholder
+	file_server
+}
