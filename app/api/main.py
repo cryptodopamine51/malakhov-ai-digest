@@ -4,7 +4,8 @@ import asyncio
 from contextlib import asynccontextmanager
 from datetime import date as date_cls, datetime
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import Response
 from sqlalchemy import desc, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -14,6 +15,7 @@ from app.core.config import get_settings
 from app.core.digest_dates import default_daily_issue_date, default_weekly_issue_date
 from app.core.logging import configure_logging
 from app.db.models import (
+    Delivery,
     DigestIssue,
     DigestIssueItem,
     DigestIssueType,
@@ -35,8 +37,11 @@ from app.jobs import (
     build_daily_issue,
     build_weekly_issue,
     create_scheduler,
+    log_registered_jobs,
+    register_digest_jobs,
     register_ingestion_job,
     register_process_events_job,
+    serialize_scheduler_jobs,
     send_daily_issue,
     send_weekly_issue,
 )
@@ -201,6 +206,19 @@ def _serialize_llm_usage(record: LlmUsageLog) -> dict[str, object]:
     }
 
 
+def _serialize_delivery(delivery: Delivery) -> dict[str, object]:
+    return {
+        "id": delivery.id,
+        "user_id": delivery.user_id,
+        "issue_id": delivery.issue_id,
+        "telegram_message_id": delivery.telegram_message_id,
+        "delivery_type": delivery.delivery_type.value,
+        "section": delivery.section,
+        "sent_at": _serialize_datetime(delivery.sent_at),
+        "status": delivery.status.value,
+    }
+
+
 def _serialize_issue(issue: DigestIssue) -> dict[str, object]:
     return {
         "id": issue.id,
@@ -320,9 +338,11 @@ def create_app(
     issue_delivery_service = IssueDeliveryService(db_session_factory)
     bot = telegram_bot
     scheduler_enabled = settings.ingestion_scheduler_enabled if enable_scheduler is None else enable_scheduler
+    app_scheduler = None
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        nonlocal app_scheduler
         scheduler = None
         runtime_bot = bot
         bot_task: asyncio.Task[None] | None = None
@@ -345,16 +365,21 @@ def create_app(
                     runner=process_runner,
                     interval_minutes=settings.process_events_interval_minutes,
                 )
-            scheduler.add_job(build_daily_issue, "cron", hour=settings.daily_digest_hour, args=[db_session_factory], id="build-daily-issue", replace_existing=True)
-            scheduler.add_job(send_daily_issue, "cron", hour=settings.daily_digest_hour, minute=5, args=[db_session_factory, runtime_bot], id="send-daily-issue", replace_existing=True)
-            scheduler.add_job(build_weekly_issue, "cron", day_of_week=settings.weekly_digest_weekday, hour=settings.weekly_digest_hour, args=[db_session_factory], id="build-weekly-issue", replace_existing=True)
-            scheduler.add_job(send_weekly_issue, "cron", day_of_week=settings.weekly_digest_weekday, hour=settings.weekly_digest_hour, minute=5, args=[db_session_factory, runtime_bot], id="send-weekly-issue", replace_existing=True)
+            register_digest_jobs(
+                scheduler=scheduler,
+                session_factory=db_session_factory,
+                bot=runtime_bot,
+                settings=settings,
+            )
+            log_registered_jobs(scheduler=scheduler, service_name="api")
             scheduler.start()
+            app_scheduler = scheduler
         try:
             yield
         finally:
             if scheduler is not None and scheduler.running:
                 scheduler.shutdown(wait=False)
+            app_scheduler = None
             if bot_task is not None:
                 bot_task.cancel()
                 try:
@@ -372,11 +397,14 @@ def create_app(
     app.state.digest_builder = digest_builder
     app.state.alpha_service = alpha_service
     app.state.bot = telegram_bot
+    app.state.scheduler_enabled = scheduler_enabled
 
     register_internal_alpha_routes(app, alpha_service)
 
-    @app.get("/health")
-    async def health() -> dict[str, str]:
+    @app.api_route("/health", methods=["GET", "HEAD"], response_model=None)
+    async def health(request: Request):
+        if request.method == "HEAD":
+            return Response(status_code=200)
         return {
             "status": "ok",
             "service": "malakhov-ai-digest",
@@ -628,6 +656,61 @@ def create_app(
         async with db_session_factory() as session:
             runs = list((await session.scalars(stmt)).all())
         return {"items": [_serialize_process_run(run) for run in runs]}
+
+    @app.get("/internal/debug/scheduler")
+    async def get_scheduler_debug() -> dict[str, object]:
+        return {
+            "scheduler_enabled_in_api": app.state.scheduler_enabled,
+            "scheduler_running_in_api": bool(app_scheduler.running) if app_scheduler is not None else False,
+            "configured_timezone": settings.default_timezone,
+            "configured_jobs": {
+                "ingestion_interval_minutes": settings.ingestion_interval_minutes,
+                "process_events_interval_minutes": settings.process_events_interval_minutes,
+                "daily_build": {
+                    "hour": settings.daily_digest_hour,
+                    "minute": settings.daily_digest_minute,
+                },
+                "daily_send": {
+                    "hour": settings.daily_digest_hour,
+                    "minute": (settings.daily_digest_minute + settings.digest_send_delay_minutes) % 60,
+                },
+                "weekly_build": {
+                    "weekday": settings.weekly_digest_weekday,
+                    "hour": settings.weekly_digest_hour,
+                    "minute": settings.weekly_digest_minute,
+                },
+                "weekly_send": {
+                    "weekday": settings.weekly_digest_weekday,
+                    "hour": settings.weekly_digest_hour,
+                    "minute": (settings.weekly_digest_minute + settings.digest_send_delay_minutes) % 60,
+                },
+                "misfire_grace_seconds": settings.scheduler_misfire_grace_seconds,
+            },
+            "active_jobs": [] if app_scheduler is None else serialize_scheduler_jobs(app_scheduler.get_jobs()),
+            "note": "On VPS production the dedicated scheduler container is the source of truth; API-local scheduler is normally disabled.",
+        }
+
+    @app.get("/internal/debug/deliveries")
+    async def list_delivery_debug(limit: int = 50) -> dict[str, object]:
+        safe_limit = max(1, min(limit, 200))
+        async with db_session_factory() as session:
+            deliveries = list(
+                (
+                    await session.scalars(
+                        select(Delivery).order_by(desc(Delivery.sent_at), desc(Delivery.id)).limit(safe_limit)
+                    )
+                ).all()
+            )
+        aggregate_by_type: dict[str, int] = {}
+        aggregate_by_status: dict[str, int] = {}
+        for delivery in deliveries:
+            aggregate_by_type[delivery.delivery_type.value] = aggregate_by_type.get(delivery.delivery_type.value, 0) + 1
+            aggregate_by_status[delivery.status.value] = aggregate_by_status.get(delivery.status.value, 0) + 1
+        return {
+            "items": [_serialize_delivery(delivery) for delivery in deliveries],
+            "aggregate_by_type": aggregate_by_type,
+            "aggregate_by_status": aggregate_by_status,
+        }
 
     @app.get("/internal/issues")
     async def list_issues(

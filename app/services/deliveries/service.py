@@ -188,6 +188,19 @@ class IssueDeliveryService:
         sent_count = 0
         for user in users:
             if await self._has_existing_delivery(user_id=user.id, issue_id=issue_id, issue_type=issue_type):
+                log_structured(
+                    logger,
+                    "issue_delivery_skip",
+                    issue_id=issue_id,
+                    user_id=user.id,
+                    telegram_user_id=user.telegram_user_id,
+                    delivery_type=(
+                        DeliveryType.DAILY_MAIN.value
+                        if issue_type is DigestIssueType.DAILY
+                        else DeliveryType.WEEKLY_MAIN.value
+                    ),
+                    reason="duplicate_delivery",
+                )
                 continue
             message_id = await self.send_issue_to_user(
                 bot=bot,

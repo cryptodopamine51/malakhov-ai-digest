@@ -19,6 +19,16 @@ async def test_health_endpoint(session_factory):
 
 
 @pytest.mark.asyncio
+async def test_health_head_endpoint(session_factory):
+    app = create_app(session_factory=session_factory, enable_scheduler=False)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.head("/health")
+
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_health_db_endpoint(session_factory):
     app = create_app(session_factory=session_factory, enable_scheduler=False)
 

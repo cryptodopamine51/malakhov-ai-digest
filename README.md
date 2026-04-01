@@ -440,6 +440,7 @@ Run process-events manually:
 ```bash
 curl -X POST http://localhost:8000/internal/jobs/process-events
 curl http://localhost:8000/internal/debug/process-runs
+curl http://localhost:8000/internal/debug/scheduler
 ```
 
 Build daily issue manually:
@@ -499,6 +500,7 @@ Issue detail:
 ```bash
 curl http://localhost:8000/internal/issues/1
 curl http://localhost:8000/internal/debug/issues/1
+curl http://localhost:8000/internal/debug/deliveries
 curl http://localhost:8000/internal/issues/1/section/important
 curl http://localhost:8000/internal/issues/1/section/ai_news
 curl http://localhost:8000/internal/issues/1/section/coding
@@ -558,7 +560,10 @@ curl -X POST http://localhost:8000/internal/alpha/1/publish
 - interval is controlled by `INGESTION_INTERVAL_MINUTES`
 - process-events interval is controlled by `PROCESS_EVENTS_INTERVAL_MINUTES`
 - daily issue build/send hour is controlled by `DAILY_DIGEST_HOUR`
-- weekly issue build/send schedule is controlled by `WEEKLY_DIGEST_WEEKDAY` and `WEEKLY_DIGEST_HOUR`
+- daily issue build minute is controlled by `DAILY_DIGEST_MINUTE`
+- weekly issue build/send schedule is controlled by `WEEKLY_DIGEST_WEEKDAY`, `WEEKLY_DIGEST_HOUR`, and `WEEKLY_DIGEST_MINUTE`
+- send delay after build is controlled by `DIGEST_SEND_DELAY_MINUTES`
+- APScheduler misfire recovery window is controlled by `SCHEDULER_MISFIRE_GRACE_SECONDS`
 - scheduler can be disabled with `INGESTION_SCHEDULER_ENABLED=false`
 - production-safe external scheduling is available through:
   - `.github/workflows/daily_digest.yml`
@@ -632,12 +637,44 @@ What to inspect:
   - `/internal/debug/source-runs`
 - how many raw items became events and how many hit shortlist:
   - `/internal/debug/process-runs`
+- what the current schedule is and whether API-local jobs are enabled:
+  - `/internal/debug/scheduler`
 - why a specific event was selected or suppressed:
   - `/internal/debug/events/{event_id}`
 - why a daily issue is short, weak-day, or duplicate-suppressed:
   - `/internal/debug/issues/{issue_id}`
+- which deliveries were logged and whether duplicate sends were skipped:
+  - `/internal/debug/deliveries`
 - where tokens are spent:
   - `/internal/debug/llm-usage`
+
+Manual validation flow:
+- build daily:
+  - `curl -X POST "http://localhost:8000/internal/jobs/build-daily?date=2026-03-25"`
+- inspect issue and suppression:
+  - `curl http://localhost:8000/internal/issues/1`
+  - `curl http://localhost:8000/internal/debug/issues/1`
+- inspect a selected event:
+  - `curl http://localhost:8000/internal/debug/events/1`
+- send daily:
+  - `curl -X POST "http://localhost:8000/internal/jobs/send-daily?date=2026-03-25"`
+- inspect delivery log:
+  - `curl http://localhost:8000/internal/debug/deliveries`
+- inspect scheduler timing:
+  - `curl http://localhost:8000/internal/debug/scheduler`
+
+Production VPS diagnostics:
+- container status:
+  - `bash /opt/malakhov-ai-digest/app/scripts/ops/status_prod.sh`
+- API logs:
+  - `bash /opt/malakhov-ai-digest/app/scripts/ops/logs_prod.sh api`
+- bot logs:
+  - `bash /opt/malakhov-ai-digest/app/scripts/ops/logs_prod.sh bot`
+- scheduler logs:
+  - `bash /opt/malakhov-ai-digest/app/scripts/ops/logs_prod.sh scheduler`
+- Caddy logs:
+  - `bash /opt/malakhov-ai-digest/app/scripts/ops/logs_prod.sh caddy`
+- if bot logs show `TelegramConflictError`, another polling process is still running elsewhere and must be stopped
 
 ## Tests
 

@@ -8,13 +8,11 @@ from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.db.session import AsyncSessionLocal
 from app.jobs import (
-    build_daily_issue,
-    build_weekly_issue,
     create_scheduler,
+    log_registered_jobs,
+    register_digest_jobs,
     register_ingestion_job,
     register_process_events_job,
-    send_daily_issue,
-    send_weekly_issue,
 )
 from app.services.events import ProcessEventsJobRunner, ProcessEventsService
 from app.services.ingestion import IngestionJobRunner, IngestionService
@@ -51,42 +49,13 @@ async def main() -> None:
             runner=process_runner,
             interval_minutes=settings.process_events_interval_minutes,
         )
-    scheduler.add_job(
-        build_daily_issue,
-        "cron",
-        hour=settings.daily_digest_hour,
-        args=[AsyncSessionLocal],
-        id="build-daily-issue",
-        replace_existing=True,
+    register_digest_jobs(
+        scheduler=scheduler,
+        session_factory=AsyncSessionLocal,
+        bot=bot,
+        settings=settings,
     )
-    scheduler.add_job(
-        send_daily_issue,
-        "cron",
-        hour=settings.daily_digest_hour,
-        minute=5,
-        args=[AsyncSessionLocal, bot],
-        id="send-daily-issue",
-        replace_existing=True,
-    )
-    scheduler.add_job(
-        build_weekly_issue,
-        "cron",
-        day_of_week=settings.weekly_digest_weekday,
-        hour=settings.weekly_digest_hour,
-        args=[AsyncSessionLocal],
-        id="build-weekly-issue",
-        replace_existing=True,
-    )
-    scheduler.add_job(
-        send_weekly_issue,
-        "cron",
-        day_of_week=settings.weekly_digest_weekday,
-        hour=settings.weekly_digest_hour,
-        minute=5,
-        args=[AsyncSessionLocal, bot],
-        id="send-weekly-issue",
-        replace_existing=True,
-    )
+    log_registered_jobs(scheduler=scheduler, service_name="scheduler")
     logger.info("Starting scheduler service")
     scheduler.start()
     try:

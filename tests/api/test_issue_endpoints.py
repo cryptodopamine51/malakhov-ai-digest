@@ -59,9 +59,12 @@ async def test_manual_issue_build_and_send_endpoints(session_factory):
         issue_id = build_daily.json()["issue_id"]
         issue_detail = await client.get(f"/internal/issues/{issue_id}")
         debug_issue = await client.get(f"/internal/debug/issues/{issue_id}")
+        debug_scheduler = await client.get("/internal/debug/scheduler")
+        debug_deliveries_before = await client.get("/internal/debug/deliveries")
         section_detail = await client.get(f"/internal/issues/{issue_id}/section/important")
         send_daily = await client.post("/internal/jobs/send-daily", params={"date": "2026-03-25"})
         send_weekly = await client.post("/internal/jobs/send-weekly", params={"date": "2026-03-25"})
+        debug_deliveries_after = await client.get("/internal/debug/deliveries")
         resend = await client.post(f"/internal/issues/{issue_id}/resend", params={"telegram_user_id": 1, "telegram_chat_id": 101})
 
     assert build_daily.status_code == 200
@@ -75,11 +78,16 @@ async def test_manual_issue_build_and_send_endpoints(session_factory):
     assert "section_counts" in debug_issue.json()
     assert "selected_event_ids_by_section" in debug_issue.json()
     assert debug_issue.json()["selected_event_ids_by_section"]["important"]
+    assert debug_scheduler.status_code == 200
+    assert "configured_jobs" in debug_scheduler.json()
+    assert debug_deliveries_before.status_code == 200
     assert section_detail.status_code == 200
     assert "suppressed_from_main" in section_detail.json()
     assert send_daily.status_code == 200
     assert send_daily.json()["sent_count"] == 1
     assert send_weekly.status_code == 200
     assert send_weekly.json()["sent_count"] == 1
+    assert debug_deliveries_after.status_code == 200
+    assert debug_deliveries_after.json()["aggregate_by_type"]["daily_main"] >= 1
     assert resend.status_code == 200
     assert len(bot.messages) == 3

@@ -30,8 +30,12 @@ class Settings(BaseSettings):
     event_llm_shortlist_threshold: float = Field(default=58.0, alias="EVENT_LLM_SHORTLIST_THRESHOLD")
     event_llm_shortlist_secondary_threshold: float = Field(default=48.0, alias="EVENT_LLM_SHORTLIST_SECONDARY_THRESHOLD")
     daily_digest_hour: int = Field(default=9, alias="DAILY_DIGEST_HOUR")
+    daily_digest_minute: int = Field(default=0, alias="DAILY_DIGEST_MINUTE")
     weekly_digest_weekday: str = Field(default="mon", alias="WEEKLY_DIGEST_WEEKDAY")
     weekly_digest_hour: int = Field(default=9, alias="WEEKLY_DIGEST_HOUR")
+    weekly_digest_minute: int = Field(default=15, alias="WEEKLY_DIGEST_MINUTE")
+    digest_send_delay_minutes: int = Field(default=5, alias="DIGEST_SEND_DELAY_MINUTES")
+    scheduler_misfire_grace_seconds: int = Field(default=900, alias="SCHEDULER_MISFIRE_GRACE_SECONDS")
 
 
 @lru_cache(maxsize=1)
