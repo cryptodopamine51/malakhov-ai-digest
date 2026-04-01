@@ -371,8 +371,8 @@ def create_app(
                 bot=runtime_bot,
                 settings=settings,
             )
-            log_registered_jobs(scheduler=scheduler, service_name="api")
             scheduler.start()
+            log_registered_jobs(scheduler=scheduler, service_name="api")
             app_scheduler = scheduler
         try:
             yield

@@ -55,9 +55,9 @@ async def main() -> None:
         bot=bot,
         settings=settings,
     )
-    log_registered_jobs(scheduler=scheduler, service_name="scheduler")
     logger.info("Starting scheduler service")
     scheduler.start()
+    log_registered_jobs(scheduler=scheduler, service_name="scheduler")
     try:
         await asyncio.Event().wait()
     finally:
