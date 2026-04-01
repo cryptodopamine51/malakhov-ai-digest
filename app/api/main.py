@@ -539,7 +539,7 @@ def create_app(
                 selectinload(Event.categories),
                 selectinload(Event.tags),
                 selectinload(Event.primary_source),
-                selectinload(Event.related_previous_event),
+                selectinload(Event.related_previous_event).selectinload(Event.categories),
                 selectinload(Event.event_sources).selectinload(EventSource.source),
                 selectinload(Event.event_sources).selectinload(EventSource.raw_item),
             )
