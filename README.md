@@ -284,11 +284,11 @@ Restore note:
 - stop write traffic first, then restore into the target database
 
 Reverse proxy / domain foundation:
-- `api.malakhov.ai` is wired to the API service through Caddy
-- `news.malakhov.ai` serves a temporary placeholder page until the public web frontend is ready
+- `api.malakhovai.ru` is wired to the API service through Caddy
+- `news.malakhovai.ru` serves a temporary placeholder page until the public web frontend is ready
 
 Important current external blocker:
-- the VPS stack is up, but Caddy cannot issue certificates until DNS for `api.malakhov.ai` and `news.malakhov.ai` resolves to the VPS
+- the VPS stack is up, but Caddy can issue certificates only after DNS for `api.malakhovai.ru` and `news.malakhovai.ru` resolves to the VPS
 - current Caddy logs show `NXDOMAIN`, so this must be fixed in DNS before public HTTPS will work
 
 ## Russian summaries
