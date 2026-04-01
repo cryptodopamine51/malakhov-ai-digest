@@ -676,6 +676,27 @@ Production VPS diagnostics:
   - `bash /opt/malakhov-ai-digest/app/scripts/ops/logs_prod.sh caddy`
 - if bot logs show `TelegramConflictError`, another polling process is still running elsewhere and must be stopped
 
+Telegram polling validation:
+- source of truth for polling on VPS is only:
+  - container `malakhov_ai_digest_bot`
+  - process `python -m app.bot.runner`
+- validate locally on VPS:
+  - `docker exec malakhov_ai_digest_bot ps -ef`
+  - `docker logs --tail 100 malakhov_ai_digest_bot`
+- expected structured bot lifecycle logs:
+  - `bot_runner_startup`
+  - `bot_startup`
+  - `bot_webhook_cleared`
+  - `bot_polling_prepare`
+  - `bot_polling_started`
+  - `bot_polling_recovered`
+  - `bot_polling_conflict` if another poller exists elsewhere
+- if `bot_polling_conflict` appears but VPS has only one bot container/process, the second poller is outside this server
+- manual UX check:
+  - send `/start`
+  - press one section callback
+  - ensure no new conflict burst appears in `docker logs malakhov_ai_digest_bot`
+
 ## Tests
 
 Run:
