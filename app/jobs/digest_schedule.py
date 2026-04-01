@@ -87,10 +87,14 @@ def serialize_scheduler_jobs(jobs: Sequence) -> list[dict[str, object]]:
             "id": job.id,
             "name": job.name,
             "trigger": str(job.trigger),
-            "next_run_time": job.next_run_time.isoformat() if job.next_run_time is not None else None,
-            "max_instances": job.max_instances,
-            "coalesce": job.coalesce,
-            "misfire_grace_time": job.misfire_grace_time,
+            "next_run_time": (
+                getattr(job, "next_run_time", None).isoformat()
+                if getattr(job, "next_run_time", None) is not None
+                else None
+            ),
+            "max_instances": getattr(job, "max_instances", None),
+            "coalesce": getattr(job, "coalesce", None),
+            "misfire_grace_time": getattr(job, "misfire_grace_time", None),
         }
         for job in jobs
     ]
