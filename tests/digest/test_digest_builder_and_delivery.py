@@ -20,6 +20,7 @@ from app.db.models import (
     Event,
     EventCategory,
     EventSection,
+    SourceRegion,
     Source,
     SourceType,
     SubscriptionMode,
@@ -27,6 +28,7 @@ from app.db.models import (
 )
 from app.services.deliveries import IssueDeliveryService
 from app.services.digest import DigestBuilderService
+from app.services.digest.telegram_policy import TelegramPackageSection
 from app.services.rendering import TelegramRenderingService
 
 
@@ -97,6 +99,18 @@ async def seed_daily_event_data(session_factory):
             section_bias="coding|ai_news",
         )
         session.add_all([source, coding_source])
+        russia_source = Source(
+            title="Yandex Cloud Blog",
+            handle_or_url="https://cloud.yandex.ru/blog",
+            source_type=SourceType.OFFICIAL_BLOG,
+            priority_weight=88,
+            is_active=True,
+            language="ru",
+            country_scope="russia",
+            region=SourceRegion.RUSSIA,
+            section_bias="ai_news",
+        )
+        session.add(russia_source)
         await session.flush()
 
         event_one = Event(
@@ -112,6 +126,9 @@ async def seed_daily_event_data(session_factory):
             coding_score=60,
             investment_score=10,
             confidence_score=90,
+            ranking_score=92,
+            verification_source_count=1,
+            has_verification_source=True,
             is_highlight=True,
         )
         event_two = Event(
@@ -127,6 +144,7 @@ async def seed_daily_event_data(session_factory):
             coding_score=96,
             investment_score=5,
             confidence_score=80,
+            ranking_score=84,
             is_highlight=False,
         )
         event_three = Event(
@@ -142,9 +160,84 @@ async def seed_daily_event_data(session_factory):
             coding_score=5,
             investment_score=94,
             confidence_score=78,
+            ranking_score=79,
             is_highlight=False,
         )
-        session.add_all([event_one, event_two, event_three])
+        event_four = Event(
+            event_date=date(2026, 3, 25),
+            title="Яндекс Cloud представил новый стек для AI-сервисов",
+            short_summary="Яндекс Cloud обновил AI-стек для сервисов и корпоративных сценариев.",
+            long_summary="Яндекс Cloud обновил AI-стек и расширил инфраструктурные сценарии для российских команд.",
+            primary_source_id=russia_source.id,
+            primary_source_url="https://cloud.yandex.ru/blog/ai-stack",
+            importance_score=58,
+            market_impact_score=42,
+            ai_news_score=68,
+            coding_score=18,
+            investment_score=0,
+            confidence_score=70,
+            ranking_score=67,
+            score_components_json={
+                "russia_relevance_score": 0.68,
+                "russia_reason_codes": ["russia_source_region", "russia_major_company_signal", "russia_market_infra_signal"],
+                "russia_source_region_count": 1,
+                "russia_source_role_count": 0,
+                "russia_policy_signal": False,
+                "russia_state_signal": False,
+                "russia_major_company_signal": True,
+                "russia_market_infra_signal": True,
+                "russia_adoption_signal": False,
+                "russia_restriction_signal": False,
+                "russia_weak_pr_penalty": False,
+            },
+            is_highlight=False,
+        )
+        event_five = Event(
+            event_date=date(2026, 3, 25),
+            title="AI-стартап обновил продуктовую линейку",
+            short_summary="Стартап обновил продуктовую линейку и показал новый roadmap.",
+            long_summary="Компания обновила продуктовую линейку и дала сигнал по будущему roadmap.",
+            primary_source_id=coding_source.id,
+            primary_source_url="https://example.com/product-roadmap",
+            importance_score=48,
+            market_impact_score=32,
+            ai_news_score=50,
+            coding_score=12,
+            investment_score=0,
+            confidence_score=52,
+            ranking_score=46,
+            is_highlight=False,
+        )
+        event_six = Event(
+            event_date=date(2026, 3, 25),
+            title="VK рассказал на форуме про AI-направление",
+            short_summary="VK рассказал на форуме про развитие AI-направления.",
+            long_summary="Компания рассказала на форуме про развитие AI-направления и планы на год.",
+            primary_source_id=russia_source.id,
+            primary_source_url="https://cloud.yandex.ru/blog/forum-ai",
+            importance_score=42,
+            market_impact_score=28,
+            ai_news_score=54,
+            coding_score=8,
+            investment_score=0,
+            confidence_score=50,
+            ranking_score=50,
+            score_components_json={
+                "russia_relevance_score": 0.32,
+                "russia_reason_codes": ["russia_source_region", "russia_major_company_signal", "russia_weak_pr_penalty"],
+                "russia_source_region_count": 1,
+                "russia_source_role_count": 0,
+                "russia_policy_signal": False,
+                "russia_state_signal": False,
+                "russia_major_company_signal": True,
+                "russia_market_infra_signal": False,
+                "russia_adoption_signal": False,
+                "russia_restriction_signal": False,
+                "russia_weak_pr_penalty": True,
+            },
+            is_highlight=False,
+        )
+        session.add_all([event_one, event_two, event_three, event_four, event_five, event_six])
         await session.flush()
         session.add_all(
             [
@@ -153,6 +246,9 @@ async def seed_daily_event_data(session_factory):
                 EventCategory(event_id=event_two.id, section=EventSection.CODING, score=0.96, is_primary_section=True),
                 EventCategory(event_id=event_two.id, section=EventSection.AI_NEWS, score=0.55, is_primary_section=False),
                 EventCategory(event_id=event_three.id, section=EventSection.INVESTMENTS, score=0.94, is_primary_section=True),
+                EventCategory(event_id=event_four.id, section=EventSection.AI_NEWS, score=0.7, is_primary_section=True),
+                EventCategory(event_id=event_five.id, section=EventSection.AI_NEWS, score=0.55, is_primary_section=True),
+                EventCategory(event_id=event_six.id, section=EventSection.AI_NEWS, score=0.58, is_primary_section=True),
             ]
         )
         session.add_all(
@@ -221,10 +317,10 @@ async def test_renderers_and_empty_alpha(session_factory):
     rendered_alpha = "\n".join(alpha_text)
     rendered_weekly = "\n".join(weekly_text)
 
-    assert "Важное" in rendered_daily
-    assert "Новости ИИ" not in rendered_daily
-    assert "Кодинг" in rendered_daily
-    assert "Инвестиции" in rendered_daily
+    assert "Models / Services" in rendered_daily
+    assert "Tools / Coding" in rendered_daily
+    assert "Investments / Market" in rendered_daily
+    assert "AI in Russia" in rendered_daily
     assert "Альфа" not in rendered_daily
     visible_daily = re.sub(r'href="https?://[^"]+"', 'href=""', rendered_daily)
     visible_all = re.sub(r'href="https?://[^"]+"', 'href=""', rendered_all)
@@ -237,8 +333,10 @@ async def test_renderers_and_empty_alpha(session_factory):
     assert "Итоги недели" in rendered_weekly
     assert rendered_daily.count("OpenAI launches GPT-5") == 1
     assert "Это помогает понять, куда сейчас двигается AI-рынок" not in rendered_daily
-    assert preview.suppressed
-    assert preview.suppressed[0].reason == "duplicate_in_daily_main"
+    assert "это может" not in rendered_daily.lower()
+    assert "это позволяет" not in rendered_daily.lower()
+    assert preview.excluded
+    assert any(item.reason == "below_telegram_threshold" for item in preview.excluded)
 
 
 async def test_daily_main_preview_suppresses_cross_section_duplicates(session_factory):
@@ -249,11 +347,45 @@ async def test_daily_main_preview_suppresses_cross_section_duplicates(session_fa
     preview = await service.get_daily_main_preview(result.issue_id)
 
     assert preview is not None
-    assert len(preview.visible_by_section[DigestSection.IMPORTANT]) == 1
-    assert len(preview.visible_by_section[DigestSection.CODING]) == 1
-    assert len(preview.visible_by_section[DigestSection.INVESTMENTS]) == 1
-    assert not preview.visible_by_section[DigestSection.AI_NEWS]
-    assert any(item.source_section == DigestSection.AI_NEWS for item in preview.suppressed)
+    assert len(preview.visible_by_section[TelegramPackageSection.MODELS_SERVICES]) == 1
+    assert len(preview.visible_by_section[TelegramPackageSection.TOOLS_CODING]) == 1
+    assert len(preview.visible_by_section[TelegramPackageSection.INVESTMENTS_MARKET]) == 1
+    assert len(preview.visible_by_section[TelegramPackageSection.AI_RUSSIA]) == 1
+    assert any(item.reason == "below_telegram_threshold" for item in preview.excluded)
+
+
+async def test_telegram_preview_is_more_selective_than_broader_issue_items(session_factory):
+    await seed_daily_event_data(session_factory)
+    service = DigestBuilderService(session_factory)
+    result = await service.build_daily_issue(date(2026, 3, 25))
+
+    issue = await service.get_issue(result.issue_id)
+    preview = await service.get_daily_main_preview(result.issue_id)
+
+    assert issue is not None
+    assert preview is not None
+    all_event_count = sum(1 for item in issue.items if item.section is DigestSection.ALL and item.event_id is not None)
+    preview_count = sum(1 for items in preview.visible_by_section.values() for item in items if item.event_id is not None)
+    assert all_event_count > preview_count
+    assert any(item.reason == "below_telegram_threshold" for item in preview.excluded)
+
+
+async def test_ai_in_russia_section_uses_quality_filter_not_raw_region_only(session_factory):
+    await seed_daily_event_data(session_factory)
+    service = DigestBuilderService(session_factory)
+    result = await service.build_daily_issue(date(2026, 3, 25))
+
+    issue = await service.get_issue(result.issue_id)
+    preview = await service.get_daily_main_preview(result.issue_id)
+
+    assert issue is not None
+    assert preview is not None
+    all_titles = [item.card_title for item in issue.items if item.section is DigestSection.ALL and item.event_id is not None]
+    russia_titles = [item.card_title for item in preview.visible_by_section[TelegramPackageSection.AI_RUSSIA]]
+
+    assert "VK рассказал на форуме про AI-направление" in all_titles
+    assert "VK рассказал на форуме про AI-направление" not in russia_titles
+    assert "Яндекс Cloud представил новый стек для AI-сервисов" in russia_titles
 
 
 async def test_historical_english_event_gets_russian_editorial_lead(session_factory):

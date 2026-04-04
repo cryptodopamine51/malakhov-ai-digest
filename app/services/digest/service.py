@@ -22,17 +22,26 @@ from app.db.models import (
     EventTagType,
 )
 from app.services.alpha import AlphaService
-from app.services.digest.schemas import BuildIssueRequest, DailyMainPreview, DailyMainSuppression, IssueBuildResult, IssueSelectionDebug
+from app.services.digest.schemas import (
+    BuildIssueRequest,
+    DailyMainPreview,
+    DailyMainSuppression,
+    IssueBuildResult,
+    IssueSelectionDebug,
+    TelegramSelectionDecision,
+)
+from app.services.digest.telegram_policy import TelegramPackageSection, get_telegram_packaging_policy
+from app.services.russia import qualifies_for_ai_russia_event
 from app.services.digest.texts import EMPTY_ALPHA_TEXT, EMPTY_GENERIC_TEXT, EMPTY_INVESTMENTS_TEXT, EMPTY_WEEKLY_TEXT
 from app.services.sources.reputation import score_event_source_quality
 import logging
 
 DAILY_MAIN_SECTION_ORDER = (
-    DigestSection.IMPORTANT,
-    DigestSection.AI_NEWS,
-    DigestSection.CODING,
-    DigestSection.INVESTMENTS,
-    DigestSection.ALPHA,
+    TelegramPackageSection.MODELS_SERVICES,
+    TelegramPackageSection.TOOLS_CODING,
+    TelegramPackageSection.INVESTMENTS_MARKET,
+    TelegramPackageSection.AI_RUSSIA,
+    TelegramPackageSection.ALPHA,
 )
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 logger = logging.getLogger(__name__)
@@ -42,6 +51,7 @@ class DigestBuilderService:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self.session_factory = session_factory
         self.alpha_service = AlphaService(session_factory)
+        self.telegram_policy = get_telegram_packaging_policy()
 
     async def build_daily_issue(self, issue_date: date) -> IssueBuildResult:
         request = BuildIssueRequest(
@@ -112,7 +122,7 @@ class DigestBuilderService:
             issue.status = DigestIssueStatus.READY
             await session.commit()
 
-            preview = self._daily_main_preview_from_items(items) if request.issue_type is DigestIssueType.DAILY else None
+            preview = self._daily_main_preview_from_items(items, events=events) if request.issue_type is DigestIssueType.DAILY else None
             selection_debug = self._issue_selection_debug(items, preview)
             log_structured(
                 logger,
@@ -216,44 +226,119 @@ class DigestBuilderService:
             )
 
     async def get_daily_main_preview(self, issue_id: int) -> DailyMainPreview | None:
-        issue = await self.get_issue(issue_id)
+        async with self.session_factory() as session:
+            issue = await session.scalar(
+                select(DigestIssue)
+                .where(DigestIssue.id == issue_id)
+                .options(
+                    selectinload(DigestIssue.items)
+                    .selectinload(DigestIssueItem.event)
+                    .selectinload(Event.categories),
+                    selectinload(DigestIssue.items)
+                    .selectinload(DigestIssueItem.event)
+                    .selectinload(Event.tags),
+                    selectinload(DigestIssue.items)
+                    .selectinload(DigestIssueItem.event)
+                    .selectinload(Event.primary_source),
+                )
+            )
         if issue is None or issue.issue_type is not DigestIssueType.DAILY:
             return None
-        return self._daily_main_preview_from_items(issue.items)
-
-    def _daily_main_preview_from_items(self, items: list[DigestIssueItem]) -> DailyMainPreview:
-        items_by_section = {
-            section: sorted(
-                [item for item in items if item.section == section],
-                key=lambda item: (item.rank_order, item.id),
-            )
-            for section in DAILY_MAIN_SECTION_ORDER
+        event_map = {
+            item.event_id: item.event
+            for item in issue.items
+            if item.event_id is not None and item.event is not None
         }
+        return self._daily_main_preview_from_items(issue.items, events=list(event_map.values()))
 
-        visible: dict[DigestSection, list[DigestIssueItem]] = {section: [] for section in DAILY_MAIN_SECTION_ORDER}
+    def _daily_main_preview_from_items(self, items: list[DigestIssueItem], *, events: list[Event]) -> DailyMainPreview:
+        visible: dict[TelegramPackageSection, list[DigestIssueItem]] = {section: [] for section in DAILY_MAIN_SECTION_ORDER}
         suppressed: list[DailyMainSuppression] = []
-        shown_events: dict[int, DigestSection] = {}
+        excluded: list[TelegramSelectionDecision] = []
+        shown_events: dict[int, TelegramPackageSection] = {}
+        section_counts = {section: 0 for section in DAILY_MAIN_SECTION_ORDER}
+        candidates = self._telegram_candidates_from_items(items, events)
+        is_weak_day = len([candidate for candidate in candidates if candidate["rank"] >= self.telegram_policy.min_ranking_score]) <= 1
+        total_cap = self.telegram_policy.weak_day_total_cap if is_weak_day else self.telegram_policy.total_cap
 
-        for section in DAILY_MAIN_SECTION_ORDER:
-            for item in items_by_section[section]:
-                if item.event_id is None:
-                    visible[section].append(item)
-                    continue
-                if item.event_id in shown_events:
-                    suppressed.append(
-                        DailyMainSuppression(
-                            item_id=item.id,
-                            event_id=item.event_id,
-                            source_section=section,
-                            shown_in_section=shown_events[item.event_id],
-                            reason="duplicate_in_daily_main",
-                        )
+        total_selected = 0
+        for candidate in candidates:
+            item = candidate["item"]
+            event = candidate["event"]
+            section = candidate["section"]
+            rank = candidate["rank"]
+            threshold = self.telegram_policy.fallback_min_score if is_weak_day else self.telegram_policy.min_ranking_score
+
+            if rank < threshold:
+                excluded.append(
+                    TelegramSelectionDecision(
+                        event_id=event.id,
+                        candidate_section=section,
+                        included_section=None,
+                        ranking_score=rank,
+                        reason="below_telegram_threshold",
                     )
-                    continue
-                shown_events[item.event_id] = section
-                visible[section].append(item)
+                )
+                continue
+            if total_selected >= total_cap:
+                excluded.append(
+                    TelegramSelectionDecision(
+                        event_id=event.id,
+                        candidate_section=section,
+                        included_section=None,
+                        ranking_score=rank,
+                        reason="telegram_total_cap_reached",
+                    )
+                )
+                continue
+            if section_counts[section] >= self.telegram_policy.section_caps[section]:
+                excluded.append(
+                    TelegramSelectionDecision(
+                        event_id=event.id,
+                        candidate_section=section,
+                        included_section=None,
+                        ranking_score=rank,
+                        reason="telegram_section_cap_reached",
+                    )
+                )
+                continue
+            if event.id in shown_events:
+                shown_in_section = shown_events[event.id]
+                suppressed.append(
+                    DailyMainSuppression(
+                        item_id=item.id,
+                        event_id=item.event_id,
+                        source_section=self._suppression_section_for(section),
+                        shown_in_section=self._suppression_section_for(shown_in_section),
+                        reason="duplicate_in_daily_main",
+                    )
+                )
+                continue
 
-        return DailyMainPreview(visible_by_section=visible, suppressed=suppressed)
+            shown_events[event.id] = section
+            visible[section].append(item)
+            section_counts[section] += 1
+            total_selected += 1
+
+        alpha_items = sorted(
+            [item for item in items if item.section is DigestSection.ALPHA],
+            key=lambda item: (item.rank_order, item.id),
+        )
+        if alpha_items and not self._is_empty_section(alpha_items):
+            visible[TelegramPackageSection.ALPHA] = alpha_items[:1]
+
+        return DailyMainPreview(
+            visible_by_section=visible,
+            suppressed=suppressed,
+            excluded=excluded,
+            policy_snapshot={
+                "min_ranking_score": self.telegram_policy.min_ranking_score,
+                "fallback_min_score": self.telegram_policy.fallback_min_score,
+                "total_cap": total_cap,
+                "section_caps": {section.value: cap for section, cap in self.telegram_policy.section_caps.items()},
+                "weak_day_mode": is_weak_day,
+            },
+        )
 
     def _issue_selection_debug(self, items: list[DigestIssueItem], preview: DailyMainPreview | None) -> IssueSelectionDebug:
         if preview is None:
@@ -265,7 +350,7 @@ class DigestBuilderService:
             return IssueSelectionDebug(selected_event_ids_by_section=selected, suppressed_by_section=suppressed)
 
         selected = {
-            section: [item.event_id for item in visible_items if item.event_id is not None]
+            self._suppression_section_for(section): [item.event_id for item in visible_items if item.event_id is not None]
             for section, visible_items in preview.visible_by_section.items()
         }
         selected[DigestSection.ALL] = [item.event_id for item in items if item.section is DigestSection.ALL and item.event_id is not None]
@@ -319,7 +404,11 @@ class DigestBuilderService:
         return items
 
     def _build_weekly_items(self, events: list[Event], alpha_entries: list[AlphaEntry]) -> list[DigestIssueItem]:
-        top_events = sorted(events, key=lambda event: (event.importance_score, event.confidence_score), reverse=True)[:7]
+        top_events = [
+            event
+            for event in sorted(events, key=lambda event: (self._telegram_rank(event), event.confidence_score), reverse=True)
+            if self._telegram_rank(event) >= self.telegram_policy.fallback_min_score
+        ][:5]
         if not top_events:
             items = [
                 DigestIssueItem(
@@ -378,14 +467,14 @@ class DigestBuilderService:
             sorted(
                 candidates,
                 key=lambda event: (
-                    self._signal_score(event),
+                    self._telegram_rank(event),
                     event.confidence_score,
                     self._source_quality_rank(event),
                 ),
                 reverse=True,
             ),
             strong_limit=8,
-            weak_limit=4,
+            weak_limit=5,
         )
 
     def _top_by_section(self, events: list[Event], section: EventSection, score_field: str, limit: int) -> list[Event]:
@@ -538,6 +627,9 @@ class DigestBuilderService:
             is_primary_block=rank_order == 1,
         )
 
+    def _is_empty_section(self, items: list[DigestIssueItem]) -> bool:
+        return len(items) == 1 and items[0].event_id is None and items[0].alpha_entry_id is None
+
     def _section_title(self, section: DigestSection) -> str:
         titles = {
             DigestSection.IMPORTANT: "Важное",
@@ -587,9 +679,9 @@ class DigestBuilderService:
         if "granite libraries" in text or "mellea" in text:
             return "IBM обновила стек Granite Libraries и релизнула Mellea 0.4.0."
         if "voice" in text and "eval" in text:
-            return "Появился новый фреймворк для оценки voice-агентов."
+            return "Новый фреймворк задает стандарт для оценки voice-агентов."
         if "security" in text:
-            return "Появился новый сигнал по безопасности AI-инфраструктуры."
+            return "Рынок получил новый повод пересмотреть безопасность AI-инфраструктуры."
         if "browser" in text:
             return "Новые AI-сценарии смещаются ближе к браузеру и клиентскому слою."
         return lead
@@ -600,49 +692,49 @@ class DigestBuilderService:
             if any(keyword in text for keyword in ("malware", "malicious", "secret", "credentials", "vulnerability", "security")):
                 return "Важно для команд, которые держат этот стек в проде из-за риска утечки секретов."
             if any(keyword in text for keyword in ("webgpu", "browser", "javascript", "transformers.js", "web client")):
-                return "Важно для команд, которые хотят запускать inference и AI-фичи прямо в веб-клиенте."
+                return "Команды получают шанс увести inference ближе к пользователю и снизить зависимость от серверного слоя."
             if any(keyword in text for keyword in ("structured generation", "json schema", "rust", "python")):
-                return "Полезно разработчикам, которым нужна надежная structured generation в продовом контуре."
+                return "Это поднимает требования к качеству вывода и снижает цену ошибок в production-сценариях."
             if any(keyword in text for keyword in ("embedding", "fine-tune", "finetune", "retrieval", "search")):
-                return "Полезно командам, которые настраивают retrieval и эмбеддинги под свои данные."
+                return "Команды смогут точнее настраивать retrieval под свои данные и быстрее доводить качество поиска до бизнеса."
             if any(keyword in text for keyword in ("speech", "voice", "speech-to-speech", "s2s")):
-                return "Это облегчает вывод voice и speech-to-speech пайплайнов в production."
+                return "Voice-сценарии становятся ближе к продакшену, а компании получают более практичный канал автоматизации."
             if any(keyword in text for keyword in ("eval", "benchmark", "voice", "agent", "testing")):
-                return "Полезно командам, которые строят AI-агентов и хотят формализовать eval-пайплайн."
+                return "Рынок поднимает планку оценки AI-агентов, и командам придется быстрее формализовать eval-пайплайны."
             if any(keyword in text for keyword in ("sdk", "api", "cli", "workflow", "tool", "copilot", "open-source", "open source")):
-                return "Это влияет на текущий AI-workflow разработчиков и выбор инструментов."
-            return "Полезно командам, которые внедряют AI-инструменты и инфраструктуру в рабочий контур."
+                return "Инструменты меняют ежедневную работу разработчиков и ускоряют выбор нового стека для команд."
+            return "Команды пересмотрят рабочий стек, а рынок быстрее отсеет слабые инструменты."
 
         if section is DigestSection.INVESTMENTS:
             if any(keyword in text for keyword in ("acquisition", "acquire", "merger", "m&a")):
-                return "Это сигнал по стратегическим сделкам и консолидации AI-рынка."
+                return "Сделка меняет карту рынка и подталкивает конкурентов к новым альянсам и ответным покупкам."
             if any(keyword in text for keyword in ("partnership", "partner")):
-                return "Показывает, где сейчас формируются коммерческие альянсы и распределение влияния."
-            return "Показывает, куда сейчас идут капитал и стратегический интерес в AI."
+                return "Коммерческие альянсы перераспределяют влияние в секторе и меняют доступ к рынку, клиентам и данным."
+            return "Капитал указывает на сегменты, где рынок ждет следующий рост выручки и жесткую борьбу за долю."
 
         if section is DigestSection.AI_NEWS:
             if any(keyword in text for keyword in ("security", "protect ai", "supply chain", "model security")):
-                return "Это сигнал по росту внимания к security и supply-chain рискам в ML-инфраструктуре."
+                return "Безопасность моделей и supply chain становятся жестким критерием для платформ и корпоративных закупок."
             if any(keyword in text for keyword in ("webgpu", "browser", "transformers.js")):
-                return "Показывает, как AI-инференс и модели уходят ближе к браузеру и клиентскому слою."
+                return "Инференс уходит ближе к браузеру, и это меняет продуктовую архитектуру, стоимость и контроль над клиентским опытом."
             if any(keyword in text for keyword in ("embedding", "fine-tune", "finetune", "retrieval")):
-                return "Важно для команд, которые строят доменные search и retrieval-системы поверх моделей."
+                return "Компании получают более точный рычаг для поиска и retrieval, а значит быстрее доводят AI-функции до прикладной ценности."
             if any(keyword in text for keyword in ("speech", "voice", "speech-to-speech", "s2s")):
-                return "Это делает практичнее voice AI и мультимодальные продукты в боевых сценариях."
+                return "Voice AI выходит из эксперимента в продуктовый контур и усиливает конкуренцию за реальные пользовательские сценарии."
             if any(keyword in text for keyword in ("structured generation", "outlines", "json schema")):
-                return "Показывает, что экосистема упирается в более надежную structured generation и контроль вывода."
+                return "Рынок требует более надежный контроль вывода, потому что без него корпоративные сценарии упираются в ошибки и потери."
             if any(keyword in text for keyword in ("research", "training", "inference", "reasoning", "model", "benchmark")):
-                return "Это сигнал по сдвигу в моделях, инфраструктуре и повестке крупных AI-игроков."
+                return "Крупные игроки меняют модельные и инфраструктурные ставки, а рынок подстраивает под это продуктовые планы и бюджеты."
             if any(keyword in text for keyword in ("voice", "agent")):
-                return "Показывает, куда движется рынок AI-агентов и систем оценки качества."
-            return "Это один из заметных сдвигов в текущей AI-повестке."
+                return "Рынок агентов выходит на этап жесткой оценки качества, и от этого зависит доверие клиентов и скорость внедрения."
+            return "Событие меняет продуктовые решения, рыночные приоритеты и темп конкуренции в AI."
 
         if section is DigestSection.IMPORTANT:
             if self._has_section(event, EventSection.INVESTMENTS):
-                return "Стоит держать в фокусе из-за потенциального влияния на рынок, сделки и продуктовые планы."
+                return "Событие быстро отразится на сделках, оценках компаний и продуктовых планах крупных игроков."
             if self._has_section(event, EventSection.CODING):
-                return "Важно для команд, которые строят AI-продукты и быстро переносят новые инструменты в прод."
-            return "Это один из ключевых сигналов дня для команд, которые следят за AI-рынком."
+                return "Команды, которые быстро несут инструменты в прод, будут вынуждены пересматривать стек и темп внедрения."
+            return "Событие задает один из ключевых ориентиров дня для рынка, конкурентов и корпоративных команд."
 
         if section is DigestSection.ALL:
             primary = self._primary_section(event)
@@ -654,7 +746,7 @@ class DigestBuilderService:
             }.get(primary)
             if mapped is not None:
                 return self._specific_second_sentence(event, mapped)
-            return "Это один из заметных сигналов дня."
+            return "Событие влияет на рынок, продуктовые решения и скорость реакции конкурентов."
 
         return ""
 
@@ -707,6 +799,77 @@ class DigestBuilderService:
             event.coding_score * 0.92,
             event.investment_score * 0.92,
         )
+
+    def _telegram_rank(self, event: Event) -> float:
+        return event.ranking_score if event.ranking_score > 0 else self._signal_score(event)
+
+    def _is_russia_event(self, event: Event) -> bool:
+        return bool(event.primary_source is not None and getattr(event.primary_source, "region", None) is not None and event.primary_source.region.value == "russia")
+
+    def _qualifies_for_ai_russia(self, event: Event) -> bool:
+        return qualifies_for_ai_russia_event(event)
+
+    def _telegram_package_section(self, event: Event) -> TelegramPackageSection:
+        if self._qualifies_for_ai_russia(event):
+            return TelegramPackageSection.AI_RUSSIA
+        if self._has_section(event, EventSection.INVESTMENTS) and event.investment_score >= 55:
+            return TelegramPackageSection.INVESTMENTS_MARKET
+        coding_relevant = (
+            self._is_primary_section(event, EventSection.CODING)
+            or (self._has_section(event, EventSection.CODING) and event.coding_score >= max(55, event.ai_news_score))
+            or (
+                self._looks_like_coding_candidate(event)
+                and event.coding_score >= 65
+                and event.coding_score >= event.ai_news_score + 5
+            )
+        )
+        if coding_relevant:
+            return TelegramPackageSection.TOOLS_CODING
+        return TelegramPackageSection.MODELS_SERVICES
+
+    def _telegram_candidates_from_items(self, items: list[DigestIssueItem], events: list[Event]) -> list[dict[str, object]]:
+        event_map = {event.id: event for event in events}
+        all_items = sorted(
+            [item for item in items if item.section is DigestSection.ALL and item.event_id is not None],
+            key=lambda item: (item.rank_order, item.id),
+        )
+        if not all_items:
+            all_items = sorted(
+                [item for item in items if item.event_id is not None],
+                key=lambda item: (item.rank_order, item.id),
+            )
+        candidates: list[dict[str, object]] = []
+        for item in all_items:
+            event = event_map.get(item.event_id)
+            if event is None:
+                continue
+            candidates.append(
+                {
+                    "item": item,
+                    "event": event,
+                    "section": self._telegram_package_section(event),
+                    "rank": self._telegram_rank(event),
+                }
+            )
+        candidates.sort(
+            key=lambda candidate: (
+                candidate["rank"],
+                candidate["event"].confidence_score,
+                self._source_quality_rank(candidate["event"]),
+            ),
+            reverse=True,
+        )
+        return candidates
+
+    def _suppression_section_for(self, section: TelegramPackageSection) -> DigestSection:
+        mapping = {
+            TelegramPackageSection.MODELS_SERVICES: DigestSection.AI_NEWS,
+            TelegramPackageSection.TOOLS_CODING: DigestSection.CODING,
+            TelegramPackageSection.INVESTMENTS_MARKET: DigestSection.INVESTMENTS,
+            TelegramPackageSection.AI_RUSSIA: DigestSection.ALL,
+            TelegramPackageSection.ALPHA: DigestSection.ALPHA,
+        }
+        return mapping[section]
 
     def _limit_for_day(self, events: list[Event], *, strong_limit: int, weak_limit: int) -> list[Event]:
         if not events:
