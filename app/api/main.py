@@ -74,6 +74,8 @@ from app.web import (
     build_issue_editorial_sections,
     build_issue_intro,
     event_href,
+    filter_publishable_site_items,
+    is_publishable_site_item,
     render_alpha_page,
     render_event_detail_page,
     render_events_feed_page,
@@ -1298,12 +1300,15 @@ def create_app(
         russia_payload = await public_list_events(surface="ai_in_russia", limit=8)
         broader_russia_payload = await public_list_events(limit=24)
         alpha_payload = await public_list_alpha(limit=6)
-        homepage_events = select_homepage_events(sort_site_events(recent_payload["items"]))
+        sorted_recent_items = sort_site_events(recent_payload["items"])
+        publishable_recent_items = filter_publishable_site_items(sorted_recent_items)
+        homepage_events = filter_publishable_site_items(select_homepage_events(sorted_recent_items))
+        if not homepage_events:
+            homepage_events = publishable_recent_items[:5]
         recent_event_pool = [
             item
-            for item in sort_site_events(recent_payload["items"])
+            for item in publishable_recent_items
             if int(item["id"]) not in {int(event["id"]) for event in homepage_events[:5]}
-            and not compute_event_importance(item).excluded
         ]
         recent_events = recent_event_pool[:8] if recent_event_pool else homepage_events[1:4]
         return HTMLResponse(
@@ -1325,7 +1330,7 @@ def create_app(
         payload = await public_list_events(limit=12, page=page)
         return HTMLResponse(
             render_site_events_page(
-                events=sort_site_events(payload["items"]),
+                events=filter_publishable_site_items(sort_site_events(payload["items"])),
                 page=payload["meta"]["page"],
                 has_next=bool(payload["meta"]["has_next"]),
             )
@@ -1382,12 +1387,13 @@ def create_app(
             payload["items"],
             lambda event_id: _load_site_event_item(event_id=event_id, db_session_factory=db_session_factory),
         )
+        publishable_items = filter_publishable_site_items(enriched_items, require_event=True)
         editorial_sections = build_issue_editorial_sections(items=enriched_items)
         return HTMLResponse(
             render_site_issue_detail_page(
                 issue=payload["issue"],
                 sections=payload["sections"],
-                items=enriched_items,
+                items=publishable_items,
                 editorial_sections=editorial_sections,
                 intro=build_issue_intro(payload["issue"], editorial_sections),
             )
@@ -1400,13 +1406,14 @@ def create_app(
             payload["items"],
             lambda event_id: _load_site_event_item(event_id=event_id, db_session_factory=db_session_factory),
         )
+        publishable_items = filter_publishable_site_items(enriched_items, require_event=True)
         editorial_sections = build_issue_editorial_sections(items=enriched_items)
         editorial_section = next((item for item in editorial_sections if item["source_section"] == section or item["slug"] == section), None)
         return HTMLResponse(
             render_site_issue_section_page(
                 issue=payload["issue"],
                 section=payload["section"],
-                items=enriched_items,
+                items=publishable_items,
                 editorial_section=editorial_section,
             )
         )
@@ -1417,12 +1424,12 @@ def create_app(
         broader_payload = await public_list_events(limit=24)
         return HTMLResponse(
             render_site_events_page(
-                events=sort_site_events(select_site_russia_events(
-                    strict_items=payload["items"],
-                    broader_items=broader_payload["items"],
+                events=filter_publishable_site_items(sort_site_events(select_site_russia_events(
+                    strict_items=filter_publishable_site_items(payload["items"]),
+                    broader_items=filter_publishable_site_items(broader_payload["items"]),
                     limit=24,
                     min_items=6,
-                )),
+                ))),
                 title="ИИ в России",
                 subtitle="Качественно отфильтрованный локальный контур: регуляторика, рынок, инфраструктура и сильные корпоративные сдвиги.",
             )

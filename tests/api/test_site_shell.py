@@ -7,7 +7,7 @@ from httpx import ASGITransport, AsyncClient
 from app.api.main import create_app
 from app.db.models import AlphaEntry, AlphaEntryStatus
 from app.services.digest import DigestBuilderService
-from app.web import build_event_slug
+from app.web import build_event_slug, build_issue_editorial_sections, filter_publishable_site_items
 from tests.digest.test_digest_builder_and_delivery import seed_daily_event_data
 
 
@@ -65,6 +65,7 @@ async def test_site_shell_routes_render_real_media_pages(session_factory):
     assert "Новые материалы" in homepage.text
     assert "Последний выпуск" in homepage.text
     assert "OpenAI запускает GPT-5" in homepage.text
+    assert "ключевых событий сейчас</span></div>" in homepage.text
     assert "AI-стартап обновил продуктовую линейку" not in homepage.text
     assert "VK рассказал на форуме про AI-направление" not in homepage.text
     assert "Internal Web Preview" not in homepage.text
@@ -120,6 +121,8 @@ async def test_site_shell_routes_render_real_media_pages(session_factory):
     assert issue.title in issue_detail.text
     assert "Разделы выпуска" in issue_detail.text
     assert "Сегодня в центре внимания" in issue_detail.text
+    assert "Новости ИИ</a></h3>" not in issue_detail.text
+    assert "Событие в AI" not in issue_detail.text
     assert "собирает материалы" not in issue_detail.text.lower()
     assert "повестк" not in issue_detail.text.lower()
     assert "Новости ИИ" in issue_detail.text
@@ -147,3 +150,43 @@ async def test_site_shell_routes_render_real_media_pages(session_factory):
     assert sitemap.status_code == 200
     assert "/events/" in sitemap.text
     assert "/issues/" in sitemap.text
+
+
+def test_issue_editorial_sections_ignore_pseudo_items():
+    items = [
+        {
+            "id": 11,
+            "event_id": 11,
+            "title": "Mistral выпускает OCR API",
+            "short_summary": "Mistral запускает OCR API и выходит в более конкурентный сегмент обработки документов.",
+            "long_summary": "Mistral запускает OCR API и усиливает позиции в корпоративных сценариях обработки документов.",
+            "primary_section": "ai_news",
+            "section": "ai_news",
+            "event_date": "2026-04-06",
+            "primary_source": {"title": "Mistral", "region": "global"},
+            "categories": [{"section": "ai_news"}],
+            "tags": [],
+            "source_documents": [],
+        },
+        {
+            "id": 99,
+            "event_id": None,
+            "card_title": "Новости ИИ",
+            "card_text": "Сегодня день спокойный: сильных событий немного.",
+            "title": "Новости ИИ",
+            "section": "all",
+            "event_date": "2026-04-06",
+            "primary_source": {},
+            "categories": [],
+            "tags": [],
+            "source_documents": [],
+        },
+    ]
+
+    filtered = filter_publishable_site_items(items, require_event=True)
+    sections = build_issue_editorial_sections(items=items)
+
+    assert len(filtered) == 1
+    assert filtered[0]["event_id"] == 11
+    assert len(sections) == 1
+    assert sections[0]["main_item"]["event_id"] == 11

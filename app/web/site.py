@@ -8,6 +8,7 @@ from app.services.editorial import get_ru_editorial_policy
 _POLICY = get_ru_editorial_policy()
 _SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
 _NON_SLUG_RE = re.compile(r"[^a-z0-9]+")
+_MULTISPACE_RE = re.compile(r"\s+")
 _CYRILLIC_TO_LATIN = str.maketrans(
     {
         "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e",
@@ -18,6 +19,22 @@ _CYRILLIC_TO_LATIN = str.maketrans(
     }
 )
 _SITE_BASE_URL = "https://news.malakhovai.ru"
+_PLACEHOLDER_TITLE_RE = re.compile(
+    r"\b(событие|новость|материал)\b.*\b(ai|ии)\b|\b(ai|ии)\b.*\b(событие|новость|материал)\b",
+    re.IGNORECASE,
+)
+_BAD_PUBLIC_PATTERNS = (
+    "событие собрано по",
+    "инфоповод подтвержден",
+    "инфоповод подтверждает",
+    "базовое покрытие дает",
+    "базовое покрытие даёт",
+    "связанным материал",
+    "день спокойный",
+    "почему это важно",
+    "что это меняет",
+    "кто выигрывает / проигрывает",
+)
 
 
 def render_site_homepage(
@@ -421,7 +438,7 @@ def _featured_event_card(item: dict[str, object]) -> str:
     source = item.get("primary_source") or {}
     source_title = escape(str(source.get("title") or "Источник"))
     title = _display_title(item)
-    summary = _display_summary(item)
+    summary = _display_teaser(item)
     return (
         '<article class="featured-card">'
         f'<p class="kicker">{escape(_section_label(item.get("primary_section") or "ai_news"))}</p>'
@@ -435,7 +452,7 @@ def _featured_event_card(item: dict[str, object]) -> str:
 def _standard_event_card(item: dict[str, object]) -> str:
     source = item.get("primary_source") or {}
     title = _display_title(item)
-    summary = _display_summary(item)
+    summary = _display_teaser(item)
     return (
         '<article class="event-card">'
         f'<p class="kicker">{escape(_section_label(item.get("primary_section") or "ai_news"))}</p>'
@@ -448,7 +465,7 @@ def _standard_event_card(item: dict[str, object]) -> str:
 
 def _compact_event_card(item: dict[str, object]) -> str:
     title = _display_title(item)
-    summary = _display_summary(item)
+    summary = _display_teaser(item)
     return (
         '<article class="compact-card">'
         f'<h3><a href="{escape(event_href(item))}">{escape(title)}</a></h3>'
@@ -624,13 +641,14 @@ def _display_title(item: dict[str, object]) -> str:
 
 
 def _display_summary(item: dict[str, object]) -> str:
-    return _cleanup_public_text(
+    summary = _cleanup_public_text(
         _POLICY.public_summary(
         str(item.get("short_summary") or ""),
         title=str(item.get("title") or ""),
         section=str(item.get("primary_section") or ""),
         )
     )
+    return summary if _is_meaningful_public_text(item, summary) else ""
 
 
 def _display_long_summary(item: dict[str, object]) -> str:
@@ -665,6 +683,20 @@ def _display_article(item: dict[str, object], *, paragraph_limit: int | None = N
     if paragraph_limit is not None:
         return paragraphs[:paragraph_limit]
     return paragraphs
+
+
+def _display_teaser(item: dict[str, object]) -> str:
+    summary = _display_summary(item)
+    if summary:
+        return summary
+    article = _display_article(item, paragraph_limit=2)
+    for paragraph in article:
+        if _is_meaningful_public_text(item, paragraph):
+            return paragraph
+    fallback = _display_long_summary(item)
+    if fallback and _is_meaningful_public_text(item, fallback):
+        return fallback
+    return ""
 
 
 def _section_label(section: object) -> str:
@@ -703,23 +735,26 @@ def _layout_with_meta(*, title: str, body: str, description: str, path: str) -> 
     <link rel="canonical" href="{escape(canonical_url)}">
     <style>
       :root {{
-        --bg: #efe6d8;
-        --bg-2: #f6f1e8;
-        --panel: rgba(255, 252, 246, 0.96);
-        --ink: #18130f;
-        --muted: #645a50;
-        --line: #d6c9b8;
-        --accent: #9f3f1b;
-        --accent-soft: #f6e2d4;
+        --bg: #eef1fb;
+        --bg-2: #f7f8fe;
+        --panel: rgba(255, 255, 255, 0.88);
+        --panel-strong: rgba(255, 255, 255, 0.96);
+        --ink: #12172a;
+        --muted: #69708a;
+        --line: rgba(181, 190, 230, 0.62);
+        --accent: #5c63ff;
+        --accent-soft: rgba(116, 127, 255, 0.12);
+        --shadow: 0 24px 80px rgba(92, 99, 255, 0.10);
       }}
       * {{ box-sizing: border-box; }}
       body {{
         margin: 0;
         color: var(--ink);
         background:
-          radial-gradient(circle at top right, rgba(204, 113, 60, 0.12), transparent 28%),
+          radial-gradient(circle at 18% 16%, rgba(151, 166, 255, 0.26), transparent 24%),
+          radial-gradient(circle at 82% 12%, rgba(202, 159, 255, 0.24), transparent 22%),
           linear-gradient(180deg, var(--bg-2) 0%, var(--bg) 100%);
-        font-family: Georgia, "Times New Roman", serif;
+        font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
       }}
       a {{ color: var(--accent); text-decoration: none; }}
       a:hover {{ text-decoration: underline; }}
@@ -738,28 +773,50 @@ def _layout_with_meta(*, title: str, body: str, description: str, path: str) -> 
       .nav-link.active {{ background: var(--accent); border-color: var(--accent); color: #fff8f3; }}
       .hero-block, .homepage-block, .page-header, .event-card, .featured-card, .compact-card, .issue-card, .issue-feature-card, .issue-item-card, .detail-page, .section-nav-block {{
         background: var(--panel); border: 1px solid var(--line); border-radius: 20px;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(16px);
       }}
       .hero-block {{
         display: grid; grid-template-columns: 1.35fr 0.75fr; gap: 24px; padding: 28px; margin-bottom: 24px;
+        position: relative;
+        overflow: hidden;
+        border-radius: 30px;
       }}
-      .hero-copy h1 {{ font-size: clamp(2.2rem, 4vw, 4rem); line-height: 0.98; margin: 0 0 14px; }}
+      .hero-block::after {{
+        content: "";
+        position: absolute;
+        width: 360px;
+        height: 360px;
+        right: 18%;
+        top: 50%;
+        transform: translateY(-50%);
+        border-radius: 50%;
+        background:
+          radial-gradient(circle at 50% 48%, rgba(140, 107, 255, 0.34), transparent 38%),
+          radial-gradient(circle at 32% 32%, rgba(255, 255, 255, 0.76), transparent 42%),
+          radial-gradient(circle at 68% 72%, rgba(120, 227, 243, 0.30), transparent 34%);
+        filter: blur(10px);
+        pointer-events: none;
+      }}
+      .hero-copy, .hero-meta {{ position: relative; z-index: 1; }}
+      .hero-copy h1 {{ font-size: clamp(2.4rem, 4vw, 4.3rem); line-height: 0.95; margin: 0 0 14px; max-width: 10ch; }}
       .hero-lede, .page-lede, .card-summary, .detail-lede {{ color: var(--muted); line-height: 1.5; }}
       .hero-meta {{ display: grid; gap: 12px; align-content: start; }}
-      .metric {{ background: var(--accent-soft); border-radius: 18px; padding: 16px; border: 1px solid #e3c4af; }}
+      .metric {{ background: var(--panel-strong); border-radius: 22px; padding: 18px; border: 1px solid rgba(154, 164, 214, 0.35); }}
       .metric-value {{ display: block; font-size: 2rem; line-height: 1; margin-bottom: 4px; }}
       .metric-label {{ color: var(--muted); }}
       .homepage-grid {{ display: grid; grid-template-columns: 1.45fr 0.85fr; gap: 22px; }}
       .feature-layout {{ display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 18px; padding: 22px; }}
       .feature-side {{ display: grid; gap: 12px; }}
       .primary-column, .secondary-column, .feed-grid {{ display: grid; gap: 18px; }}
-      .homepage-block, .page-header, .section-nav-block {{ padding: 20px; }}
+      .homepage-block, .page-header, .section-nav-block {{ padding: 22px; }}
       .page-header h1 {{ font-size: clamp(1.8rem, 3vw, 3rem); line-height: 1.02; margin: 0 0 10px; }}
       .block-head {{ display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 14px; }}
       .issue-intro {{ margin: 0; color: var(--muted); line-height: 1.65; max-width: 72ch; }}
       .block-head h2, .featured-card h2, .event-card h2, .issue-card h2, .issue-item-card h2 {{ margin: 0 0 10px; line-height: 1.08; }}
       .compact-card h3, .issue-feature-card h3 {{ margin: 0 0 8px; font-size: 1.05rem; line-height: 1.2; }}
-      .featured-card, .event-card, .compact-card, .issue-card, .issue-feature-card, .issue-item-card {{ padding: 18px; }}
-      .issue-main-card {{ padding: 20px; border: 1px solid var(--line); border-radius: 18px; background: #fffcf6; }}
+      .featured-card, .event-card, .compact-card, .issue-card, .issue-feature-card, .issue-item-card {{ padding: 18px; background: var(--panel-strong); }}
+      .issue-main-card {{ padding: 22px; border: 1px solid var(--line); border-radius: 22px; background: var(--panel-strong); box-shadow: inset 0 1px 0 rgba(255,255,255,0.5); }}
       .issue-main-card h3 {{ margin: 0 0 10px; font-size: 1.5rem; line-height: 1.12; }}
       .issue-why {{ margin: 12px 0 0; color: var(--muted); line-height: 1.55; }}
       .issue-consequence {{ margin: 10px 0 0; color: var(--muted); line-height: 1.55; }}
@@ -767,7 +824,7 @@ def _layout_with_meta(*, title: str, body: str, description: str, path: str) -> 
       .issue-secondary-card h3 {{ margin: 0 0 8px; font-size: 1rem; line-height: 1.2; }}
       .featured-card h2 {{ font-size: clamp(1.7rem, 2.8vw, 2.4rem); }}
       .event-card h2, .issue-card h2, .issue-item-card h2 {{ font-size: 1.35rem; }}
-      .kicker {{ margin: 0 0 10px; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.11em; color: var(--muted); font-weight: 700; }}
+      .kicker {{ margin: 0 0 10px; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.11em; color: #6c73a8; font-weight: 700; }}
       .card-meta, .detail-meta, .muted {{ color: var(--muted); font-size: 0.93rem; }}
       .card-meta {{ display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }}
       .feed-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
@@ -784,20 +841,20 @@ def _layout_with_meta(*, title: str, body: str, description: str, path: str) -> 
       .issue-flow-nav {{ display: flex; flex-wrap: wrap; gap: 12px; }}
       .flow-link {{
         display: inline-flex; padding: 9px 12px; border-radius: 999px;
-        border: 1px solid var(--line); background: #fbf5ea; color: var(--ink); font-size: 0.92rem;
+        border: 1px solid var(--line); background: rgba(255,255,255,0.82); color: var(--ink); font-size: 0.92rem;
       }}
       .detail-side {{ display: grid; gap: 14px; align-content: start; }}
-      .meta-panel {{ border: 1px solid var(--line); border-radius: 16px; padding: 16px; background: #fffcf6; }}
+      .meta-panel {{ border: 1px solid var(--line); border-radius: 18px; padding: 16px; background: rgba(255,255,255,0.9); }}
       .meta-panel h2 {{ margin: 0 0 10px; font-size: 1rem; }}
       .tag-row {{ display: flex; flex-wrap: wrap; gap: 8px; }}
       .tag-row span, .section-pill {{
         display: inline-flex; padding: 7px 11px; border-radius: 999px;
-        border: 1px solid var(--line); background: #fbf5ea; color: var(--ink); font-size: 0.9rem;
+        border: 1px solid var(--line); background: rgba(255,255,255,0.82); color: var(--ink); font-size: 0.9rem;
       }}
       .pager {{ display: flex; align-items: center; gap: 12px; padding: 10px 4px 0; }}
       .pager-link {{
         display: inline-flex; padding: 8px 12px; border-radius: 999px;
-        border: 1px solid var(--line); background: rgba(255,255,255,0.7); color: var(--ink); font-size: 0.92rem;
+        border: 1px solid var(--line); background: rgba(255,255,255,0.78); color: var(--ink); font-size: 0.92rem;
       }}
       .pager-current {{ color: var(--muted); font-size: 0.92rem; }}
       .empty-state {{ color: var(--muted); margin: 0; }}
@@ -843,6 +900,66 @@ def _cleanup_public_phrase(text: str) -> str:
 
 def _cleanup_public_text(text: str) -> str:
     return " ".join(part for part in (_cleanup_public_phrase(sentence) for sentence in _split_sentences(text)) if part)
+
+
+def _normalized_public_text(text: str) -> str:
+    return _MULTISPACE_RE.sub(" ", re.sub(r"[^\w\s]", " ", text.lower())).strip()
+
+
+def _looks_like_title_repeat(title: str, text: str) -> bool:
+    if not title or not text:
+        return False
+    normalized_title = _normalized_public_text(title)
+    normalized_text = _normalized_public_text(text)
+    if not normalized_title or not normalized_text:
+        return False
+    if normalized_text == normalized_title:
+        return True
+    return normalized_text.startswith(f"{normalized_title} {normalized_title}")
+
+
+def _has_bad_public_pattern(text: str) -> bool:
+    normalized = _normalized_public_text(text)
+    return any(pattern in normalized for pattern in _BAD_PUBLIC_PATTERNS)
+
+
+def _is_meaningful_public_text(item: dict[str, object], text: str) -> bool:
+    cleaned = _cleanup_public_text(text)
+    if not cleaned:
+        return False
+    title = _display_title(item)
+    if _looks_like_title_repeat(title, cleaned):
+        return False
+    if _has_bad_public_pattern(cleaned):
+        return False
+    if len(_normalized_public_text(cleaned)) < 24:
+        return False
+    return True
+
+
+def is_publishable_site_item(item: dict[str, object], *, require_event: bool = False) -> bool:
+    if require_event and item.get("event_id") is None:
+        return False
+    title = _display_title(item)
+    if not title:
+        return False
+    if _PLACEHOLDER_TITLE_RE.search(title):
+        return False
+    if _has_bad_public_pattern(title):
+        return False
+    teaser = _display_teaser(item)
+    if teaser:
+        return True
+    article = _display_article(item, paragraph_limit=2)
+    return any(_is_meaningful_public_text(item, paragraph) for paragraph in article)
+
+
+def filter_publishable_site_items(
+    items: list[dict[str, object]],
+    *,
+    require_event: bool = False,
+) -> list[dict[str, object]]:
+    return [item for item in items if is_publishable_site_item(item, require_event=require_event)]
 
 
 def build_event_slug(item: dict[str, object]) -> str:
@@ -899,6 +1016,8 @@ def build_issue_editorial_sections(*, items: list[dict[str, object]]) -> list[di
     seen_by_section: dict[str, set[int]] = {key: set() for key in buckets}
 
     for item in items:
+        if not is_publishable_site_item(item, require_event=True):
+            continue
         for target in _issue_editorial_targets(item):
             event_id = int(item.get("event_id") or 0) if item.get("event_id") is not None else None
             if event_id is not None and event_id in seen_by_section[target]:
@@ -961,11 +1080,7 @@ def _issue_editorial_targets(item: dict[str, object]) -> list[str]:
 
 
 def _issue_item_one_line(item: dict[str, object]) -> str:
-    summary = _POLICY.public_summary(
-        str(item.get("short_summary") or item.get("card_text") or ""),
-        title=str(item.get("title") or item.get("card_title") or ""),
-        section=str(item.get("primary_section") or item.get("section") or ""),
-    )
+    summary = _display_teaser(item)
     parts = _split_sentences(summary)
     return parts[0] if parts else summary
 
