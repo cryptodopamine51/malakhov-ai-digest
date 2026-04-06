@@ -1,13 +1,23 @@
-title,source_type,handle_or_url,priority_weight,language,country_scope,section_bias,is_active
-Reuters AI,website,https://www.reuters.com/technology/artificial-intelligence/,0.95,en,global,important|investments|ai_news,1
-TechCrunch AI,website,https://techcrunch.com/category/artificial-intelligence/,0.90,en,global,ai_news|investments,1
-VentureBeat AI,website,https://venturebeat.com/category/ai/,0.88,en,global,ai_news|coding|investments,1
-Crunchbase AI News,website,https://news.crunchbase.com/sections/ai/,0.90,en,global,investments|ai_news,1
-The Rundown AI,website,https://www.therundown.ai/,0.82,en,global,ai_news|important,1
-The Neuron,website,https://www.theneurondaily.com/,0.80,en,global,ai_news|important,1
-TLDR AI,website,https://tldr.tech/ai,0.78,en,global,ai_news|coding,1
-Ben's Bites,website,https://www.bensbites.com/,0.78,en,global,ai_news|products,1
-OpenAI News,official_blog,https://openai.com/news/,1.00,en,global,important|ai_news,1
-Anthropic News,official_blog,https://www.anthropic.com/news,0.98,en,global,important|ai_news,1
-Hugging Face Blog,official_blog,https://huggingface.co/blog,0.94,en,global,coding|ai_news,1
-GitHub Copilot Changelog,website,https://github.blog/changelog/label/copilot/,0.96,en,global,coding,1
+title,source_type,handle_or_url,priority_weight,language,country_scope,section_bias,is_active,role,region,status,editorial_priority,noise_score
+Reuters AI,website,https://www.reuters.com/technology/artificial-intelligence/,0.95,en,global,important|investments|ai_news,1,signal_feeder,global,active,98,0.16
+TechCrunch AI,website,https://techcrunch.com/category/artificial-intelligence/,0.92,en,global,ai_news|investments,1,signal_feeder,global,active,95,0.18
+The Verge AI,website,https://www.theverge.com/ai-artificial-intelligence,0.89,en,global,ai_news|important,1,signal_feeder,global,active,93,0.22
+VentureBeat AI,website,https://venturebeat.com/category/ai/,0.90,en,global,ai_news|coding|investments,1,signal_feeder,global,active,94,0.18
+AP AI News,website,https://apnews.com/hub/artificial-intelligence,0.90,en,global,important|ai_news,0,signal_feeder,global,quarantine,92,0.20
+OpenAI News,official_blog,https://openai.com/news/,1.00,en,global,important|ai_news,1,verification,global,active,100,0.05
+Anthropic News,official_blog,https://www.anthropic.com/news,0.98,en,global,important|ai_news,1,verification,global,active,99,0.05
+Google AI Blog,website,https://blog.google/technology/ai/,0.96,en,global,important|ai_news,1,verification,global,active,98,0.08
+Meta AI Blog,website,https://ai.meta.com/blog/,0.95,en,global,important|ai_news,1,verification,global,active,97,0.08
+GitHub Blog AI and ML,website,https://github.blog/ai-and-ml/,0.95,en,global,coding|ai_news,1,verification,global,active,97,0.08
+NVIDIA Technical Blog,website,https://developer.nvidia.com/blog/,0.95,en,global,coding|ai_news,1,verification,global,active,97,0.08
+GitHub Copilot Changelog,website,https://github.blog/changelog/label/copilot/,0.96,en,global,coding,1,coding,global,active,97,0.10
+InfoQ AI/ML,website,https://www.infoq.com/ai-ml-data-eng/,0.87,en,global,coding|ai_news,1,coding,global,active,90,0.16
+The New Stack AI,website,https://thenewstack.io/ai/,0.86,en,global,coding|ai_news,1,coding,global,active,89,0.18
+РБК Технологии,website,https://www.rbc.ru/technology_and_media/,0.86,ru,russia,important|investments,0,russia,russia,quarantine,88,0.25
+Коммерсант Технологии,website,https://www.kommersant.ru/theme/3633,0.84,ru,russia,important|investments,0,russia,russia,quarantine,86,0.26
+Ведомости Технологии,website,https://www.vedomosti.ru/technology,0.80,ru,russia,important|investments,0,russia,russia,disabled,82,0.30
+ТАСС Технологии,website,https://tass.ru/ekonomika,0.85,ru,russia,important|investments,0,russia,russia,quarantine,87,0.22
+Минцифры Новости,website,https://digital.gov.ru/ru/events/,0.90,ru,russia,important,0,russia,russia,quarantine,92,0.14
+Яндекс Cloud Blog,official_blog,https://yandex.cloud/ru/blog,0.91,ru,russia,coding|ai_news,1,russia,russia,active,93,0.12
+Сбер Новости,website,https://www.sberbank.com/ru/news-and-media,0.86,ru,russia,important|investments,0,russia,russia,quarantine,88,0.18
+VK Company Press,website,https://vk.company/ru/press/,0.84,ru,russia,important|investments,0,russia,russia,quarantine,86,0.20

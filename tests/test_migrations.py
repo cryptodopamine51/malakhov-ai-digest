@@ -33,6 +33,15 @@ async def test_alembic_upgrade_head_creates_core_tables(tmp_path):
         engine = create_async_engine(database_url)
         async with engine.begin() as conn:
             table_names = set(await conn.run_sync(lambda sync_conn: inspect(sync_conn).get_table_names()))
+            source_columns = set(
+                await conn.run_sync(lambda sync_conn: {column["name"] for column in inspect(sync_conn).get_columns("sources")})
+            )
+            process_run_columns = set(
+                await conn.run_sync(lambda sync_conn: {column["name"] for column in inspect(sync_conn).get_columns("process_runs")})
+            )
+            event_columns = set(
+                await conn.run_sync(lambda sync_conn: {column["name"] for column in inspect(sync_conn).get_columns("events")})
+            )
         await engine.dispose()
     finally:
         if previous_database_url is None:
@@ -61,3 +70,25 @@ async def test_alembic_upgrade_head_creates_core_tables(tmp_path):
         "process_runs",
         "llm_usage_logs",
     }.issubset(table_names)
+    assert {
+        "role",
+        "region",
+        "status",
+        "editorial_priority",
+        "noise_score",
+        "last_success_at",
+        "last_http_status",
+    }.issubset(source_columns)
+    assert {
+        "raw_shortlist_evaluated_count",
+        "raw_shortlist_accepted_count",
+        "raw_shortlist_rejected_count",
+        "raw_shortlist_reject_breakdown_json",
+    }.issubset(process_run_columns)
+    assert {
+        "ranking_score",
+        "supporting_source_count",
+        "verification_source_count",
+        "has_verification_source",
+        "score_components_json",
+    }.issubset(event_columns)

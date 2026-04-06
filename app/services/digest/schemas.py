@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from enum import Enum
 
 from app.db.models import DigestIssueItem, DigestIssueStatus, DigestIssueType, DigestSection
+from app.services.digest.telegram_policy import TelegramPackageSection
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,9 +42,20 @@ class DailyMainSuppression:
 
 
 @dataclass(frozen=True, slots=True)
+class TelegramSelectionDecision:
+    event_id: int
+    candidate_section: TelegramPackageSection
+    included_section: TelegramPackageSection | None
+    ranking_score: float
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
 class DailyMainPreview:
-    visible_by_section: dict[DigestSection, list[DigestIssueItem]]
+    visible_by_section: dict[TelegramPackageSection, list[DigestIssueItem]]
     suppressed: list[DailyMainSuppression]
+    excluded: list[TelegramSelectionDecision]
+    policy_snapshot: dict[str, object]
 
 
 @dataclass(frozen=True, slots=True)

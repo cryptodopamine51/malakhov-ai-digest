@@ -29,6 +29,25 @@ class SourceType(str, Enum):
     OFFICIAL_BLOG = "official_blog"
 
 
+class SourceRole(str, Enum):
+    SIGNAL_FEEDER = "signal_feeder"
+    VERIFICATION = "verification"
+    CODING = "coding"
+    INVESTMENTS = "investments"
+    RUSSIA = "russia"
+
+
+class SourceRegion(str, Enum):
+    GLOBAL = "global"
+    RUSSIA = "russia"
+
+
+class SourceStatus(str, Enum):
+    ACTIVE = "active"
+    QUARANTINE = "quarantine"
+    DISABLED = "disabled"
+
+
 class RawItemStatus(str, Enum):
     FETCHED = "fetched"
     NORMALIZED = "normalized"

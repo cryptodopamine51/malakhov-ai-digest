@@ -12,11 +12,15 @@ def test_new_seed_csv_supports_website_and_official_blog_rows():
     assert "OpenAI News" in supported_titles
     assert "TechCrunch AI" in supported_titles
     assert "GitHub Copilot Changelog" in supported_titles
-    assert "Ben's Bites" in supported_titles
+    assert "Минцифры Новости" in supported_titles
     assert not skipped_titles
 
 
 def test_seed_sanitizes_unknown_section_bias_values():
     supported, _ = load_source_seeds(DEFAULT_SEED_CSV_PATH)
-    ben = next(row for row in supported if row.title == "Ben's Bites")
-    assert ben.section_bias == "ai_news"
+    google = next(row for row in supported if row.title == "Google AI Blog")
+    assert google.role.value == "verification"
+    assert google.region.value == "global"
+    tass = next(row for row in supported if row.title == "ТАСС Технологии")
+    assert tass.status.value == "quarantine"
+    assert tass.is_active is False

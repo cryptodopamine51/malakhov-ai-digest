@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import Boolean, Date, Float, ForeignKey, Index, String, Text
+from sqlalchemy import JSON, Boolean, Date, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.models.base import Base, TimestampMixin
@@ -28,6 +28,11 @@ class Event(TimestampMixin, Base):
     coding_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     investment_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     confidence_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    ranking_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    supporting_source_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    verification_source_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    has_verification_source: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    score_components_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     is_highlight: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     primary_source = relationship("Source", back_populates="primary_events")

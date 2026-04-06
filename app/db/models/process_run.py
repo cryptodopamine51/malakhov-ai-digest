@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Index, Integer, String
+from sqlalchemy import JSON, DateTime, Enum, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.models.base import Base
@@ -31,5 +31,9 @@ class ProcessRun(Base):
     ambiguous_count: Mapped[int] = mapped_column(nullable=False, default=0)
     shortlist_count: Mapped[int] = mapped_column(nullable=False, default=0)
     llm_event_count: Mapped[int] = mapped_column(nullable=False, default=0)
+    raw_shortlist_evaluated_count: Mapped[int] = mapped_column(nullable=False, default=0)
+    raw_shortlist_accepted_count: Mapped[int] = mapped_column(nullable=False, default=0)
+    raw_shortlist_rejected_count: Mapped[int] = mapped_column(nullable=False, default=0)
+    raw_shortlist_reject_breakdown_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_message: Mapped[str | None] = mapped_column(String(2000), nullable=True)

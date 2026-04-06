@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 
 from app.db.models import DigestIssue, DigestIssueItem, DigestSection
+from app.services.digest.telegram_policy import TelegramPackageSection
 from app.services.rendering import TelegramRenderingService
 
 SECTION_TITLES = {
@@ -14,11 +15,11 @@ SECTION_TITLES = {
     DigestSection.ALL: "Все за день",
 }
 DAILY_SECTION_ORDER = [
-    DigestSection.IMPORTANT,
-    DigestSection.AI_NEWS,
-    DigestSection.CODING,
-    DigestSection.INVESTMENTS,
-    DigestSection.ALPHA,
+    TelegramPackageSection.MODELS_SERVICES,
+    TelegramPackageSection.TOOLS_CODING,
+    TelegramPackageSection.INVESTMENTS_MARKET,
+    TelegramPackageSection.AI_RUSSIA,
+    TelegramPackageSection.ALPHA,
 ]
 DAILY_SECTION_LIMIT = 3
 WEEKLY_LIMIT = 5
@@ -26,24 +27,29 @@ WEEKLY_LIMIT = 5
 _rendering = TelegramRenderingService()
 
 
-def render_daily_main(issue: DigestIssue, items_by_section: dict[DigestSection, list[DigestIssueItem]]) -> list[str]:
+TELEGRAM_PACKAGE_TITLES = {
+    TelegramPackageSection.MODELS_SERVICES: "Models / Services",
+    TelegramPackageSection.TOOLS_CODING: "Tools / Coding",
+    TelegramPackageSection.INVESTMENTS_MARKET: "Investments / Market",
+    TelegramPackageSection.AI_RUSSIA: "AI in Russia",
+    TelegramPackageSection.ALPHA: "Альфа",
+}
+
+
+def render_daily_main(issue: DigestIssue, items_by_section: dict[TelegramPackageSection, list[DigestIssueItem]]) -> list[str]:
     header = f"<b>Malakhov AI Digest • {_format_date(issue.issue_date)}</b>"
     section_blocks = []
-    has_non_empty_signal_section = any(
-        items_by_section.get(section) and not _is_empty_section(items_by_section.get(section, []))
-        for section in (DigestSection.AI_NEWS, DigestSection.CODING, DigestSection.INVESTMENTS)
-    )
     for section in DAILY_SECTION_ORDER:
         items = items_by_section.get(section, [])[:DAILY_SECTION_LIMIT]
-        if section is DigestSection.IMPORTANT and has_non_empty_signal_section and _is_empty_section(items):
+        if section is TelegramPackageSection.ALPHA and (not items or _is_empty_section(items)):
             continue
-        if section is DigestSection.ALPHA and _is_empty_section(items):
+        if not items and section is not TelegramPackageSection.ALPHA:
             continue
-        if not items and section not in (DigestSection.IMPORTANT, DigestSection.ALPHA):
-            continue
-        if _is_empty_section(items) and section not in (DigestSection.IMPORTANT, DigestSection.ALPHA):
+        if _is_empty_section(items) and section is not TelegramPackageSection.ALPHA:
             continue
         section_blocks.append(_render_section_block(section, items))
+    if not section_blocks:
+        return []
     return _rendering.chunk_blocks(header, section_blocks)
 
 
@@ -54,25 +60,32 @@ def render_weekly_main(issue: DigestIssue, items: list[DigestIssueItem]) -> list
 
 
 def render_section(issue: DigestIssue, section: DigestSection, items: list[DigestIssueItem]) -> list[str]:
+    if not items:
+        return []
+    if section is not DigestSection.ALPHA and _is_empty_section(items):
+        return []
     header = f"<b>{SECTION_TITLES[section]} • {_format_date(issue.issue_date)}</b>"
     blocks = [_render_item(item, section) for item in items]
     return _rendering.chunk_blocks(header, blocks)
 
 
-def _render_section_block(section: DigestSection, items: list[DigestIssueItem]) -> str:
-    title = SECTION_TITLES[section]
+def _render_section_block(section: DigestSection | TelegramPackageSection, items: list[DigestIssueItem]) -> str:
+    title = TELEGRAM_PACKAGE_TITLES[section] if isinstance(section, TelegramPackageSection) else SECTION_TITLES[section]
     rendered_items = "\n\n".join(_render_item(item, section) for item in items)
     return f"<b>{title}</b>\n{rendered_items}".strip()
 
 
-def _render_item(item: DigestIssueItem, section: DigestSection) -> str:
+def _render_item(item: DigestIssueItem, section: DigestSection | TelegramPackageSection) -> str:
     title = _rendering.escape_text(_rendering.compact_headline(item.card_title))
     if item.event_id is None and not item.card_links_json:
         summary = _rendering.escape_text(_rendering.trim_text(item.card_text, 220))
         return f"• <b>{title}</b>\n{summary}"
 
     summary = _rendering.escape_text(
-        _rendering.compact_summary(item.card_text, section_title=SECTION_TITLES[section])
+        _rendering.compact_summary(
+            item.card_text,
+            section_title=TELEGRAM_PACKAGE_TITLES[section] if isinstance(section, TelegramPackageSection) else SECTION_TITLES[section],
+        )
     )
     links = _rendering.format_source_links(item.card_links_json or [])
     source_suffix = f" {links}" if links else ""

@@ -14,8 +14,9 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from sqlalchemy import select
 from app.core.editorial import PUBLIC_SECTIONS
-from app.db.models import Source, SourceType
+from app.db.models import Source, SourceRegion, SourceRole, SourceStatus, SourceType
 from app.db.session import AsyncSessionLocal
+from app.services.sources import build_source_policy_snapshot
 
 DEFAULT_SEED_CSV_PATH = Path(__file__).resolve().parent / "data" / "seed_sources.csv"
 SUPPORTED_SEED_SOURCE_TYPES = {
@@ -35,6 +36,11 @@ class SourceSeedRow:
     country_scope: str | None
     is_active: bool
     section_bias: str | None = None
+    role: SourceRole = SourceRole.SIGNAL_FEEDER
+    region: SourceRegion = SourceRegion.GLOBAL
+    status: SourceStatus = SourceStatus.ACTIVE
+    editorial_priority: int = 100
+    noise_score: float = 0.0
 
 
 def _parse_priority_weight(value: str) -> int:
@@ -47,6 +53,18 @@ def _parse_priority_weight(value: str) -> int:
 
 def _parse_bool(value: str) -> bool:
     return value.strip() in {"1", "true", "True", "yes"}
+
+
+def _parse_int(value: str | None) -> int | None:
+    if value is None or value.strip() == "":
+        return None
+    return int(value)
+
+
+def _parse_float(value: str | None) -> float | None:
+    if value is None or value.strip() == "":
+        return None
+    return float(value)
 
 
 def _sanitize_section_bias(section_bias: str | None) -> tuple[str | None, list[str]]:
@@ -80,15 +98,30 @@ def load_source_seeds(csv_path: Path) -> tuple[list[SourceSeedRow], list[SourceS
                 invalid_section_bias_warnings.append(
                     f"{row['title'].strip()}: dropped unsupported section_bias values [{', '.join(invalid_sections)}]"
                 )
+            policy = build_source_policy_snapshot(
+                source_type=source_type,
+                role=row.get("role", "").strip() or None,
+                region=row.get("region", "").strip() or None,
+                status=row.get("status", "").strip() or None,
+                priority_weight=_parse_priority_weight(row["priority_weight"]),
+                editorial_priority=_parse_int(row.get("editorial_priority")),
+                noise_score=_parse_float(row.get("noise_score")),
+            )
+            is_active = _parse_bool(row["is_active"]) and policy.status is SourceStatus.ACTIVE
             seed_row = SourceSeedRow(
                 title=row["title"].strip(),
                 source_type=source_type,
                 handle_or_url=row["handle_or_url"].strip(),
-                priority_weight=_parse_priority_weight(row["priority_weight"]),
+                priority_weight=policy.priority_weight,
                 language=row["language"].strip() or None,
                 country_scope=row["country_scope"].strip() or None,
-                is_active=_parse_bool(row["is_active"]),
+                is_active=is_active,
                 section_bias=section_bias,
+                role=policy.role,
+                region=policy.region,
+                status=policy.status,
+                editorial_priority=policy.editorial_priority,
+                noise_score=policy.noise_score,
             )
             if source_type in SUPPORTED_SEED_SOURCE_TYPES:
                 supported_rows.append(seed_row)
@@ -125,6 +158,11 @@ async def seed_sources(csv_path: Path, *, deactivate_missing: bool = False) -> N
                         language=source_seed.language,
                         country_scope=source_seed.country_scope,
                         section_bias=source_seed.section_bias,
+                        role=source_seed.role,
+                        region=source_seed.region,
+                        status=source_seed.status,
+                        editorial_priority=source_seed.editorial_priority,
+                        noise_score=source_seed.noise_score,
                     )
                 )
                 created_count += 1
@@ -137,6 +175,11 @@ async def seed_sources(csv_path: Path, *, deactivate_missing: bool = False) -> N
             existing.country_scope = source_seed.country_scope
             existing.section_bias = source_seed.section_bias
             existing.is_active = source_seed.is_active
+            existing.role = source_seed.role
+            existing.region = source_seed.region
+            existing.status = source_seed.status
+            existing.editorial_priority = source_seed.editorial_priority
+            existing.noise_score = source_seed.noise_score
             updated_count += 1
 
         if deactivate_missing:
@@ -144,6 +187,7 @@ async def seed_sources(csv_path: Path, *, deactivate_missing: bool = False) -> N
             for source in existing_sources:
                 if source.handle_or_url not in csv_handles and source.is_active:
                     source.is_active = False
+                    source.status = SourceStatus.DISABLED
                     deactivated_count += 1
 
         await session.commit()

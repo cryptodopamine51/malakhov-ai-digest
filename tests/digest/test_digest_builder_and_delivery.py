@@ -370,6 +370,40 @@ async def test_telegram_preview_is_more_selective_than_broader_issue_items(sessi
     assert any(item.reason == "below_telegram_threshold" for item in preview.excluded)
 
 
+async def test_telegram_fail_safe_keeps_at_least_three_events_when_pool_is_available(session_factory):
+    await seed_daily_event_data(session_factory)
+    async with session_factory() as session:
+        events = list((await session.scalars(select(Event).order_by(Event.id.asc()))).all())
+        for index, event in enumerate(events[:5], start=1):
+            if index == 1:
+                event.ranking_score = 62
+            elif index <= 4:
+                event.ranking_score = 41
+            else:
+                event.ranking_score = 38
+            event.importance_score = max(event.importance_score, 52)
+            event.ai_news_score = max(event.ai_news_score, 50)
+            event.coding_score = max(event.coding_score, 50 if index == 2 else event.coding_score)
+            event.investment_score = max(event.investment_score, 50 if index == 3 else event.investment_score)
+        await session.commit()
+
+    service = DigestBuilderService(session_factory)
+    result = await service.build_daily_issue(date(2026, 3, 25))
+    preview = await service.get_daily_main_preview(result.issue_id)
+
+    assert preview is not None
+    selected_event_ids = [
+        item.event_id
+        for visible_items in preview.visible_by_section.values()
+        for item in visible_items
+        if item.event_id is not None
+    ]
+    assert len(selected_event_ids) >= 3
+    assert preview.policy_snapshot["relaxed_mode"] is True
+    assert int(preview.policy_snapshot["total_events_available"]) >= 5
+    assert int(preview.policy_snapshot["events_after_filtering"]) >= len(selected_event_ids)
+
+
 async def test_ai_in_russia_section_uses_quality_filter_not_raw_region_only(session_factory):
     await seed_daily_event_data(session_factory)
     service = DigestBuilderService(session_factory)
@@ -420,6 +454,8 @@ async def test_send_daily_and_weekly_and_log_deliveries(session_factory):
     assert all(message["link_preview_options"].is_disabled is True for message in bot.messages)
     assert any(delivery.delivery_type == DeliveryType.DAILY_MAIN and delivery.issue_id == daily.issue_id for delivery in deliveries)
     assert any(delivery.delivery_type == DeliveryType.WEEKLY_MAIN and delivery.issue_id == weekly.issue_id for delivery in deliveries)
+    assert "Сегодня день спокойный" not in bot.messages[0]["text"]
+    assert bot.messages[0]["text"].count("• <b>Важное</b>") <= 1
 
 
 async def test_callback_handler_sends_new_section_message_and_logs_delivery(session_factory, monkeypatch):

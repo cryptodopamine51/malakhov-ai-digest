@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -119,6 +120,8 @@ class IngestionService:
                 source_run.failed_count = 0
                 source_run.duration_ms = self._duration_ms(started_at, finished_at)
                 source_run.error_message = "\n".join(fetch_result.warnings) if fetch_result.warnings else None
+                source.last_success_at = finished_at
+                source.last_http_status = 200
                 await session.commit()
                 log_structured(
                     logger,
@@ -157,6 +160,7 @@ class IngestionService:
                 source_run.failed_count = 1
                 source_run.duration_ms = self._duration_ms(started_at, finished_at)
                 source_run.error_message = str(exc)
+                source.last_http_status = self._extract_http_status(exc)
                 session.add(source_run)
                 await session.commit()
                 log_structured(
@@ -245,3 +249,8 @@ class IngestionService:
 
     def _duration_ms(self, started_at: datetime, finished_at: datetime) -> int:
         return max(int((finished_at - started_at).total_seconds() * 1000), 0)
+
+    def _extract_http_status(self, exc: Exception) -> int | None:
+        if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+            return exc.response.status_code
+        return None

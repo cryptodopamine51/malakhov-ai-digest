@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.db.models import Event, EventSource, RawItem, Source, SourceType
+from app.db.models import Event, EventSource, RawItem, Source, SourceRole, SourceStatus, SourceType
+from app.services.sources.policy import validate_source_role, validate_source_status
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,14 +16,9 @@ class SourceReputation:
 
 
 def classify_source_pool_role(source: Source | None) -> str:
-    reputation = score_source(source)
     if source is None:
-        return "verification_layer"
-    if reputation.is_official or reputation.is_engineering or reputation.is_research:
-        return "signal_feeder"
-    if source.priority_weight >= 88:
-        return "signal_feeder"
-    return "verification_layer"
+        return SourceRole.VERIFICATION.value
+    return validate_source_role(source.role).value
 
 
 def score_source(source: Source | None) -> SourceReputation:
@@ -38,6 +34,8 @@ def score_source(source: Source | None) -> SourceReputation:
     title = source.title.lower()
     handle = source.handle_or_url.lower()
     combined = f"{title} {handle}"
+    role = validate_source_role(source.role)
+    status = validate_source_status(source.status)
 
     is_official = source.source_type is SourceType.OFFICIAL_BLOG or any(token in combined for token in ("official", "product", "release notes"))
     is_engineering = any(token in combined for token in ("engineering", "developer", "dev blog", "sdk", "api", "github"))
@@ -50,7 +48,13 @@ def score_source(source: Source | None) -> SourceReputation:
     }.get(source.source_type, 0.55)
     priority_score = min(source.priority_weight / 100, 1.0)
 
-    bonus = 0.0
+    bonus = {
+        SourceRole.SIGNAL_FEEDER: 0.15,
+        SourceRole.VERIFICATION: 0.2,
+        SourceRole.CODING: 0.12,
+        SourceRole.INVESTMENTS: 0.12,
+        SourceRole.RUSSIA: 0.08,
+    }[role]
     tier = "secondary"
     if is_official:
         bonus += 0.35
@@ -64,7 +68,21 @@ def score_source(source: Source | None) -> SourceReputation:
     elif source.priority_weight >= 65:
         tier = "domain_media"
 
-    score = round(min(type_score + priority_score * 0.5 + bonus, 1.85), 3)
+    if role is SourceRole.VERIFICATION and tier == "secondary":
+        tier = "verification"
+    if role is SourceRole.RUSSIA and tier == "secondary":
+        tier = "regional_media"
+    if role is SourceRole.CODING and tier == "secondary":
+        tier = "technical_media"
+    if role is SourceRole.INVESTMENTS and tier == "secondary":
+        tier = "market_media"
+
+    score = min(type_score + priority_score * 0.5 + bonus, 1.85)
+    if status is SourceStatus.QUARANTINE:
+        score *= 0.75
+    elif status is SourceStatus.DISABLED:
+        score *= 0.5
+    score = round(score, 3)
     return SourceReputation(
         tier=tier,
         score=score,
@@ -83,6 +101,14 @@ def score_event_source_link(link: EventSource) -> float:
         else 0.0
     )
     return reputation.score * 1000 - published_ts / 1_000_000
+
+
+def is_verification_source(source: Source | None) -> bool:
+    if source is None:
+        return False
+    role = validate_source_role(source.role)
+    reputation = score_source(source)
+    return role is SourceRole.VERIFICATION or reputation.is_official or reputation.is_research or reputation.is_engineering
 
 
 def score_raw_item_source(raw_item: RawItem) -> float:

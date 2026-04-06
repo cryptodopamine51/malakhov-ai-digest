@@ -5,7 +5,6 @@ import re
 from urllib.parse import urlencode
 
 from app.services.editorial import get_ru_editorial_policy
-from app.services.site import compute_event_importance
 _POLICY = get_ru_editorial_policy()
 _SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
 _NON_SLUG_RE = re.compile(r"[^a-z0-9]+")
@@ -173,10 +172,7 @@ def render_site_event_detail_page(
     tags = item.get("tags") or []
     title = _display_title(item)
     short_summary = _display_summary(item)
-    long_summary = _structured_long_summary(item)
-    why_it_matters = _why_it_matters_block(item)
-    what_it_changes = _what_it_changes_block(item)
-    winners_losers = _who_wins_loses_block(item)
+    article = _display_article(item)
     related_events = related_events or []
     same_issue_events = same_issue_events or []
     same_category_events = same_category_events or []
@@ -188,29 +184,8 @@ def render_site_event_detail_page(
     ]
     if short_summary:
         body.append(f"<p class=\"detail-lede\">{escape(short_summary)}</p>")
-    if why_it_matters:
-        body.append(
-            '<section class="content-block">'
-            '<h2>Почему это важно</h2>'
-            f'<p>{escape(why_it_matters)}</p>'
-            '</section>'
-        )
-    if what_it_changes:
-        body.append(
-            '<section class="content-block">'
-            '<h2>Что это меняет</h2>'
-            f'<p>{escape(what_it_changes)}</p>'
-            '</section>'
-        )
-    if winners_losers:
-        body.append(
-            '<section class="content-block">'
-            '<h2>Кто выигрывает / проигрывает</h2>'
-            f'<p>{escape(winners_losers)}</p>'
-            '</section>'
-        )
-    if long_summary:
-        paragraphs = "".join(f"<p>{escape(sentence)}</p>" for sentence in _split_sentences(long_summary))
+    if article:
+        paragraphs = "".join(f"<p>{escape(paragraph)}</p>" for paragraph in article)
         body.append(f'<div class="detail-prose">{paragraphs}</div>')
     if issue_navigation is not None and (issue_navigation.get("previous") or issue_navigation.get("next")):
         body.append('<section class="content-block nav-flow-block"><h2>Навигация по выпуску</h2><div class="issue-flow-nav">')
@@ -537,21 +512,17 @@ def _issue_item_card(issue_id: int, item: dict[str, object]) -> str:
 
 def _issue_main_event_card(item: dict[str, object]) -> str:
     title = _POLICY.public_title(str(item.get("title") or item.get("card_title") or ""))
-    summary = _POLICY.public_summary(
-        str(item.get("short_summary") or item.get("card_text") or ""),
-        title=title,
-        section=str(item.get("primary_section") or item.get("section") or ""),
-    )
-    why = _issue_item_why_matters(item)
-    consequences = _issue_item_consequences(item)
+    article = _display_article(item, paragraph_limit=3)
+    lead = article[0] if article else _issue_item_one_line(item)
+    continuation = article[1:] if len(article) > 1 else []
     href = event_href(item) if item.get("event_id") is not None else None
     headline = f'<h3><a href="{href}">{escape(title)}</a></h3>' if href else f"<h3>{escape(title)}</h3>"
+    prose = "".join(f'<p class="issue-article-line">{escape(paragraph)}</p>' for paragraph in continuation)
     return (
         '<article class="issue-main-card">'
         f'{headline}'
-        f'<p class="card-summary">{escape(summary)}</p>'
-        f'<p class="issue-why"><strong>Почему это важно:</strong> {escape(why)}</p>'
-        f'<p class="issue-consequence"><strong>Что дальше:</strong> {escape(consequences)}</p>'
+        f'<p class="card-summary">{escape(lead)}</p>'
+        f'{prose}'
         '</article>'
     )
 
@@ -673,90 +644,27 @@ def _display_long_summary(item: dict[str, object]) -> str:
     )
 
 
-def _structured_long_summary(item: dict[str, object]) -> str:
-    base = _display_long_summary(item)
-    sentences = _split_sentences(base)
-    if len(sentences) >= 3:
-        return " ".join(sentences[:3])
-
-    what_happened = _display_summary(item)
-    why_it_matters = _why_it_matters_block(item)
-    consequences = _consequences_sentence(item)
-    assembled = [what_happened, why_it_matters, consequences]
-    cleaned: list[str] = []
-    for sentence in assembled:
-        normalized = _cleanup_public_phrase(sentence)
-        if normalized and normalized not in cleaned:
-            cleaned.append(normalized)
-    return " ".join(cleaned[:3])
-
-
-def _why_it_matters_block(item: dict[str, object]) -> str:
-    importance = compute_event_importance(item)
-    impact = importance.impact_type.value if importance.impact_type is not None else ""
-    title = _display_title(item).lower()
-    summary = _display_summary(item).lower()
-    text = f"{title} {summary}"
-    if impact == "market_shift":
-        return "Это меняет расстановку сил на AI-рынке: крупные игроки пересматривают стратегию, а конкуренты получают новый ориентир по сделкам и масштабу."
-    if impact == "regulation":
-        return "Это меняет правила игры для рынка: компаниям придется учитывать новые требования, а конкуренция сместится в сторону тех, кто быстрее адаптирует продукт и комплаенс."
-    if impact == "infra":
-        return "Это сдвигает рынок инфраструктуры: компании получают новый базовый слой для AI-сервисов, а конкуренция усиливается вокруг стоимости, производительности и доступа к compute."
-    if impact == "investment":
-        return "Это показывает, куда идет капитал и какие сегменты рынка считаются стратегическими, а значит влияет на оценки, конкуренцию и доступ к партнерствам."
-    if impact == "product_launch":
-        return "Это усиливает конкуренцию за пользователей и корпоративные бюджеты: новый продукт меняет критерии выбора платформы и скорость вывода AI-функций в бизнес."
-    if impact == "dev_update":
-        return "Это влияет на бизнес через производительность команд: изменения в инструментах ускоряют вывод AI-функций и меняют стоимость разработки для компаний."
-    if "рын" in text or "конкур" in text:
-        return "Это напрямую влияет на рынок и конкуренцию: компаниям придется пересматривать продуктовые приоритеты и позиционирование."
-    return "Это влияет на рынок, конкуренцию и бизнес-приоритеты компаний, которые строят или покупают AI-продукты."
-
-
-def _what_it_changes_block(item: dict[str, object]) -> str:
-    importance = compute_event_importance(item)
-    impact = importance.impact_type.value if importance.impact_type is not None else ""
-    section = str(item.get("primary_section") or "")
-    if impact == "infra":
-        return "Для компаний это расширяет варианты инфраструктуры и vendor strategy. Для разработчиков это меняет стек и ограничения по deployment. Для рынка это усиливает борьбу платформ за enterprise-нагрузки."
-    if impact == "regulation":
-        return "Для компаний это означает новые требования к продукту, данным и отчетности. Для разработчиков это меняет ограничения внедрения. Для рынка это перераспределяет преимущества в пользу игроков с сильным комплаенсом."
-    if impact == "investment":
-        return "Для компаний это открывает или закрывает окно финансирования. Для разработчиков это влияет на скорость найма и выпуска продукта. Для рынка это сигнал, какие направления считаются наиболее перспективными."
-    if impact == "market_shift":
-        return "Для компаний это меняет конкурентное поле и переговорные позиции. Для разработчиков это определяет, на какие платформы и экосистемы стоит делать ставку. Для рынка это новый ориентир по масштабу и стратегии."
-    if impact == "product_launch":
-        return "Для компаний это добавляет новый вариант выбора платформы или модели. Для разработчиков это меняет доступные сценарии и инструменты. Для рынка это усиливает давление на конкурентов по качеству и цене."
-    if impact == "dev_update" or section == "coding":
-        return "Для компаний это влияет на скорость вывода AI-функций в продукт. Для разработчиков это меняет повседневные сценарии сборки и интеграции. Для рынка это повышает планку удобства и зрелости инструментов."
-    return "Для компаний это меняет продуктовые и бюджетные решения. Для разработчиков это влияет на стек и скорость внедрения. Для рынка это добавляет новый сигнал о направлении конкуренции."
-
-
-def _who_wins_loses_block(item: dict[str, object]) -> str | None:
-    importance = compute_event_importance(item)
-    impact = importance.impact_type.value if importance.impact_type is not None else ""
-    if impact in {"market_shift", "investment", "regulation", "infra"}:
-        return "Выигрывают игроки, которые уже готовы масштабировать продукт, инфраструктуру или комплаенс. Проигрывают компании с более слабой платформой, медленным внедрением и зависимостью от старых сценариев."
-    return None
-
-
-def _consequences_sentence(item: dict[str, object]) -> str:
-    importance = compute_event_importance(item)
-    impact = importance.impact_type.value if importance.impact_type is not None else ""
-    if impact == "regulation":
-        return "Следствием станет пересборка локальных продуктовых и юридических контуров, а также более жесткий отбор поставщиков для корпоративных и государственных проектов."
-    if impact == "infra":
-        return "Следствием станет перераспределение спроса на инфраструктуру, изменение требований к стеку и давление на конкурентов по цене и производительности."
-    if impact == "investment":
-        return "Следствием станет ускорение сделок, рост ожиданий по окупаемости и более жесткая конкуренция за капитал и партнерства."
-    if impact == "market_shift":
-        return "Следствием станет более жесткая конкурентная борьба, пересмотр партнерств и ускорение стратегических ответов со стороны рынка."
-    if impact == "product_launch":
-        return "Следствием станет пересмотр продуктовых дорожных карт, требований покупателей и темпа обновлений у конкурентов."
-    if impact == "dev_update":
-        return "Следствием станет перераспределение времени разработки, рост ожиданий к удобству инструментов и давление на поставщиков dev-платформ."
-    return "Следствием станет изменение продуктовых приоритетов, бюджетов и требований к AI-стеку."
+def _display_article(item: dict[str, object], *, paragraph_limit: int | None = None) -> list[str]:
+    article = _POLICY.build_article(
+        title=str(item.get("title") or ""),
+        short_summary=str(item.get("short_summary") or ""),
+        long_summary=str(item.get("long_summary") or ""),
+        section=str(item.get("primary_section") or item.get("section") or ""),
+        primary_source_title=str((item.get("primary_source") or {}).get("title") or ""),
+        categories=[str(category.get("section") or "") for category in (item.get("categories") or [])],
+        tags=[str(tag.get("tag") or "") for tag in (item.get("tags") or [])],
+        supporting_source_count=int(item.get("supporting_source_count") or 0),
+        source_documents=[
+            document
+            for document in (item.get("source_documents") or [])
+            if isinstance(document, dict)
+        ],
+    )
+    paragraphs = [_cleanup_public_text(paragraph) for paragraph in article.paragraphs if paragraph]
+    paragraphs = [paragraph for paragraph in paragraphs if paragraph]
+    if paragraph_limit is not None:
+        return paragraphs[:paragraph_limit]
+    return paragraphs
 
 
 def _section_label(section: object) -> str:

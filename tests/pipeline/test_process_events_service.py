@@ -437,8 +437,10 @@ async def test_summary_builder_fallback_returns_russian_text(session_factory):
         event.primary_source = source
         result = await SummaryBuilder().build(event, [raw_item], use_llm=False)
 
-    assert "Инфоповод подтвержден" in result.payload.short_summary
-    assert "Событие собрано" in result.payload.long_summary
+    assert "OpenAI" in result.payload.short_summary
+    assert any("\u0400" <= ch <= "\u04FF" for ch in result.payload.short_summary)
+    assert result.payload.short_summary.count(".") >= 2
+    assert "Инфоповод подтверждает" in result.payload.long_summary
 
 
 async def test_process_events_uses_async_summary_builder_output(session_factory):
@@ -566,3 +568,84 @@ async def test_process_events_uses_llm_only_for_shortlist(session_factory):
     assert llm_calls.count(False) == 1
     assert process_runs[-1].shortlist_count == 1
     assert not llm_logs
+
+
+async def test_process_events_applies_raw_item_shortlist_before_llm(session_factory):
+    llm_calls: list[bool] = []
+
+    class StubSummaryBuilder:
+        async def build(self, event: Event, raw_items: list[RawItem], *, use_llm: bool = True):
+            llm_calls.append(use_llm)
+            return SummaryBuildResult(
+                payload=type(
+                    "StubPayload",
+                    (),
+                    {
+                        "title": event.title,
+                        "short_summary": "Короткое summary.",
+                        "long_summary": "Длинное summary.",
+                    },
+                )(),
+                llm_used=use_llm,
+            )
+
+    async with session_factory() as session:
+        source = build_source(
+            title="TechCrunch AI",
+            url="https://techcrunch.com/category/artificial-intelligence/",
+            source_type=SourceType.WEBSITE,
+            priority_weight=90,
+            section_bias="ai_news|investments",
+        )
+        session.add(source)
+        await session.flush()
+        session.add_all(
+            [
+                build_raw_item(
+                    source_id=source.id,
+                    source_type=source.source_type,
+                    title="Anthropic expands Claude tools for enterprise builders",
+                    text="Anthropic expanded Claude tools for enterprise builders with workflow controls, integrations, and rollout guidance.",
+                    url="https://techcrunch.com/2026/03/25/anthropic-enterprise-builders/",
+                    external_id="strong-item",
+                    published_at=datetime(2026, 3, 25, 12, 0, tzinfo=UTC),
+                ),
+                build_raw_item(
+                    source_id=source.id,
+                    source_type=source.source_type,
+                    title="Update",
+                    text="Too weak to justify shortlist processing even though it is fresh.",
+                    url="https://techcrunch.com/2026/03/25/weak-update/",
+                    external_id="weak-item",
+                    published_at=datetime(2026, 3, 25, 12, 30, tzinfo=UTC),
+                ),
+            ]
+        )
+        await session.commit()
+
+    result = await ProcessEventsService(
+        session_factory=session_factory,
+        summary_builder=StubSummaryBuilder(),
+    ).process()
+
+    async with session_factory() as session:
+        raw_items = list((await session.scalars(select(RawItem).order_by(RawItem.external_id.asc()))).all())
+        process_run = await session.scalar(select(ProcessRun).order_by(ProcessRun.id.desc()))
+        event_count = await session.scalar(select(func.count()).select_from(Event))
+
+    assert result.raw_shortlist_evaluated_count == 2
+    assert result.raw_shortlist_accepted_count == 1
+    assert result.raw_shortlist_rejected_count == 1
+    assert result.raw_shortlist_reject_breakdown == {"weak_title": 1}
+    assert result.created_events == 1
+    assert event_count == 1
+    assert llm_calls == [True]
+    assert raw_items[0].external_id == "strong-item"
+    assert raw_items[0].status == RawItemStatus.CLUSTERED
+    assert raw_items[1].external_id == "weak-item"
+    assert raw_items[1].status == RawItemStatus.DISCARDED
+    assert process_run is not None
+    assert process_run.raw_shortlist_evaluated_count == 2
+    assert process_run.raw_shortlist_accepted_count == 1
+    assert process_run.raw_shortlist_rejected_count == 1
+    assert process_run.raw_shortlist_reject_breakdown_json == {"weak_title": 1}

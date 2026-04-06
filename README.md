@@ -134,8 +134,24 @@ PROCESS_EVENTS_SCHEDULER_ENABLED=true
 EVENT_LLM_SHORTLIST_THRESHOLD=58
 EVENT_LLM_SHORTLIST_SECONDARY_THRESHOLD=48
 DAILY_DIGEST_HOUR=9
+DAILY_DIGEST_MINUTE=0
 WEEKLY_DIGEST_WEEKDAY=mon
 WEEKLY_DIGEST_HOUR=9
+WEEKLY_DIGEST_MINUTE=15
+DIGEST_SEND_DELAY_MINUTES=5
+SCHEDULER_MISFIRE_GRACE_SECONDS=900
+TELEGRAM_DAILY_MIN_RANKING_SCORE=58
+TELEGRAM_DAILY_FALLBACK_MIN_SCORE=45
+TELEGRAM_DAILY_TOTAL_CAP=5
+TELEGRAM_DAILY_WEAK_DAY_TOTAL_CAP=3
+TELEGRAM_MODELS_SERVICES_CAP=2
+TELEGRAM_TOOLS_CODING_CAP=2
+TELEGRAM_INVESTMENTS_MARKET_CAP=2
+TELEGRAM_AI_RUSSIA_CAP=2
+RUSSIA_RELEVANCE_MIN_SCORE=0.58
+RUSSIA_SECTION_MIN_RANKING_SCORE=48
+RUSSIA_SOURCE_REVIEW_MAX_ERROR_RATE=0.45
+RUSSIA_SOURCE_REVIEW_MIN_RAW_ITEMS=1
 ```
 
 Fast start:
@@ -177,6 +193,12 @@ Optional custom CSV:
 ```bash
 python scripts/seed_sources.py --csv-path /path/to/seed_sources.csv
 ```
+
+Source roster notes:
+- `scripts/data/seed_sources.csv` now carries source-layer metadata: `role`, `region`, `status`, `editorial_priority`, `noise_score`
+- `status=active` sources stay ingestable
+- `status=quarantine` and `status=disabled` are seeded for audit/future quality work but are not ingested while `is_active=false`
+- the roster is organized into `signal_feeder`, `verification`, `coding`, and `russia` layers for future website/bot selection tuning
 
 5. Start API:
 
@@ -285,7 +307,7 @@ Restore note:
 
 Reverse proxy / domain foundation:
 - `api.malakhovai.ru` is wired to the API service through Caddy
-- `news.malakhovai.ru` serves a temporary placeholder page until the public web frontend is ready
+- `news.malakhovai.ru` now serves the media website shell built on the shared public model
 
 Important current external blocker:
 - the VPS stack is up, but Caddy can issue certificates only after DNS for `api.malakhovai.ru` and `news.malakhovai.ru` resolves to the VPS
@@ -427,6 +449,7 @@ Preview source runs:
 ```bash
 curl http://localhost:8000/internal/source-runs
 curl http://localhost:8000/internal/debug/source-runs
+curl http://localhost:8000/internal/debug/source-audit
 ```
 
 Run ingestion manually:
@@ -440,6 +463,7 @@ Run process-events manually:
 ```bash
 curl -X POST http://localhost:8000/internal/jobs/process-events
 curl http://localhost:8000/internal/debug/process-runs
+curl http://localhost:8000/internal/debug/raw-shortlist
 curl http://localhost:8000/internal/debug/scheduler
 ```
 
@@ -509,11 +533,89 @@ curl http://localhost:8000/internal/issues/1/section/alpha
 curl http://localhost:8000/internal/issues/1/section/all
 ```
 
+Public read API:
+
+```bash
+curl "http://localhost:8000/api/events?limit=20"
+curl http://localhost:8000/api/events/1
+curl "http://localhost:8000/api/issues?limit=20"
+curl http://localhost:8000/api/issues/1
+curl http://localhost:8000/api/issues/1/sections/all
+curl "http://localhost:8000/api/alpha?date=2026-03-25"
+```
+
+Notes:
+- public responses are built from `events`, `digest_issues`, `digest_issue_items`, and published `alpha_entries`
+- public routes do not expose internal debug/admin payloads
+- public routes do not read `raw_items`
+- the future website can use this layer directly without duplicating selection logic
+
+Media site shell:
+
+```bash
+curl http://localhost:8000/
+curl http://localhost:8000/events
+curl http://localhost:8000/events/1
+curl http://localhost:8000/issues
+curl http://localhost:8000/issues/1
+curl http://localhost:8000/issues/1/sections/all
+curl http://localhost:8000/russia
+curl http://localhost:8000/alpha
+```
+
+Notes:
+- the site shell is server-rendered HTML and uses the shared public event/publication model
+- homepage shows a denser reading surface than Telegram by design
+- `ИИ в России` uses the shared Russia qualification logic instead of raw region tagging
+
+Internal web preview:
+
+```bash
+curl http://localhost:8000/preview
+curl http://localhost:8000/preview/events
+curl http://localhost:8000/preview/events/1
+curl http://localhost:8000/preview/issues/1
+curl http://localhost:8000/preview/issues/1/sections/all
+curl http://localhost:8000/preview/alpha
+```
+
+Notes:
+- preview pages are internal-only and render HTML in the browser
+- they sit on top of the same public/shared event and issue model
+- they are meant to validate media structure and UX before public launch
+
+Telegram best-of preview:
+
+```bash
+curl http://localhost:8000/internal/issues/1
+curl http://localhost:8000/internal/debug/issues/1
+```
+
+What to inspect:
+- `daily_main_debug.visible_sections` on `/internal/issues/{issue_id}`
+- `daily_main_debug.excluded` for below-threshold or capped-out events
+- `telegram_selection` on `/internal/debug/issues/{issue_id}` for policy snapshot and packaged sections
+- `event_quality.russia_relevance` on `/internal/debug/events/{event_id}` for local relevance reasons and AI in Russia qualification
+- `/internal/debug/source-audit?region=russia` for active/quarantine/disabled Russia sources and promotion readiness
+
 LLM usage telemetry:
 
 ```bash
 curl http://localhost:8000/internal/debug/llm-usage
 ```
+
+Quality report:
+
+```bash
+curl "http://localhost:8000/internal/debug/quality-report?days=7"
+```
+
+What to inspect:
+- source status/role/region distribution and per-source Telegram hits
+- shortlist reject rate and top reject reasons
+- average/median event ranking score and verification coverage
+- broader issue items vs Telegram selected items
+- AI in Russia qualified count vs weak PR penalty activations
 
 Resend an existing issue snapshot:
 
@@ -635,6 +737,9 @@ Structured logs now cover:
 What to inspect:
 - why a source fetched nothing or was skipped:
   - `/internal/debug/source-runs`
+- what the curated source pool looks like and which sources are quarantined/disabled:
+  - `/internal/sources`
+  - `/internal/debug/source-audit`
 - how many raw items became events and how many hit shortlist:
   - `/internal/debug/process-runs`
 - what the current schedule is and whether API-local jobs are enabled:

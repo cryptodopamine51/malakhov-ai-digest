@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import date as date_cls, datetime
+import re
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import desc, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -15,6 +16,7 @@ from app.core.config import get_settings
 from app.core.digest_dates import default_daily_issue_date, default_weekly_issue_date
 from app.core.logging import configure_logging
 from app.db.models import (
+    AlphaEntryStatus,
     Delivery,
     DigestIssue,
     DigestIssueItem,
@@ -28,6 +30,7 @@ from app.db.models import (
     LlmUsageLog,
     ProcessRun,
     RawItem,
+    RawItemStatus,
     Source,
     SourceRun,
     SourceType,
@@ -52,8 +55,40 @@ from app.services.events import ProcessEventsJobRunner, ProcessEventsService
 from app.services.ingestion import IngestionJobRunner, IngestionService
 from app.services.digest import DigestBuilderService
 from app.services.deliveries import IssueDeliveryService
+from app.services.editorial import get_ru_editorial_policy
+from app.services.quality import QualityReportService
+from app.services.russia import qualifies_for_ai_russia_event
+from app.services.shortlist import RawItemShortlistService
+from app.services.site import compute_event_importance, select_homepage_events, sort_site_events
 from app.services.sources.reputation import classify_source_pool_role, score_source
-from app.services.sources import OfficialBlogAdapter, RssFeedAdapter, SourceHttpClient, SourceRegistry, WebsiteFeedAdapter
+from app.services.sources import (
+    OfficialBlogAdapter,
+    RssFeedAdapter,
+    SourceAuditService,
+    SourceHttpClient,
+    SourceRegistry,
+    WebsiteFeedAdapter,
+)
+from app.web import (
+    build_event_slug,
+    build_issue_editorial_sections,
+    build_issue_intro,
+    event_href,
+    render_alpha_page,
+    render_event_detail_page,
+    render_events_feed_page,
+    render_homepage_preview,
+    render_issue_detail_page,
+    render_issue_section_page,
+    render_site_alpha_page,
+    render_site_event_detail_page,
+    render_site_events_page,
+    render_site_homepage,
+    render_site_issue_detail_page,
+    render_site_issue_section_page,
+    render_site_issues_page,
+    select_site_russia_events,
+)
 
 
 def _serialize_datetime(value: datetime | None) -> str | None:
@@ -72,6 +107,13 @@ def _serialize_source(source: Source) -> dict[str, object]:
         "language": source.language,
         "country_scope": source.country_scope,
         "section_bias": source.section_bias,
+        "role": source.role.value,
+        "region": source.region.value,
+        "status": source.status.value,
+        "editorial_priority": source.editorial_priority,
+        "noise_score": source.noise_score,
+        "last_success_at": _serialize_datetime(source.last_success_at),
+        "last_http_status": source.last_http_status,
         "source_quality_tier": reputation.tier,
         "source_quality_score": reputation.score,
         "source_pool_role": classify_source_pool_role(source),
@@ -113,6 +155,10 @@ def _serialize_event(event: Event) -> dict[str, object]:
         "coding_score": event.coding_score,
         "investment_score": event.investment_score,
         "confidence_score": event.confidence_score,
+        "ranking_score": event.ranking_score,
+        "supporting_source_count": event.supporting_source_count,
+        "verification_source_count": event.verification_source_count,
+        "has_verification_source": event.has_verification_source,
         "is_highlight": event.is_highlight,
         "primary_section": primary_section,
         "related_previous_event_id": event.related_previous_event_id,
@@ -130,6 +176,27 @@ def _serialize_event_source(event_source: EventSource) -> dict[str, object]:
         "citation_url": event_source.citation_url,
         "source_title": event_source.source.title if event_source.source else None,
         "raw_title": event_source.raw_item.normalized_title if event_source.raw_item else None,
+    }
+
+
+def _serialize_site_source_document(event_source: EventSource) -> dict[str, object]:
+    raw_item = event_source.raw_item
+    source = event_source.source
+    return {
+        "role": event_source.role.value,
+        "source_title": source.title if source is not None else None,
+        "title": (
+            raw_item.normalized_title
+            if raw_item is not None and raw_item.normalized_title
+            else raw_item.raw_title if raw_item is not None else None
+        ),
+        "text": (
+            raw_item.normalized_text
+            if raw_item is not None and raw_item.normalized_text
+            else raw_item.raw_text if raw_item is not None else None
+        ),
+        "canonical_url": raw_item.canonical_url if raw_item is not None else event_source.citation_url,
+        "entities": raw_item.entities_json if raw_item is not None else None,
     }
 
 
@@ -157,6 +224,8 @@ def _serialize_source_run(run: SourceRun) -> dict[str, object]:
         "source_title": source.title if source is not None else None,
         "source_pool_role": classify_source_pool_role(source) if source is not None else None,
         "source_quality_tier": reputation.tier if reputation is not None else None,
+        "source_region": source.region.value if source is not None else None,
+        "source_status": source.status.value if source is not None else None,
         "started_at": _serialize_datetime(run.started_at),
         "finished_at": _serialize_datetime(run.finished_at),
         "status": run.status.value,
@@ -185,6 +254,10 @@ def _serialize_process_run(run: ProcessRun) -> dict[str, object]:
         "ambiguous_count": run.ambiguous_count,
         "shortlist_count": run.shortlist_count,
         "llm_event_count": run.llm_event_count,
+        "raw_shortlist_evaluated_count": run.raw_shortlist_evaluated_count,
+        "raw_shortlist_accepted_count": run.raw_shortlist_accepted_count,
+        "raw_shortlist_rejected_count": run.raw_shortlist_rejected_count,
+        "raw_shortlist_reject_breakdown": run.raw_shortlist_reject_breakdown_json or {},
         "duration_ms": run.duration_ms,
         "error_message": run.error_message,
     }
@@ -219,6 +292,42 @@ def _serialize_delivery(delivery: Delivery) -> dict[str, object]:
     }
 
 
+def _serialize_editorial_debug(event: Event) -> dict[str, object]:
+    policy = get_ru_editorial_policy()
+    title_analysis = policy.inspect_text(event.title)
+    short_analysis = policy.inspect_text(event.short_summary or "")
+    long_analysis = policy.inspect_text(event.long_summary or "")
+    return {
+        "language_default": policy.output_language_default,
+        "preserve_terms": list(policy.preserve_terms),
+        "discouraged_english_phrases": list(policy.discouraged_english_phrases),
+        "title": {
+            "has_cyrillic": title_analysis.has_cyrillic,
+            "english_leakage_ratio": title_analysis.english_leakage_ratio,
+            "preserved_terms": title_analysis.preserved_terms,
+        },
+        "short_summary": {
+            "has_cyrillic": short_analysis.has_cyrillic,
+            "english_leakage_ratio": short_analysis.english_leakage_ratio,
+            "preserved_terms": short_analysis.preserved_terms,
+        },
+        "long_summary": {
+            "has_cyrillic": long_analysis.has_cyrillic,
+            "english_leakage_ratio": long_analysis.english_leakage_ratio,
+            "preserved_terms": long_analysis.preserved_terms,
+        },
+    }
+
+
+def _serialize_shortlist_decision(decision: object) -> dict[str, object]:
+    return {
+        "raw_item_id": decision.raw_item_id,
+        "accepted": decision.accepted,
+        "reasons": decision.reasons,
+        "signals": decision.signals,
+    }
+
+
 def _serialize_issue(issue: DigestIssue) -> dict[str, object]:
     return {
         "id": issue.id,
@@ -248,6 +357,100 @@ def _serialize_issue_item(item: DigestIssueItem) -> dict[str, object]:
     }
 
 
+def _serialize_public_source(source: Source | None) -> dict[str, object] | None:
+    if source is None:
+        return None
+    return {
+        "id": source.id,
+        "title": source.title,
+        "source_type": source.source_type.value,
+        "region": source.region.value,
+        "country_scope": source.country_scope,
+        "language": source.language,
+        "url": source.handle_or_url,
+    }
+
+
+def _serialize_public_event_card(event: Event) -> dict[str, object]:
+    primary_section = next((category.section.value for category in event.categories if category.is_primary_section), None)
+    secondary_sections = [category.section.value for category in event.categories if not category.is_primary_section]
+    return {
+        "id": event.id,
+        "event_date": event.event_date.isoformat(),
+        "title": event.title,
+        "short_summary": event.short_summary,
+        "ranking_score": event.ranking_score,
+        "importance_score": event.importance_score,
+        "confidence_score": event.confidence_score,
+        "primary_section": primary_section,
+        "secondary_sections": secondary_sections,
+        "is_ai_in_russia": qualifies_for_ai_russia_event(event),
+        "has_verification_source": event.has_verification_source,
+        "is_highlight": event.is_highlight,
+        "primary_source": _serialize_public_source(event.primary_source),
+        "primary_source_url": event.primary_source_url,
+        "created_at": _serialize_datetime(event.created_at),
+        "updated_at": _serialize_datetime(event.updated_at),
+    }
+
+
+def _serialize_public_event_detail(event: Event) -> dict[str, object]:
+    return {
+        **_serialize_public_event_card(event),
+        "long_summary": event.long_summary,
+        "categories": [_serialize_event_category(category) for category in event.categories],
+        "tags": [_serialize_event_tag(tag) for tag in event.tags],
+        "related_previous_event_id": event.related_previous_event_id,
+    }
+
+
+def _serialize_public_issue_summary(issue: DigestIssue) -> dict[str, object]:
+    section_counts: dict[str, int] = {}
+    for section in DigestSection:
+        section_counts[section.value] = sum(1 for item in issue.items if item.section is section and item.event_id is not None)
+    return {
+        "id": issue.id,
+        "issue_type": issue.issue_type.value,
+        "issue_date": issue.issue_date.isoformat(),
+        "period_start": issue.period_start.isoformat(),
+        "period_end": issue.period_end.isoformat(),
+        "title": issue.title,
+        "status": issue.status.value,
+        "section_counts": section_counts,
+        "created_at": _serialize_datetime(issue.created_at),
+        "updated_at": _serialize_datetime(issue.updated_at),
+    }
+
+
+def _serialize_public_issue_item(item: DigestIssueItem) -> dict[str, object]:
+    return {
+        "id": item.id,
+        "section": item.section.value,
+        "rank_order": item.rank_order,
+        "card_title": item.card_title,
+        "card_text": item.card_text,
+        "card_links": item.card_links_json or [],
+        "is_primary_block": item.is_primary_block,
+        "event_id": item.event_id,
+        "alpha_entry_id": item.alpha_entry_id,
+    }
+
+
+def _serialize_public_alpha_entry(entry) -> dict[str, object]:
+    return {
+        "id": entry.id,
+        "title": entry.title,
+        "body_short": entry.body_short,
+        "body_long": entry.body_long,
+        "source_links": entry.source_links_json or [],
+        "event_id": entry.event_id,
+        "priority_rank": entry.priority_rank,
+        "publish_date": entry.publish_date.isoformat(),
+        "created_at": _serialize_datetime(entry.created_at),
+        "updated_at": _serialize_datetime(entry.updated_at),
+    }
+
+
 def _serialize_daily_main_preview(preview) -> dict[str, object]:
     return {
         "visible_sections": {
@@ -264,6 +467,17 @@ def _serialize_daily_main_preview(preview) -> dict[str, object]:
             }
             for item in preview.suppressed
         ],
+        "excluded": [
+            {
+                "event_id": item.event_id,
+                "candidate_section": item.candidate_section.value,
+                "included_section": item.included_section.value if item.included_section is not None else None,
+                "ranking_score": item.ranking_score,
+                "reason": item.reason,
+            }
+            for item in preview.excluded
+        ],
+        "policy": preview.policy_snapshot,
     }
 
 
@@ -280,11 +494,7 @@ def _issue_debug_summary(issue: DigestIssue, preview) -> dict[str, object]:
         "selected_event_ids_by_section": {
             section.value: [
                 item.event_id
-                for item in (
-                    preview.visible_by_section.get(section, [])
-                    if preview is not None
-                    else [item for item in issue.items if item.section is section]
-                )
+                for item in [item for item in issue.items if item.section is section]
                 if item.event_id is not None
             ]
             for section in DigestSection
@@ -304,6 +514,7 @@ def _issue_debug_summary(issue: DigestIssue, preview) -> dict[str, object]:
             for items in preview.visible_by_section.values()
             if any(item.event_id is not None for item in items)
         ) <= 2,
+        "telegram_selection": None if preview is None else _serialize_daily_main_preview(preview),
         "selected_items": [_serialize_issue_item(item) for item in sorted(issue.items, key=lambda item: (item.section.value, item.rank_order, item.id))],
     }
 
@@ -423,7 +634,13 @@ def create_app(
     @app.get("/internal/sources")
     async def list_sources() -> dict[str, list[dict[str, object]]]:
         async with db_session_factory() as session:
-            sources = list((await session.scalars(select(Source).order_by(Source.priority_weight.asc(), Source.id.asc()))).all())
+            sources = list(
+                (
+                    await session.scalars(
+                        select(Source).order_by(Source.editorial_priority.asc(), Source.priority_weight.asc(), Source.id.asc())
+                    )
+                ).all()
+            )
         return {"items": [_serialize_source(source) for source in sources]}
 
     @app.get("/internal/raw-items")
@@ -447,6 +664,35 @@ def create_app(
     @app.get("/internal/debug/source-runs")
     async def list_debug_source_runs(limit: int = 20) -> dict[str, list[dict[str, object]]]:
         return await list_source_runs(limit=limit)
+
+    @app.get("/internal/debug/source-audit")
+    async def list_source_audit(limit: int = 100, region: str | None = None, status: str | None = None) -> dict[str, object]:
+        async with db_session_factory() as session:
+            return await SourceAuditService(session).build_report(limit=limit, region=region, status=status)
+
+    @app.get("/internal/debug/raw-shortlist")
+    async def preview_raw_shortlist(limit: int = 50) -> dict[str, object]:
+        safe_limit = max(1, min(limit, 200))
+        stmt = (
+            select(RawItem)
+            .where(RawItem.status == RawItemStatus.FETCHED)
+            .options(selectinload(RawItem.source))
+            .order_by(RawItem.published_at.asc().nulls_last(), RawItem.id.asc())
+            .limit(safe_limit)
+        )
+        async with db_session_factory() as session:
+            raw_items = list((await session.scalars(stmt)).all())
+            shortlist_result = await RawItemShortlistService().evaluate_batch(session=session, raw_items=raw_items)
+
+        return {
+            "items": [_serialize_shortlist_decision(decision) for decision in shortlist_result.decisions],
+            "metrics": {
+                "evaluated": shortlist_result.evaluated_count,
+                "accepted": shortlist_result.accepted_count,
+                "rejected": shortlist_result.rejected_count,
+                "reject_breakdown": shortlist_result.reject_breakdown,
+            },
+        }
 
     @app.post("/internal/jobs/ingest")
     async def run_ingestion_job() -> dict[str, object]:
@@ -505,6 +751,55 @@ def create_app(
             events = list((await session.scalars(stmt)).unique().all())
         return {"items": [_serialize_event(event) for event in events]}
 
+    @app.get("/api/events")
+    async def public_list_events(
+        section: str | None = None,
+        date: str | None = None,
+        surface: str | None = None,
+        limit: int = 20,
+        page: int = 1,
+    ) -> dict[str, object]:
+        safe_limit = max(1, min(limit, 100))
+        safe_page = max(1, min(page, 500))
+        stmt = (
+            select(Event)
+            .options(selectinload(Event.categories), selectinload(Event.tags), selectinload(Event.primary_source))
+            .order_by(Event.event_date.desc(), Event.ranking_score.desc(), Event.id.desc())
+            .limit(safe_limit + 1)
+            .offset((safe_page - 1) * safe_limit)
+        )
+        if date is not None:
+            try:
+                target_date = date_cls.fromisoformat(date)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="invalid date") from exc
+            stmt = stmt.where(Event.event_date == target_date)
+        if section is not None:
+            try:
+                target_section = EventSection(section)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="invalid section") from exc
+            stmt = stmt.join(Event.categories).where(EventCategory.section == target_section)
+        if surface is not None and surface not in {"ai_in_russia"}:
+            raise HTTPException(status_code=400, detail="invalid surface")
+        async with db_session_factory() as session:
+            events = list((await session.scalars(stmt)).unique().all())
+        if surface == "ai_in_russia":
+            events = [event for event in events if qualifies_for_ai_russia_event(event)]
+        has_next = len(events) > safe_limit
+        events = events[:safe_limit]
+        return {
+            "items": [_serialize_public_event_card(event) for event in events],
+            "meta": {
+                "limit": safe_limit,
+                "page": safe_page,
+                "has_next": has_next,
+                "section": section,
+                "date": date,
+                "surface": surface,
+            },
+        }
+
     @app.get("/internal/events/{event_id}")
     async def get_event(event_id: int) -> dict[str, object]:
         stmt = (
@@ -529,6 +824,23 @@ def create_app(
             "primary_source": _serialize_source(event.primary_source) if event.primary_source else None,
             "sources": [_serialize_event_source(event_source) for event_source in event.event_sources],
         }
+
+    @app.get("/api/events/{event_id}")
+    async def public_get_event(event_id: int) -> dict[str, object]:
+        stmt = (
+            select(Event)
+            .where(Event.id == event_id)
+            .options(
+                selectinload(Event.categories),
+                selectinload(Event.tags),
+                selectinload(Event.primary_source),
+            )
+        )
+        async with db_session_factory() as session:
+            event = await session.scalar(stmt)
+        if event is None:
+            raise HTTPException(status_code=404, detail="event not found")
+        return {"item": _serialize_public_event_detail(event)}
 
     @app.get("/internal/debug/events/{event_id}")
     async def get_event_debug(event_id: int) -> dict[str, object]:
@@ -588,7 +900,47 @@ def create_app(
                 "coding_score": event.coding_score,
                 "investment_score": event.investment_score,
                 "confidence_score": event.confidence_score,
+                "ranking_score": event.ranking_score,
             },
+            "event_quality": {
+                "event_importance_tier": compute_event_importance(event).tier.value,
+                "event_impact_type": None if compute_event_importance(event).impact_type is None else compute_event_importance(event).impact_type.value,
+                "impact_boost_applied": compute_event_importance(event).impact_boost_applied,
+                "event_importance_reasons": compute_event_importance(event).reasons,
+                "source_surface_adjustment": compute_event_importance(event).source_surface_adjustment,
+                "consequence_gate_triggered": compute_event_importance(event).consequence_gate_triggered,
+                "surface_excluded": compute_event_importance(event).excluded,
+                "surface_exclusion_reason": compute_event_importance(event).exclusion_reason,
+                "canonical_source_id": event.primary_source_id,
+                "canonical_source": _serialize_source(event.primary_source) if event.primary_source else None,
+                "canonical_source_reason": (event.score_components_json or {}).get("canonical_source_reason"),
+                "supporting_source_count": event.supporting_source_count,
+                "verification_source_count": event.verification_source_count,
+                "has_verification_source": event.has_verification_source,
+                "russia_relevance": {
+                    "score": (event.score_components_json or {}).get("russia_relevance_score", 0.0),
+                    "reason_codes": (event.score_components_json or {}).get("russia_reason_codes", []),
+                    "qualified_for_ai_russia": qualifies_for_ai_russia_event(event),
+                    "source_region_is_russia": bool(
+                        event.primary_source is not None
+                        and getattr(event.primary_source, "region", None) is not None
+                        and event.primary_source.region.value == "russia"
+                    ),
+                    "signals": {
+                        "source_region_count": (event.score_components_json or {}).get("russia_source_region_count", 0),
+                        "source_role_count": (event.score_components_json or {}).get("russia_source_role_count", 0),
+                        "policy_signal": bool((event.score_components_json or {}).get("russia_policy_signal")),
+                        "state_signal": bool((event.score_components_json or {}).get("russia_state_signal")),
+                        "major_company_signal": bool((event.score_components_json or {}).get("russia_major_company_signal")),
+                        "market_infra_signal": bool((event.score_components_json or {}).get("russia_market_infra_signal")),
+                        "adoption_signal": bool((event.score_components_json or {}).get("russia_adoption_signal")),
+                        "restriction_signal": bool((event.score_components_json or {}).get("russia_restriction_signal")),
+                        "weak_pr_penalty": bool((event.score_components_json or {}).get("russia_weak_pr_penalty")),
+                    },
+                },
+                "score_components": event.score_components_json or {},
+            },
+            "editorial": _serialize_editorial_debug(event),
             "categories": [_serialize_event_category(category) for category in event.categories],
             "tags": [_serialize_event_tag(tag) for tag in event.tags],
             "shortlist_passed": max(
@@ -645,6 +997,10 @@ def create_app(
             "updated_events": result.updated_events,
             "clusters_merged": result.clusters_merged,
             "ambiguous_count": result.ambiguous_count,
+            "raw_shortlist_evaluated_count": result.raw_shortlist_evaluated_count,
+            "raw_shortlist_accepted_count": result.raw_shortlist_accepted_count,
+            "raw_shortlist_rejected_count": result.raw_shortlist_rejected_count,
+            "raw_shortlist_reject_breakdown": result.raw_shortlist_reject_breakdown or {},
             "shortlist_count": result.shortlist_count,
             "llm_event_count": result.llm_event_count,
         }
@@ -712,6 +1068,13 @@ def create_app(
             "aggregate_by_status": aggregate_by_status,
         }
 
+    @app.get("/internal/debug/quality-report")
+    async def get_quality_report(days: int = 7) -> dict[str, object]:
+        return await QualityReportService(
+            session_factory=db_session_factory,
+            digest_builder=digest_builder,
+        ).build_report(days=days)
+
     @app.get("/internal/issues")
     async def list_issues(
         issue_type: str | None = None,
@@ -722,6 +1085,33 @@ def create_app(
         parsed_date = date_cls.fromisoformat(date) if date is not None else None
         issues = await digest_builder.list_issues(issue_type=parsed_issue_type, issue_date=parsed_date, limit=max(1, min(limit, 100)))
         return {"items": [_serialize_issue(issue) for issue in issues]}
+
+    @app.get("/api/issues")
+    async def public_list_issues(
+        issue_type: str | None = None,
+        date: str | None = None,
+        limit: int = 20,
+        page: int = 1,
+    ) -> dict[str, object]:
+        parsed_issue_type = DigestIssueType(issue_type) if issue_type is not None else None
+        parsed_date = date_cls.fromisoformat(date) if date is not None else None
+        safe_limit = max(1, min(limit, 100))
+        safe_page = max(1, min(page, 500))
+        issues = await digest_builder.list_issues(issue_type=parsed_issue_type, issue_date=parsed_date, limit=safe_limit * safe_page + 1)
+        start = (safe_page - 1) * safe_limit
+        sliced = issues[start:start + safe_limit + 1]
+        has_next = len(sliced) > safe_limit
+        issues = sliced[:safe_limit]
+        return {
+            "items": [_serialize_public_issue_summary(issue) for issue in issues],
+            "meta": {
+                "limit": safe_limit,
+                "page": safe_page,
+                "has_next": has_next,
+                "issue_type": issue_type,
+                "date": date,
+            },
+        }
 
     @app.get("/internal/issues/{issue_id}")
     async def get_issue(issue_id: int) -> dict[str, object]:
@@ -737,6 +1127,29 @@ def create_app(
             if preview is not None:
                 payload["daily_main_debug"] = _serialize_daily_main_preview(preview)
         return payload
+
+    @app.get("/api/issues/{issue_id}")
+    async def public_get_issue(issue_id: int) -> dict[str, object]:
+        issue = await digest_builder.get_issue(issue_id)
+        if issue is None:
+            raise HTTPException(status_code=404, detail="issue not found")
+        section_counts: dict[str, int] = {}
+        for section in DigestSection:
+            section_counts[section.value] = sum(1 for item in issue.items if item.section is section and item.event_id is not None)
+        sections = [
+            {
+                "section": section.value,
+                "item_count": sum(1 for item in issue.items if item.section is section),
+                "event_count": sum(1 for item in issue.items if item.section is section and item.event_id is not None),
+            }
+            for section in DigestSection
+        ]
+        return {
+            "issue": _serialize_public_issue_summary(issue),
+            "sections": sections,
+            "section_counts": section_counts,
+            "items": [_serialize_public_issue_item(item) for item in sorted(issue.items, key=lambda item: (item.section.value, item.rank_order, item.id))],
+        }
 
     @app.get("/internal/debug/issues/{issue_id}")
     async def get_issue_debug(issue_id: int) -> dict[str, object]:
@@ -778,6 +1191,22 @@ def create_app(
                     if item.source_section is parsed_section
                 ]
         return payload
+
+    @app.get("/api/issues/{issue_id}/sections/{section}")
+    async def public_get_issue_section(issue_id: int, section: str) -> dict[str, object]:
+        try:
+            parsed_section = DigestSection(section)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="invalid section") from exc
+        issue = await digest_builder.get_issue(issue_id)
+        if issue is None:
+            raise HTTPException(status_code=404, detail="issue not found")
+        items = await digest_builder.get_section_items(issue_id, parsed_section)
+        return {
+            "issue": _serialize_public_issue_summary(issue),
+            "section": parsed_section.value,
+            "items": [_serialize_public_issue_item(item) for item in items],
+        }
 
     @app.post("/internal/jobs/build-daily")
     async def build_daily(date: str | None = None) -> dict[str, object]:
@@ -846,6 +1275,226 @@ def create_app(
             raise HTTPException(status_code=404, detail="issue not found")
         return {"status": "ok", "message_id": message_id}
 
+    @app.get("/api/alpha")
+    async def public_list_alpha(date: str | None = None, limit: int = 20) -> dict[str, object]:
+        parsed_date = date_cls.fromisoformat(date) if date is not None else None
+        entries = await alpha_service.list_entries(
+            status=AlphaEntryStatus.PUBLISHED,
+            publish_date=parsed_date,
+            limit=max(1, min(limit, 100)),
+        )
+        return {
+            "items": [_serialize_public_alpha_entry(entry) for entry in entries],
+            "meta": {
+                "date": date,
+                "limit": max(1, min(limit, 100)),
+            },
+        }
+
+    @app.get("/", response_class=HTMLResponse)
+    async def site_homepage() -> HTMLResponse:
+        recent_payload = await public_list_events(limit=24)
+        issues_payload = await public_list_issues(limit=6)
+        russia_payload = await public_list_events(surface="ai_in_russia", limit=8)
+        broader_russia_payload = await public_list_events(limit=24)
+        alpha_payload = await public_list_alpha(limit=6)
+        homepage_events = select_homepage_events(sort_site_events(recent_payload["items"]))
+        recent_event_pool = [
+            item
+            for item in sort_site_events(recent_payload["items"])
+            if int(item["id"]) not in {int(event["id"]) for event in homepage_events[:5]}
+            and not compute_event_importance(item).excluded
+        ]
+        recent_events = recent_event_pool[:8] if recent_event_pool else homepage_events[1:4]
+        return HTMLResponse(
+            render_site_homepage(
+                featured_events=homepage_events[:5],
+                latest_issue=issues_payload["items"][0] if issues_payload["items"] else None,
+                russia_events=select_site_russia_events(
+                    strict_items=russia_payload["items"],
+                    broader_items=broader_russia_payload["items"],
+                ),
+                recent_events=recent_events,
+                issues=issues_payload["items"],
+                alpha_items=alpha_payload["items"],
+            )
+        )
+
+    @app.get("/events", response_class=HTMLResponse)
+    async def site_events_feed(page: int = 1) -> HTMLResponse:
+        payload = await public_list_events(limit=12, page=page)
+        return HTMLResponse(
+            render_site_events_page(
+                events=sort_site_events(payload["items"]),
+                page=payload["meta"]["page"],
+                has_next=bool(payload["meta"]["has_next"]),
+            )
+        )
+
+    @app.get("/events/{event_ref}", response_class=HTMLResponse)
+    async def site_event_detail(event_ref: str) -> HTMLResponse:
+        event_id = await _resolve_event_id_from_ref(event_ref, public_list_events)
+        item = await _load_site_event_item(event_id=event_id, db_session_factory=db_session_factory)
+        primary_section = item.get("primary_section")
+        related_section_payload = await public_list_events(
+            section=None if primary_section in {None, "all"} else str(primary_section),
+            limit=18,
+        )
+        broader_payload = await public_list_events(limit=24)
+        issue_context = await _build_issue_context_for_event(
+            event_id=event_id,
+            digest_builder=digest_builder,
+            public_get_event_fn=public_get_event,
+        )
+        return HTMLResponse(
+            render_site_event_detail_page(
+                item=item,
+                related_events=_select_related_site_events(
+                    current_item=item,
+                    same_section_items=related_section_payload["items"],
+                    broader_items=broader_payload["items"],
+                ),
+                same_issue_events=issue_context["same_issue_events"],
+                same_category_events=_select_same_category_events(
+                    current_item=item,
+                    same_section_items=related_section_payload["items"],
+                    broader_items=broader_payload["items"],
+                ),
+                issue_navigation=issue_context["navigation"],
+            )
+        )
+
+    @app.get("/issues", response_class=HTMLResponse)
+    async def site_issues_archive(page: int = 1) -> HTMLResponse:
+        payload = await public_list_issues(limit=10, page=page)
+        return HTMLResponse(
+            render_site_issues_page(
+                issues=payload["items"],
+                page=payload["meta"]["page"],
+                has_next=bool(payload["meta"]["has_next"]),
+            )
+        )
+
+    @app.get("/issues/{issue_id}", response_class=HTMLResponse)
+    async def site_issue_detail(issue_id: int) -> HTMLResponse:
+        payload = await public_get_issue(issue_id)
+        enriched_items = await _enrich_issue_items_with_public_events(
+            payload["items"],
+            lambda event_id: _load_site_event_item(event_id=event_id, db_session_factory=db_session_factory),
+        )
+        editorial_sections = build_issue_editorial_sections(items=enriched_items)
+        return HTMLResponse(
+            render_site_issue_detail_page(
+                issue=payload["issue"],
+                sections=payload["sections"],
+                items=enriched_items,
+                editorial_sections=editorial_sections,
+                intro=build_issue_intro(payload["issue"], editorial_sections),
+            )
+        )
+
+    @app.get("/issues/{issue_id}/sections/{section}", response_class=HTMLResponse)
+    async def site_issue_section(issue_id: int, section: str) -> HTMLResponse:
+        payload = await public_get_issue_section(issue_id, section)
+        enriched_items = await _enrich_issue_items_with_public_events(
+            payload["items"],
+            lambda event_id: _load_site_event_item(event_id=event_id, db_session_factory=db_session_factory),
+        )
+        editorial_sections = build_issue_editorial_sections(items=enriched_items)
+        editorial_section = next((item for item in editorial_sections if item["source_section"] == section or item["slug"] == section), None)
+        return HTMLResponse(
+            render_site_issue_section_page(
+                issue=payload["issue"],
+                section=payload["section"],
+                items=enriched_items,
+                editorial_section=editorial_section,
+            )
+        )
+
+    @app.get("/russia", response_class=HTMLResponse)
+    async def site_ai_in_russia() -> HTMLResponse:
+        payload = await public_list_events(surface="ai_in_russia", limit=24)
+        broader_payload = await public_list_events(limit=24)
+        return HTMLResponse(
+            render_site_events_page(
+                events=sort_site_events(select_site_russia_events(
+                    strict_items=payload["items"],
+                    broader_items=broader_payload["items"],
+                    limit=24,
+                    min_items=6,
+                )),
+                title="ИИ в России",
+                subtitle="Качественно отфильтрованный локальный контур: регуляторика, рынок, инфраструктура и сильные корпоративные сдвиги.",
+            )
+        )
+
+    @app.get("/alpha", response_class=HTMLResponse)
+    async def site_alpha(date: str | None = None) -> HTMLResponse:
+        payload = await public_list_alpha(date=date, limit=24)
+        return HTMLResponse(render_site_alpha_page(items=payload["items"]))
+
+    @app.get("/sitemap.xml")
+    async def sitemap() -> Response:
+        events_payload = await public_list_events(limit=500, page=1)
+        issues_payload = await public_list_issues(limit=200, page=1)
+        urls = [
+            f"{event_href(item)}"
+            for item in events_payload["items"]
+        ]
+        issue_urls = [f'/issues/{item["id"]}' for item in issues_payload["items"]]
+        xml = _build_sitemap_xml(["/", "/events", "/issues", *urls, *issue_urls])
+        return Response(content=xml, media_type="application/xml")
+
+    @app.get("/preview", response_class=HTMLResponse)
+    async def preview_homepage() -> HTMLResponse:
+        issues_payload = await public_list_issues(limit=8)
+        events_payload = await public_list_events(limit=12)
+        alpha_payload = await public_list_alpha(limit=6)
+        return HTMLResponse(
+            render_homepage_preview(
+                issues=issues_payload["items"],
+                events=events_payload["items"],
+                alpha_items=alpha_payload["items"],
+            )
+        )
+
+    @app.get("/preview/events", response_class=HTMLResponse)
+    async def preview_events_feed() -> HTMLResponse:
+        payload = await public_list_events(limit=24)
+        return HTMLResponse(render_events_feed_page(events=payload["items"]))
+
+    @app.get("/preview/events/{event_id}", response_class=HTMLResponse)
+    async def preview_event_detail(event_id: int) -> HTMLResponse:
+        payload = await public_get_event(event_id)
+        return HTMLResponse(render_event_detail_page(item=payload["item"]))
+
+    @app.get("/preview/issues/{issue_id}", response_class=HTMLResponse)
+    async def preview_issue_detail(issue_id: int) -> HTMLResponse:
+        payload = await public_get_issue(issue_id)
+        return HTMLResponse(
+            render_issue_detail_page(
+                issue=payload["issue"],
+                sections=payload["sections"],
+                items=payload["items"],
+            )
+        )
+
+    @app.get("/preview/issues/{issue_id}/sections/{section}", response_class=HTMLResponse)
+    async def preview_issue_section(issue_id: int, section: str) -> HTMLResponse:
+        payload = await public_get_issue_section(issue_id, section)
+        return HTMLResponse(
+            render_issue_section_page(
+                issue=payload["issue"],
+                section=payload["section"],
+                items=payload["items"],
+            )
+        )
+
+    @app.get("/preview/alpha", response_class=HTMLResponse)
+    async def preview_alpha(date: str | None = None) -> HTMLResponse:
+        payload = await public_list_alpha(date=date, limit=20)
+        return HTMLResponse(render_alpha_page(items=payload["items"]))
+
     @app.get("/internal/debug/llm-usage")
     async def list_llm_usage(limit: int = 50) -> dict[str, object]:
         safe_limit = max(1, min(limit, 200))
@@ -879,6 +1528,198 @@ def create_app(
         }
 
     return app
+
+
+def _select_related_site_events(
+    *,
+    current_item: dict[str, object],
+    same_section_items: list[dict[str, object]],
+    broader_items: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    current_id = int(current_item["id"])
+    current_section = str(current_item.get("primary_section") or "")
+    current_source = str((current_item.get("primary_source") or {}).get("title") or "").lower()
+    current_is_russia = bool(current_item.get("is_ai_in_russia"))
+
+    seen_ids: set[int] = {current_id}
+    scored: list[tuple[int, float, dict[str, object]]] = []
+    for item in [*same_section_items, *broader_items]:
+        item_id = int(item["id"])
+        if item_id in seen_ids:
+            continue
+        seen_ids.add(item_id)
+        match_score = 0
+        if str(item.get("primary_section") or "") == current_section:
+            match_score += 5
+        if bool(item.get("is_ai_in_russia")) and current_is_russia:
+            match_score += 4
+        if str((item.get("primary_source") or {}).get("title") or "").lower() == current_source and current_source:
+            match_score += 1
+        scored.append((match_score, float(item.get("ranking_score") or 0), item))
+
+    scored.sort(
+        key=lambda row: (row[0], row[1], str(row[2].get("event_date") or ""), int(row[2]["id"])),
+        reverse=True,
+    )
+    return [row[2] for row in scored[:5]]
+
+
+def _select_same_category_events(
+    *,
+    current_item: dict[str, object],
+    same_section_items: list[dict[str, object]],
+    broader_items: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    current_id = int(current_item["id"])
+    candidates = [
+        item
+        for item in [*same_section_items, *broader_items]
+        if int(item["id"]) != current_id
+    ]
+    unique: list[dict[str, object]] = []
+    seen_ids: set[int] = set()
+    current_section = str(current_item.get("primary_section") or "")
+    for item in candidates:
+        item_id = int(item["id"])
+        if item_id in seen_ids:
+            continue
+        seen_ids.add(item_id)
+        unique.append(item)
+    unique.sort(
+        key=lambda item: (
+            1 if str(item.get("primary_section") or "") == current_section else 0,
+            float(item.get("ranking_score") or 0),
+            str(item.get("event_date") or ""),
+            int(item["id"]),
+        ),
+        reverse=True,
+    )
+    return unique[:4]
+
+
+async def _enrich_issue_items_with_public_events(
+    items: list[dict[str, object]],
+    event_loader_fn,
+) -> list[dict[str, object]]:
+    enriched: list[dict[str, object]] = []
+    cache: dict[int, dict[str, object]] = {}
+    for item in items:
+        enriched_item = dict(item)
+        event_id = item.get("event_id")
+        if event_id is not None:
+            event_id_int = int(event_id)
+            if event_id_int not in cache:
+                loaded = await event_loader_fn(event_id_int)
+                cache[event_id_int] = loaded["item"] if isinstance(loaded, dict) and "item" in loaded else loaded
+            enriched_item.update(cache[event_id_int])
+            enriched_item["card_title"] = item.get("card_title")
+            enriched_item["card_text"] = item.get("card_text")
+            enriched_item["section"] = item.get("section")
+            enriched_item["is_primary_block"] = item.get("is_primary_block")
+        enriched.append(enriched_item)
+    return enriched
+
+
+async def _load_site_event_item(
+    *,
+    event_id: int,
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> dict[str, object]:
+    stmt = (
+        select(Event)
+        .where(Event.id == event_id)
+        .options(
+            selectinload(Event.categories),
+            selectinload(Event.tags),
+            selectinload(Event.primary_source),
+            selectinload(Event.event_sources).selectinload(EventSource.source),
+            selectinload(Event.event_sources).selectinload(EventSource.raw_item),
+        )
+    )
+    async with db_session_factory() as session:
+        event = await session.scalar(stmt)
+    if event is None:
+        raise HTTPException(status_code=404, detail="event not found")
+    item = _serialize_public_event_detail(event)
+    source_documents = [
+        _serialize_site_source_document(link)
+        for link in sorted(
+            event.event_sources,
+            key=lambda link: (
+                0 if link.role.value == "primary" else 1,
+                link.id,
+            ),
+        )
+        if link.raw_item is not None
+    ]
+    if source_documents:
+        item["source_documents"] = source_documents
+    return item
+
+
+async def _build_issue_context_for_event(
+    *,
+    event_id: int,
+    digest_builder,
+    public_get_event_fn,
+) -> dict[str, object]:
+    issues = await digest_builder.list_issues(limit=12)
+    target_issue = next((issue for issue in issues if any(item.event_id == event_id for item in issue.items)), None)
+    if target_issue is None:
+        return {"same_issue_events": [], "navigation": None}
+
+    ordered_items = [item for item in target_issue.items if item.event_id is not None]
+    ordered_items.sort(key=lambda item: (item.rank_order, item.id))
+    ordered_event_ids = [int(item.event_id) for item in ordered_items if item.event_id is not None]
+    current_index = ordered_event_ids.index(event_id) if event_id in ordered_event_ids else -1
+
+    cache: dict[int, dict[str, object]] = {}
+
+    async def load(event_id_value: int) -> dict[str, object]:
+        if event_id_value not in cache:
+            cache[event_id_value] = (await public_get_event_fn(event_id_value))["item"]
+        return cache[event_id_value]
+
+    same_issue_events: list[dict[str, object]] = []
+    for candidate_id in ordered_event_ids:
+        if candidate_id == event_id:
+            continue
+        same_issue_events.append(await load(candidate_id))
+        if len(same_issue_events) >= 4:
+            break
+
+    previous_item = await load(ordered_event_ids[current_index - 1]) if current_index > 0 else None
+    next_item = await load(ordered_event_ids[current_index + 1]) if 0 <= current_index < len(ordered_event_ids) - 1 else None
+    return {
+        "same_issue_events": same_issue_events,
+        "navigation": {
+            "issue_id": target_issue.id,
+            "previous": previous_item,
+            "next": next_item,
+        },
+    }
+
+
+async def _resolve_event_id_from_ref(event_ref: str, public_list_events_fn) -> int:
+    if event_ref.isdigit():
+        return int(event_ref)
+    match = re.search(r"-(\d+)$", event_ref)
+    if match:
+        return int(match.group(1))
+    payload = await public_list_events_fn(limit=500, page=1)
+    for item in payload["items"]:
+        if build_event_slug(item) == event_ref:
+            return int(item["id"])
+    raise HTTPException(status_code=404, detail="event not found")
+
+
+def _build_sitemap_xml(paths: list[str]) -> str:
+    base = "https://news.malakhovai.ru"
+    urlset = "".join(
+        f"<url><loc>{base}{path}</loc></url>"
+        for path in paths
+    )
+    return f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urlset}</urlset>'
 
 
 app = create_app()

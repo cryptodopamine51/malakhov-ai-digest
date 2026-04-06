@@ -73,11 +73,12 @@ async def test_manual_issue_build_and_send_endpoints(session_factory):
     assert len(issues.json()["items"]) == 2
     assert issue_detail.status_code == 200
     assert "daily_main_debug" in issue_detail.json()
-    assert issue_detail.json()["daily_main_debug"]["suppressed"]
+    assert "excluded" in issue_detail.json()["daily_main_debug"]
     assert debug_issue.status_code == 200
     assert "section_counts" in debug_issue.json()
     assert "selected_event_ids_by_section" in debug_issue.json()
     assert debug_issue.json()["selected_event_ids_by_section"]["important"]
+    assert "telegram_selection" in debug_issue.json()
     assert debug_scheduler.status_code == 200
     assert "configured_jobs" in debug_scheduler.json()
     assert debug_deliveries_before.status_code == 200

@@ -9,6 +9,7 @@ import httpx
 
 from app.core.config import get_settings
 from app.db.models import Event, RawItem
+from app.services.editorial import RuEditorialPolicy, get_ru_editorial_policy
 
 logger = logging.getLogger(__name__)
 
@@ -41,38 +42,15 @@ class SummaryBuildResult:
 
 
 class RuleBasedSummaryBuilder:
+    def __init__(self, editorial_policy: RuEditorialPolicy | None = None) -> None:
+        self.editorial_policy = editorial_policy or get_ru_editorial_policy()
+
     def build(self, event: Event, raw_items: list[RawItem]) -> EventSummaryPayload:
-        source_count = len(raw_items)
-        primary_title = event.title
-        primary_source = event.primary_source.title if event.primary_source else "основной источник"
-
-        unique_entities: list[str] = []
-        seen: set[str] = set()
-        for raw_item in raw_items:
-            for values in (raw_item.entities_json or {}).values():
-                for value in values:
-                    lowered = value.lower()
-                    if lowered not in seen:
-                        seen.add(lowered)
-                        unique_entities.append(value)
-        entity_snippet = ", ".join(unique_entities[:4]) if unique_entities else "ключевых участников инфоповода"
-
-        source_label = "источником" if source_count == 1 else "источниками"
-        related_label = "материал" if source_count == 1 else "материалов"
-
-        short_summary = (
-            f"{primary_title}. "
-            f"Инфоповод подтвержден {source_count} {source_label}, основной источник — {primary_source}."
-        )
-        long_summary = (
-            f"{primary_title}. "
-            f"Событие собрано по {source_count} связанным {related_label}. "
-            f"Базовое покрытие дает {primary_source}, дополнительные сигналы связаны с {entity_snippet}."
-        )
+        editorialized = self.editorial_policy.build_fallback_payload(event=event, raw_items=raw_items)
         return EventSummaryPayload(
-            title=primary_title,
-            short_summary=short_summary,
-            long_summary=long_summary,
+            title=editorialized.title,
+            short_summary=editorialized.short_summary,
+            long_summary=editorialized.long_summary,
         )
 
 
@@ -84,12 +62,14 @@ class OpenAIRuSummaryClient:
         model: str,
         api_base: str,
         timeout_seconds: float,
+        editorial_policy: RuEditorialPolicy,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
         self.api_key = api_key
         self.model = model
         self.api_base = api_base.rstrip("/")
         self.timeout_seconds = timeout_seconds
+        self.editorial_policy = editorial_policy
         self.http_client = http_client
 
     async def summarize(self, *, event: Event, raw_items: list[RawItem]) -> tuple[EventSummaryPayload, LlmUsagePayload]:
@@ -175,7 +155,8 @@ class OpenAIRuSummaryClient:
                         "Верни JSON с полями title, short_summary, long_summary. "
                         "title: короткий русский заголовок события. "
                         "short_summary: 1-2 предложения для карточки. "
-                        "long_summary: 2-4 предложения без воды."
+                        "long_summary: 2-4 предложения без воды. "
+                        f"{self.editorial_policy.prompt_rules_text()}"
                     ),
                 },
                 {
@@ -199,9 +180,11 @@ class SummaryBuilder:
         *,
         llm_client: OpenAIRuSummaryClient | None = None,
         fallback_builder: RuleBasedSummaryBuilder | None = None,
+        editorial_policy: RuEditorialPolicy | None = None,
     ) -> None:
         settings = get_settings()
-        self.fallback_builder = fallback_builder or RuleBasedSummaryBuilder()
+        self.editorial_policy = editorial_policy or get_ru_editorial_policy()
+        self.fallback_builder = fallback_builder or RuleBasedSummaryBuilder(self.editorial_policy)
         self.llm_client = llm_client
         if self.llm_client is None and settings.openai_summary_enabled and settings.openai_api_key:
             self.llm_client = OpenAIRuSummaryClient(
@@ -209,6 +192,7 @@ class SummaryBuilder:
                 model=settings.openai_summary_model,
                 api_base=settings.openai_api_base,
                 timeout_seconds=settings.openai_summary_timeout_seconds,
+                editorial_policy=self.editorial_policy,
             )
 
     async def build(self, event: Event, raw_items: list[RawItem], *, use_llm: bool = True) -> SummaryBuildResult:
@@ -220,7 +204,22 @@ class SummaryBuilder:
         try:
             payload, usage = await self.llm_client.summarize(event=event, raw_items=raw_items)
             if payload.title and payload.short_summary and payload.long_summary:
-                return SummaryBuildResult(payload=payload, llm_used=True, usage=usage)
+                editorialized = self.editorial_policy.editorialize_payload(
+                    event=event,
+                    raw_items=raw_items,
+                    title=payload.title,
+                    short_summary=payload.short_summary,
+                    long_summary=payload.long_summary,
+                )
+                return SummaryBuildResult(
+                    payload=EventSummaryPayload(
+                        title=editorialized.title,
+                        short_summary=editorialized.short_summary,
+                        long_summary=editorialized.long_summary,
+                    ),
+                    llm_used=True,
+                    usage=usage,
+                )
         except Exception as exc:
             logger.exception("openai ru summary failed; falling back to rule-based summary")
             if self.llm_client is not None:

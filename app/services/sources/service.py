@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Source
+from app.services.sources.policy import should_source_be_active
 
 
 class SourceService:
@@ -11,8 +12,13 @@ class SourceService:
         self.session = session
 
     async def list_sources(self, active_only: bool = False) -> list[Source]:
-        stmt = select(Source).order_by(Source.priority_weight.asc(), Source.id.asc())
-        if active_only:
-            stmt = stmt.where(Source.is_active.is_(True))
+        stmt = select(Source).order_by(Source.editorial_priority.asc(), Source.priority_weight.asc(), Source.id.asc())
         result = await self.session.scalars(stmt)
-        return list(result.all())
+        sources = list(result.all())
+        if not active_only:
+            return sources
+        return [
+            source
+            for source in sources
+            if should_source_be_active(status=source.status, is_active=source.is_active)
+        ]

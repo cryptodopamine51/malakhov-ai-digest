@@ -89,14 +89,15 @@ async def test_site_shell_routes_render_real_media_pages(session_factory):
     assert event_detail.status_code == 200
     assert "Событие" in event_detail.text
     assert "OpenAI запускает GPT-5" in event_detail.text
-    assert "Почему это важно" in event_detail.text
-    assert "Что это меняет" in event_detail.text
     assert "Продолжить чтение" in event_detail.text
     assert "Связанные материалы" in event_detail.text
     assert "Из этого же выпуска" in event_detail.text
     assert "По той же теме" in event_detail.text
     assert "Навигация по выпуску" in event_detail.text
     assert "Источник" in event_detail.text
+    assert "Почему это важно" not in event_detail.text
+    assert "Что это меняет" not in event_detail.text
+    assert "Кто выигрывает / проигрывает" not in event_detail.text
     assert "Сигналы" not in event_detail.text
     assert "Инфоповод подтвержден" not in event_detail.text
     assert "Инфоповод подтверждает" not in event_detail.text
@@ -105,7 +106,10 @@ async def test_site_shell_routes_render_real_media_pages(session_factory):
     assert "это может повлиять" not in event_detail.text.lower()
     assert "это позволяет" not in event_detail.text.lower()
     assert "данное " not in event_detail.text.lower()
+    assert "в ai" not in event_detail.text.lower()
     assert "конкурент" in event_detail.text.lower() or "рын" in event_detail.text.lower() or "бизнес" in event_detail.text.lower()
+    assert event_detail.text.count("<div class=\"detail-prose\"><p>") == 1
+    assert "</p><p>" in event_detail.text
     assert f'/events/{event_slug}' in event_detail.text
 
     assert issues_list.status_code == 200
@@ -122,9 +126,10 @@ async def test_site_shell_routes_render_real_media_pages(session_factory):
     assert "Инструменты" in issue_detail.text
     assert "Инвестиции" in issue_detail.text
     assert "ИИ в России" in issue_detail.text
-    assert "Почему это важно:" in issue_detail.text
-    assert "Что дальше:" in issue_detail.text
     assert "issue-main-card" in issue_detail.text
+    assert "Почему это важно:" not in issue_detail.text
+    assert "Что дальше:" not in issue_detail.text
+    assert 'class="issue-article-line"' in issue_detail.text
 
     assert issue_section.status_code == 200
     assert "Раздел выпуска" in issue_section.text
@@ -132,7 +137,7 @@ async def test_site_shell_routes_render_real_media_pages(session_factory):
 
     assert russia_page.status_code == 200
     assert "ИИ в России" in russia_page.text
-    assert "Яндекс Cloud представил новый стек для AI-сервисов" in russia_page.text
+    assert "Яндекс Cloud представил новый стек для ИИ-сервисов" in russia_page.text
     assert "VK рассказал на форуме про AI-направление" not in russia_page.text
 
     assert alpha_page.status_code == 200

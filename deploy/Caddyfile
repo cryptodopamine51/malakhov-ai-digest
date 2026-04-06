@@ -5,6 +5,5 @@ api.malakhovai.ru {
 
 news.malakhovai.ru {
 	encode zstd gzip
-	root * /srv/news-placeholder
-	file_server
+	reverse_proxy api:8000
 }

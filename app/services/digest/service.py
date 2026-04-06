@@ -45,6 +45,8 @@ DAILY_MAIN_SECTION_ORDER = (
 )
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 logger = logging.getLogger(__name__)
+MIN_TELEGRAM_ITEMS = 3
+TELEGRAM_TIER3_FLOOR = 33.0
 
 
 class DigestBuilderService:
@@ -124,6 +126,22 @@ class DigestBuilderService:
 
             preview = self._daily_main_preview_from_items(items, events=events) if request.issue_type is DigestIssueType.DAILY else None
             selection_debug = self._issue_selection_debug(items, preview)
+            telegram_selected = []
+            telegram_candidates_considered = 0
+            telegram_after_filtering = 0
+            telegram_excluded_reasons: dict[str, int] = {}
+            telegram_relaxed_mode = False
+            if preview is not None:
+                telegram_selected = [
+                    item.event_id
+                    for visible_items in preview.visible_by_section.values()
+                    for item in visible_items
+                    if item.event_id is not None
+                ]
+                telegram_candidates_considered = int(preview.policy_snapshot.get("candidates_considered") or 0)
+                telegram_after_filtering = int(preview.policy_snapshot.get("events_after_filtering") or 0)
+                telegram_excluded_reasons = dict(preview.policy_snapshot.get("excluded_reasons") or {})
+                telegram_relaxed_mode = bool(preview.policy_snapshot.get("relaxed_mode"))
             log_structured(
                 logger,
                 "issue_built",
@@ -148,6 +166,12 @@ class DigestBuilderService:
                     for suppressions in selection_debug.suppressed_by_section.values()
                     for suppression in suppressions
                 ],
+                telegram_total_events_available=len(events),
+                telegram_candidates_considered=telegram_candidates_considered,
+                telegram_events_after_filtering=telegram_after_filtering,
+                telegram_selected_event_ids=telegram_selected,
+                telegram_excluded_reasons=telegram_excluded_reasons,
+                telegram_relaxed_mode=telegram_relaxed_mode,
                 suppressed_duplicate_count=len(preview.suppressed) if preview is not None else 0,
                 weak_day_mode=self._is_weak_day(events),
             )
@@ -252,22 +276,80 @@ class DigestBuilderService:
         return self._daily_main_preview_from_items(issue.items, events=list(event_map.values()))
 
     def _daily_main_preview_from_items(self, items: list[DigestIssueItem], *, events: list[Event]) -> DailyMainPreview:
+        strict_candidates = self._telegram_candidates_from_items(items, events, broaden_pool=False)
+        strict_preview, strict_meta = self._select_telegram_items(strict_candidates, relaxed=False)
+        preview_payload = strict_preview
+        preview_meta = strict_meta
+        if strict_meta["selected_count"] < MIN_TELEGRAM_ITEMS:
+            relaxed_candidates = self._telegram_candidates_from_items(items, events, broaden_pool=True)
+            relaxed_preview, relaxed_meta = self._select_telegram_items(relaxed_candidates, relaxed=True)
+            if relaxed_meta["selected_count"] >= MIN_TELEGRAM_ITEMS or relaxed_meta["selected_count"] > strict_meta["selected_count"]:
+                preview_payload = relaxed_preview
+                preview_meta = relaxed_meta
+
+        visible = preview_payload["visible"]
+        suppressed = preview_payload["suppressed"]
+        excluded = preview_payload["excluded"]
+
+        alpha_items = sorted(
+            [item for item in items if item.section is DigestSection.ALPHA],
+            key=lambda item: (item.rank_order, item.id),
+        )
+        if alpha_items and not self._is_empty_section(alpha_items):
+            visible[TelegramPackageSection.ALPHA] = alpha_items[:1]
+
+        excluded_reason_counts: dict[str, int] = {}
+        for decision in excluded:
+            excluded_reason_counts[decision.reason] = excluded_reason_counts.get(decision.reason, 0) + 1
+
+        return DailyMainPreview(
+            visible_by_section=visible,
+            suppressed=suppressed,
+            excluded=excluded,
+            policy_snapshot={
+                "min_ranking_score": self.telegram_policy.min_ranking_score,
+                "fallback_min_score": self.telegram_policy.fallback_min_score,
+                "effective_threshold": preview_meta["threshold"],
+                "total_cap": preview_meta["total_cap"],
+                "section_caps": {section.value: cap for section, cap in self.telegram_policy.section_caps.items()},
+                "weak_day_mode": preview_meta["weak_day_mode"],
+                "relaxed_mode": preview_meta["relaxed_mode"],
+                "min_telegram_items": MIN_TELEGRAM_ITEMS,
+                "total_events_available": len(events),
+                "candidates_considered": preview_meta["candidates_considered"],
+                "events_after_filtering": preview_meta["after_filtering_count"],
+                "selected_for_telegram": preview_meta["selected_event_ids"],
+                "excluded_reasons": excluded_reason_counts,
+            },
+        )
+
+    def _select_telegram_items(
+        self,
+        candidates: list[dict[str, object]],
+        *,
+        relaxed: bool,
+    ) -> tuple[dict[str, object], dict[str, object]]:
         visible: dict[TelegramPackageSection, list[DigestIssueItem]] = {section: [] for section in DAILY_MAIN_SECTION_ORDER}
         suppressed: list[DailyMainSuppression] = []
         excluded: list[TelegramSelectionDecision] = []
         shown_events: dict[int, TelegramPackageSection] = {}
         section_counts = {section: 0 for section in DAILY_MAIN_SECTION_ORDER}
-        candidates = self._telegram_candidates_from_items(items, events)
-        is_weak_day = len([candidate for candidate in candidates if candidate["rank"] >= self.telegram_policy.min_ranking_score]) <= 1
+        tier1_count = len([candidate for candidate in candidates if candidate["rank"] >= self.telegram_policy.min_ranking_score])
+        is_weak_day = tier1_count <= 1
+        strict_threshold = self.telegram_policy.fallback_min_score if is_weak_day else self.telegram_policy.min_ranking_score
+        tier3_floor = max(self.telegram_policy.fallback_min_score - 12, TELEGRAM_TIER3_FLOOR)
+        threshold = tier3_floor if relaxed else strict_threshold
         total_cap = self.telegram_policy.weak_day_total_cap if is_weak_day else self.telegram_policy.total_cap
-
+        total_cap = max(total_cap, MIN_TELEGRAM_ITEMS if relaxed else total_cap)
+        tier3_used = 0
         total_selected = 0
-        for candidate in candidates:
+        after_filtering_count = 0
+
+        for candidate_index, candidate in enumerate(candidates):
             item = candidate["item"]
             event = candidate["event"]
             section = candidate["section"]
             rank = candidate["rank"]
-            threshold = self.telegram_policy.fallback_min_score if is_weak_day else self.telegram_policy.min_ranking_score
 
             if rank < threshold:
                 excluded.append(
@@ -280,6 +362,19 @@ class DigestBuilderService:
                     )
                 )
                 continue
+            after_filtering_count += 1
+            if relaxed and rank < strict_threshold:
+                if tier3_used >= 2:
+                    excluded.append(
+                        TelegramSelectionDecision(
+                            event_id=event.id,
+                            candidate_section=section,
+                            included_section=None,
+                            ranking_score=rank,
+                            reason="tier_3_cap_reached",
+                        )
+                    )
+                    continue
             if total_selected >= total_cap:
                 excluded.append(
                     TelegramSelectionDecision(
@@ -291,7 +386,30 @@ class DigestBuilderService:
                     )
                 )
                 continue
-            if section_counts[section] >= self.telegram_policy.section_caps[section]:
+            if (
+                relaxed
+                and total_selected < MIN_TELEGRAM_ITEMS
+                and section_counts[section] >= 1
+                and self._has_pending_telegram_section_candidate(
+                    candidates=candidates,
+                    current_index=candidate_index,
+                    shown_events=shown_events,
+                    section_counts=section_counts,
+                    threshold=threshold,
+                )
+            ):
+                excluded.append(
+                    TelegramSelectionDecision(
+                        event_id=event.id,
+                        candidate_section=section,
+                        included_section=None,
+                        ranking_score=rank,
+                        reason="holding_for_section_diversity",
+                    )
+                )
+                continue
+            section_cap = self.telegram_policy.section_caps[section] + (1 if relaxed and section is not TelegramPackageSection.ALPHA else 0)
+            if section_counts[section] >= section_cap:
                 excluded.append(
                     TelegramSelectionDecision(
                         event_id=event.id,
@@ -319,26 +437,48 @@ class DigestBuilderService:
             visible[section].append(item)
             section_counts[section] += 1
             total_selected += 1
+            if relaxed and rank < strict_threshold:
+                tier3_used += 1
 
-        alpha_items = sorted(
-            [item for item in items if item.section is DigestSection.ALPHA],
-            key=lambda item: (item.rank_order, item.id),
-        )
-        if alpha_items and not self._is_empty_section(alpha_items):
-            visible[TelegramPackageSection.ALPHA] = alpha_items[:1]
-
-        return DailyMainPreview(
-            visible_by_section=visible,
-            suppressed=suppressed,
-            excluded=excluded,
-            policy_snapshot={
-                "min_ranking_score": self.telegram_policy.min_ranking_score,
-                "fallback_min_score": self.telegram_policy.fallback_min_score,
-                "total_cap": total_cap,
-                "section_caps": {section.value: cap for section, cap in self.telegram_policy.section_caps.items()},
+        return (
+            {
+                "visible": visible,
+                "suppressed": suppressed,
+                "excluded": excluded,
+            },
+            {
                 "weak_day_mode": is_weak_day,
+                "threshold": threshold,
+                "total_cap": total_cap,
+                "relaxed_mode": relaxed,
+                "candidates_considered": len(candidates),
+                "after_filtering_count": after_filtering_count,
+                "selected_count": total_selected,
+                "selected_event_ids": [item.event_id for visible_items in visible.values() for item in visible_items if item.event_id is not None],
             },
         )
+
+    def _has_pending_telegram_section_candidate(
+        self,
+        *,
+        candidates: list[dict[str, object]],
+        current_index: int,
+        shown_events: dict[int, TelegramPackageSection],
+        section_counts: dict[TelegramPackageSection, int],
+        threshold: float,
+    ) -> bool:
+        for candidate in candidates[current_index + 1:]:
+            event = candidate["event"]
+            section = candidate["section"]
+            rank = candidate["rank"]
+            if rank < threshold:
+                continue
+            if event.id in shown_events:
+                continue
+            if section_counts[section] > 0:
+                continue
+            return True
+        return False
 
     def _issue_selection_debug(self, items: list[DigestIssueItem], preview: DailyMainPreview | None) -> IssueSelectionDebug:
         if preview is None:
@@ -827,17 +967,17 @@ class DigestBuilderService:
             return TelegramPackageSection.TOOLS_CODING
         return TelegramPackageSection.MODELS_SERVICES
 
-    def _telegram_candidates_from_items(self, items: list[DigestIssueItem], events: list[Event]) -> list[dict[str, object]]:
+    def _telegram_candidates_from_items(self, items: list[DigestIssueItem], events: list[Event], *, broaden_pool: bool) -> list[dict[str, object]]:
         event_map = {event.id: event for event in events}
-        all_items = sorted(
-            [item for item in items if item.section is DigestSection.ALL and item.event_id is not None],
-            key=lambda item: (item.rank_order, item.id),
-        )
-        if not all_items:
+        if broaden_pool:
+            all_items = self._broadened_telegram_item_pool(items)
+        else:
             all_items = sorted(
-                [item for item in items if item.event_id is not None],
+                [item for item in items if item.section is DigestSection.ALL and item.event_id is not None],
                 key=lambda item: (item.rank_order, item.id),
             )
+            if not all_items:
+                all_items = self._broadened_telegram_item_pool(items)
         candidates: list[dict[str, object]] = []
         for item in all_items:
             event = event_map.get(item.event_id)
@@ -860,6 +1000,25 @@ class DigestBuilderService:
             reverse=True,
         )
         return candidates
+
+    def _broadened_telegram_item_pool(self, items: list[DigestIssueItem]) -> list[DigestIssueItem]:
+        section_priority = {
+            DigestSection.IMPORTANT: 0,
+            DigestSection.AI_NEWS: 1,
+            DigestSection.CODING: 2,
+            DigestSection.INVESTMENTS: 3,
+            DigestSection.ALL: 4,
+        }
+        unique: dict[int, DigestIssueItem] = {}
+        ordered = sorted(
+            [item for item in items if item.event_id is not None and item.section is not DigestSection.ALPHA],
+            key=lambda item: (section_priority.get(item.section, 9), item.rank_order, item.id),
+        )
+        for item in ordered:
+            event_id = int(item.event_id)
+            if event_id not in unique:
+                unique[event_id] = item
+        return list(unique.values())
 
     def _suppression_section_for(self, section: TelegramPackageSection) -> DigestSection:
         mapping = {

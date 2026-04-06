@@ -28,7 +28,8 @@ from app.services.events.schemas import ProcessEventsResult
 from app.services.events.summary import SummaryBuilder
 from app.services.normalization import NormalizationService
 from app.services.scoring import ScoringService
-from app.services.sources.reputation import score_event_source_link, score_event_source_quality
+from app.services.shortlist import RawItemShortlistService
+from app.services.sources.reputation import is_verification_source, score_event_source_quality, score_source
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ class ProcessEventsService:
         classification_service: ClassificationService | None = None,
         scoring_service: ScoringService | None = None,
         summary_builder: SummaryBuilder | None = None,
+        raw_item_shortlist_service: RawItemShortlistService | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.normalization_service = normalization_service or NormalizationService()
@@ -49,6 +51,7 @@ class ProcessEventsService:
         self.classification_service = classification_service or ClassificationService()
         self.scoring_service = scoring_service or ScoringService()
         self.summary_builder = summary_builder or SummaryBuilder()
+        self.raw_item_shortlist_service = raw_item_shortlist_service or RawItemShortlistService()
         self.settings = get_settings()
 
     async def process(self, limit: int = 100) -> ProcessEventsResult:
@@ -61,7 +64,15 @@ class ProcessEventsService:
             session.add(process_run)
             await session.flush()
             try:
-                raw_items_considered, normalized_count, discarded_count = await self._normalize_fetched_items(session=session, limit=limit)
+                (
+                    raw_items_considered,
+                    normalized_count,
+                    discarded_count,
+                    raw_shortlist_evaluated_count,
+                    raw_shortlist_accepted_count,
+                    raw_shortlist_rejected_count,
+                    raw_shortlist_reject_breakdown,
+                ) = await self._normalize_fetched_items(session=session, limit=limit)
                 clustered_count, created_events, touched_event_ids, clusters_merged, ambiguous_count = await self._cluster_normalized_items(session=session, limit=limit)
                 updated_events = 0
                 shortlist_count = 0
@@ -88,6 +99,10 @@ class ProcessEventsService:
                 process_run.ambiguous_count = ambiguous_count
                 process_run.shortlist_count = shortlist_count
                 process_run.llm_event_count = llm_event_count
+                process_run.raw_shortlist_evaluated_count = raw_shortlist_evaluated_count
+                process_run.raw_shortlist_accepted_count = raw_shortlist_accepted_count
+                process_run.raw_shortlist_rejected_count = raw_shortlist_rejected_count
+                process_run.raw_shortlist_reject_breakdown_json = raw_shortlist_reject_breakdown
                 process_run.duration_ms = self._duration_ms(started_at, finished_at)
 
                 await session.commit()
@@ -104,6 +119,10 @@ class ProcessEventsService:
                     updated_events=updated_events,
                     clusters_merged=clusters_merged,
                     ambiguous_count=ambiguous_count,
+                    raw_shortlist_evaluated_count=raw_shortlist_evaluated_count,
+                    raw_shortlist_accepted_count=raw_shortlist_accepted_count,
+                    raw_shortlist_rejected_count=raw_shortlist_rejected_count,
+                    raw_shortlist_reject_breakdown=raw_shortlist_reject_breakdown,
                     shortlist_count=shortlist_count,
                     shortlisted_event_ids=shortlisted_event_ids,
                     llm_event_count=llm_event_count,
@@ -121,6 +140,10 @@ class ProcessEventsService:
                     ambiguous_count=ambiguous_count,
                     shortlist_count=shortlist_count,
                     llm_event_count=llm_event_count,
+                    raw_shortlist_evaluated_count=raw_shortlist_evaluated_count,
+                    raw_shortlist_accepted_count=raw_shortlist_accepted_count,
+                    raw_shortlist_rejected_count=raw_shortlist_rejected_count,
+                    raw_shortlist_reject_breakdown=raw_shortlist_reject_breakdown,
                 )
             except Exception as exc:
                 await session.rollback()
@@ -140,7 +163,11 @@ class ProcessEventsService:
                 )
                 raise
 
-    async def _normalize_fetched_items(self, session: AsyncSession, limit: int) -> tuple[int, int, int]:
+    async def _normalize_fetched_items(
+        self,
+        session: AsyncSession,
+        limit: int,
+    ) -> tuple[int, int, int, int, int, int, dict[str, int]]:
         stmt = (
             select(RawItem)
             .where(RawItem.status == RawItemStatus.FETCHED)
@@ -149,10 +176,26 @@ class ProcessEventsService:
             .limit(limit)
         )
         raw_items = list((await session.scalars(stmt)).all())
+        shortlist_result = await self.raw_item_shortlist_service.evaluate_batch(session=session, raw_items=raw_items)
+        decision_map = {decision.raw_item_id: decision for decision in shortlist_result.decisions}
 
         normalized_count = 0
         discarded_count = 0
         for raw_item in raw_items:
+            decision = decision_map.get(raw_item.id)
+            if decision is not None and not decision.accepted:
+                raw_item.status = RawItemStatus.DISCARDED
+                discarded_count += 1
+                log_structured(
+                    logger,
+                    "raw_item_shortlist_rejected",
+                    raw_item_id=raw_item.id,
+                    source_id=raw_item.source_id,
+                    reasons=[reason for reason in decision.reasons if not reason.startswith("passed_")],
+                    signals=decision.signals,
+                )
+                continue
+
             result = self.normalization_service.normalize(raw_item=raw_item, source=raw_item.source)
             if result.discarded:
                 raw_item.status = RawItemStatus.DISCARDED
@@ -168,7 +211,15 @@ class ProcessEventsService:
             normalized_count += 1
 
         await session.flush()
-        return len(raw_items), normalized_count, discarded_count
+        return (
+            len(raw_items),
+            normalized_count,
+            discarded_count,
+            shortlist_result.evaluated_count,
+            shortlist_result.accepted_count,
+            shortlist_result.rejected_count,
+            shortlist_result.reject_breakdown,
+        )
 
     async def _cluster_normalized_items(self, session: AsyncSession, limit: int) -> tuple[int, int, set[int], int, int]:
         stmt = (
@@ -206,6 +257,11 @@ class ProcessEventsService:
                     coding_score=0.0,
                     investment_score=0.0,
                     confidence_score=0.0,
+                    ranking_score=0.0,
+                    supporting_source_count=0,
+                    verification_source_count=0,
+                    has_verification_source=False,
+                    score_components_json=None,
                     is_highlight=False,
                 )
                 session.add(event)
@@ -249,7 +305,7 @@ class ProcessEventsService:
         if not raw_items:
             return False, False
 
-        primary_link = self._select_primary_link(event.event_sources)
+        primary_link, canonical_reason = self._select_primary_link(event.event_sources)
         if primary_link is not None:
             event.primary_source_id = primary_link.source_id
             event.primary_source_url = primary_link.citation_url
@@ -292,6 +348,15 @@ class ProcessEventsService:
         event.coding_score = scores.coding_score
         event.investment_score = scores.investment_score
         event.confidence_score = scores.confidence_score
+        event.ranking_score = scores.ranking_score
+        event.supporting_source_count = scores.supporting_source_count
+        event.verification_source_count = scores.verification_source_count
+        event.has_verification_source = scores.has_verification_source
+        event.score_components_json = {
+            **scores.score_components,
+            "canonical_source_reason": canonical_reason,
+            "canonical_source_id": event.primary_source_id,
+        }
         event.is_highlight = scores.is_highlight
         event.updated_at = datetime.now(UTC)
 
@@ -320,10 +385,37 @@ class ProcessEventsService:
         self._log_event_decision(event=event, shortlist_passed=shortlist_passed)
         return shortlist_passed, summary.llm_used
 
-    def _select_primary_link(self, event_sources: list[EventSource]) -> EventSource | None:
+    def _select_primary_link(self, event_sources: list[EventSource]) -> tuple[EventSource | None, str | None]:
         if not event_sources:
-            return None
-        return max(event_sources, key=score_event_source_link)
+            return None, None
+        ranked_links = sorted(
+            event_sources,
+            key=self._canonical_source_sort_key,
+            reverse=True,
+        )
+        primary_link = ranked_links[0]
+        canonical_reason = "strongest_editorial_source"
+        if primary_link.source is not None and is_verification_source(primary_link.source):
+            canonical_reason = "verification_source_preferred"
+        return primary_link, canonical_reason
+
+    def _canonical_source_sort_key(self, link: EventSource) -> tuple[int, float, int, float]:
+        source = link.source
+        raw_item = link.raw_item
+        reputation = score_source(source)
+        is_verification = int(is_verification_source(source))
+        editorial_priority = source.editorial_priority if source is not None else 100
+        published_ts = (
+            ensure_utc(raw_item.published_at or raw_item.fetched_at).timestamp()
+            if raw_item is not None and (raw_item.published_at or raw_item.fetched_at) is not None
+            else 0.0
+        )
+        return (
+            is_verification,
+            reputation.score,
+            -editorial_priority,
+            published_ts,
+        )
 
     def _supporting_role(self, link: EventSource, primary_link: EventSource | None) -> EventSourceRole:
         if primary_link is None or link.raw_item is None or primary_link.raw_item is None:
@@ -388,7 +480,12 @@ class ProcessEventsService:
             source_quality_score=reputation.score,
             importance_score=event.importance_score,
             confidence_score=event.confidence_score,
+            ranking_score=event.ranking_score,
             section_scores={category.section.value: category.score for category in event.categories},
+            supporting_source_count=event.supporting_source_count,
+            verification_source_count=event.verification_source_count,
+            has_verification_source=event.has_verification_source,
+            score_components=event.score_components_json or {},
             shortlist_passed=shortlist_passed,
             selected_for_issue=False,
             suppression_reason=None,

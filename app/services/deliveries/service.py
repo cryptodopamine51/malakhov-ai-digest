@@ -67,6 +67,23 @@ class IssueDeliveryService:
             preview = await self.digest_builder.get_daily_main_preview(issue.id)
             if preview is None:
                 return None
+            selected_event_count = sum(
+                1
+                for visible_items in preview.visible_by_section.values()
+                for item in visible_items
+                if item.event_id is not None
+            )
+            if selected_event_count < 2:
+                log_structured(
+                    logger,
+                    "issue_delivery_skip",
+                    issue_id=issue.id,
+                    telegram_user_id=telegram_user_id,
+                    delivery_type=DeliveryType.DAILY_MAIN.value,
+                    reason="insufficient_telegram_events",
+                    selected_event_count=selected_event_count,
+                )
+                return None
             messages = await self._send_chunks(
                 bot=bot,
                 chat_id=telegram_chat_id,
@@ -120,6 +137,17 @@ class IssueDeliveryService:
         if issue is None:
             return None
         items = await self.digest_builder.get_section_items(issue_id=issue_id, section=section)
+        if not items or (len(items) == 1 and items[0].event_id is None and items[0].alpha_entry_id is None):
+            log_structured(
+                logger,
+                "issue_delivery_skip",
+                issue_id=issue.id,
+                telegram_user_id=telegram_user_id,
+                delivery_type=DeliveryType.SECTION_OPEN.value,
+                section=section.value,
+                reason="empty_section",
+            )
+            return None
         messages = await self._send_chunks(bot=bot, chat_id=telegram_chat_id, chunks=render_section(issue, section, items))
 
         async with self.session_factory() as session:
@@ -250,6 +278,8 @@ class IssueDeliveryService:
             return delivery is not None
 
     async def _send_chunks(self, *, bot, chat_id: int, chunks: list[str], first_reply_markup=None) -> list:
+        if not chunks:
+            return []
         messages = []
         for index, chunk in enumerate(chunks):
             kwargs = {
