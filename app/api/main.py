@@ -1302,12 +1302,32 @@ def create_app(
         alpha_payload = await public_list_alpha(limit=6)
         sorted_recent_items = sort_site_events(recent_payload["items"])
         publishable_recent_items = filter_publishable_site_items(sorted_recent_items)
-        homepage_events = filter_publishable_site_items(select_homepage_events(sorted_recent_items))
-        if not homepage_events:
-            homepage_events = publishable_recent_items[:5]
-        recent_event_pool = [
+        quality_recent_items = [
             item
             for item in publishable_recent_items
+            if not compute_event_importance(item).excluded and float(item.get("ranking_score") or 0) >= 60
+        ]
+        homepage_events = [
+            item
+            for item in filter_publishable_site_items(select_homepage_events(sorted_recent_items))
+            if not compute_event_importance(item).excluded and float(item.get("ranking_score") or 0) >= 60
+        ]
+        featured_ids = {int(item["id"]) for item in homepage_events}
+        if len(homepage_events) < 4:
+            for pool in (quality_recent_items, publishable_recent_items):
+                for item in pool:
+                    item_id = int(item["id"])
+                    if item_id in featured_ids:
+                        continue
+                    homepage_events.append(item)
+                    featured_ids.add(item_id)
+                    if len(homepage_events) >= 5:
+                        break
+                if len(homepage_events) >= 5:
+                    break
+        recent_event_pool = [
+            item
+            for item in quality_recent_items
             if int(item["id"]) not in {int(event["id"]) for event in homepage_events[:5]}
         ]
         recent_events = recent_event_pool[:8] if recent_event_pool else homepage_events[1:4]
@@ -1316,8 +1336,16 @@ def create_app(
                 featured_events=homepage_events[:5],
                 latest_issue=issues_payload["items"][0] if issues_payload["items"] else None,
                 russia_events=select_site_russia_events(
-                    strict_items=russia_payload["items"],
-                    broader_items=broader_russia_payload["items"],
+                    strict_items=[
+                        item
+                        for item in filter_publishable_site_items(russia_payload["items"])
+                        if not compute_event_importance(item).excluded
+                    ],
+                    broader_items=[
+                        item
+                        for item in filter_publishable_site_items(broader_russia_payload["items"])
+                        if not compute_event_importance(item).excluded
+                    ],
                 ),
                 recent_events=recent_events,
                 issues=issues_payload["items"],

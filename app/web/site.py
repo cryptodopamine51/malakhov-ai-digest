@@ -34,7 +34,19 @@ _BAD_PUBLIC_PATTERNS = (
     "почему это важно",
     "что это меняет",
     "кто выигрывает / проигрывает",
+    "это важно для",
+    "история важна не только",
+    "смысл события шире",
+    "гонка за рынок ускоряется",
+    "конкуренция за клиентов обостряется",
+    "расстановка сил меняется",
+    "давление на компании усиливается",
+    "рынок быстро смещается",
+    "рынок быстрее делит влияние",
+    "в центре внимания уже не только",
 )
+_WEAK_PUBLIC_TOKENS = ("форум", "roadmap", "роадмап", "продуктовую линейку", "мероприяти")
+_STRONG_PUBLIC_TOKENS = ("закон", "регулир", "инфраструкт", "кластер", "реестр", "контракт", "финанс", "enterprise")
 
 
 def render_site_homepage(
@@ -593,6 +605,8 @@ def select_site_russia_events(
         event_id = int(item["id"])
         if event_id in seen_ids:
             continue
+        if not _is_russia_surface_candidate(item):
+            continue
         selected.append(item)
         seen_ids.add(event_id)
         if len(selected) >= limit:
@@ -637,7 +651,10 @@ def _is_russia_surface_candidate(item: dict[str, object]) -> bool:
 
 
 def _display_title(item: dict[str, object]) -> str:
-    return _POLICY.public_title(str(item.get("title") or ""))
+    raw_title = str(item.get("title") or item.get("card_title") or "").strip()
+    if _looks_like_russian_title(raw_title):
+        return raw_title.rstrip(".")
+    return _POLICY.public_title(raw_title)
 
 
 def _display_summary(item: dict[str, object]) -> str:
@@ -920,7 +937,13 @@ def _looks_like_title_repeat(title: str, text: str) -> bool:
 
 def _has_bad_public_pattern(text: str) -> bool:
     normalized = _normalized_public_text(text)
-    return any(pattern in normalized for pattern in _BAD_PUBLIC_PATTERNS)
+    return any(_normalized_public_text(pattern) in normalized for pattern in _BAD_PUBLIC_PATTERNS)
+
+
+def _looks_like_russian_title(text: str) -> bool:
+    cyrillic_count = sum(1 for char in text.lower() if "а" <= char <= "я" or char == "ё")
+    latin_count = sum(1 for char in text.lower() if "a" <= char <= "z")
+    return cyrillic_count >= 8 and cyrillic_count >= latin_count
 
 
 def _is_meaningful_public_text(item: dict[str, object], text: str) -> bool:
@@ -940,12 +963,29 @@ def _is_meaningful_public_text(item: dict[str, object], text: str) -> bool:
 def is_publishable_site_item(item: dict[str, object], *, require_event: bool = False) -> bool:
     if require_event and item.get("event_id") is None:
         return False
+    ranking_value = item.get("ranking_score")
+    ranking_score = float(ranking_value or 0) if ranking_value is not None else None
+    if ranking_score is not None and ranking_score < 40:
+        return False
+    if item.get("event_id") is not None and ranking_score is not None and ranking_score <= 0:
+        return False
     title = _display_title(item)
     if not title:
         return False
     if _PLACEHOLDER_TITLE_RE.search(title):
         return False
     if _has_bad_public_pattern(title):
+        return False
+    combined_text = _normalized_public_text(
+        " ".join(
+            [
+                title,
+                str(item.get("short_summary") or ""),
+                str(item.get("card_text") or ""),
+            ]
+        )
+    )
+    if any(token in combined_text for token in _WEAK_PUBLIC_TOKENS) and not any(token in combined_text for token in _STRONG_PUBLIC_TOKENS):
         return False
     teaser = _display_teaser(item)
     if teaser:
