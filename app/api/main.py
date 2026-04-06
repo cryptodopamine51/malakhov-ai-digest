@@ -1578,7 +1578,7 @@ def _select_related_site_events(
 
     seen_ids: set[int] = {current_id}
     scored: list[tuple[int, float, dict[str, object]]] = []
-    for item in [*same_section_items, *broader_items]:
+    for item in filter_publishable_site_items([*same_section_items, *broader_items]):
         item_id = int(item["id"])
         if item_id in seen_ids:
             continue
@@ -1608,7 +1608,7 @@ def _select_same_category_events(
     current_id = int(current_item["id"])
     candidates = [
         item
-        for item in [*same_section_items, *broader_items]
+        for item in filter_publishable_site_items([*same_section_items, *broader_items])
         if int(item["id"]) != current_id
     ]
     unique: list[dict[str, object]] = []
@@ -1699,7 +1699,16 @@ async def _build_issue_context_for_event(
     public_get_event_fn,
 ) -> dict[str, object]:
     issues = await digest_builder.list_issues(limit=12)
-    target_issue = next((issue for issue in issues if any(item.event_id == event_id for item in issue.items)), None)
+    candidate_issues = [issue for issue in issues if any(item.event_id == event_id for item in issue.items)]
+    candidate_issues.sort(
+        key=lambda issue: (
+            1 if issue.issue_type is DigestIssueType.DAILY else 0,
+            issue.issue_date,
+            issue.id,
+        ),
+        reverse=True,
+    )
+    target_issue = candidate_issues[0] if candidate_issues else None
     if target_issue is None:
         return {"same_issue_events": [], "navigation": None}
 
@@ -1719,12 +1728,19 @@ async def _build_issue_context_for_event(
     for candidate_id in ordered_event_ids:
         if candidate_id == event_id:
             continue
-        same_issue_events.append(await load(candidate_id))
+        loaded = await load(candidate_id)
+        if not is_publishable_site_item(loaded):
+            continue
+        same_issue_events.append(loaded)
         if len(same_issue_events) >= 4:
             break
 
     previous_item = await load(ordered_event_ids[current_index - 1]) if current_index > 0 else None
     next_item = await load(ordered_event_ids[current_index + 1]) if 0 <= current_index < len(ordered_event_ids) - 1 else None
+    if previous_item is not None and not is_publishable_site_item(previous_item):
+        previous_item = None
+    if next_item is not None and not is_publishable_site_item(next_item):
+        next_item = None
     return {
         "same_issue_events": same_issue_events,
         "navigation": {
