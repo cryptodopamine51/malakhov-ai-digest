@@ -1,3 +1,14 @@
+www.malakhovai.ru {
+	redir https://malakhovai.ru{uri} 308
+}
+
+malakhovai.ru {
+	encode zstd gzip
+	root * /srv/ai-business-deck
+	try_files {path} /index.html
+	file_server
+}
+
 api.malakhovai.ru {
 	encode zstd gzip
 	reverse_proxy api:8000
