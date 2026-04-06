@@ -79,6 +79,9 @@ async def test_site_shell_routes_render_real_media_pages(session_factory):
     assert "данное " not in homepage.text.lower()
     assert 'meta name="description"' in homepage.text
     assert 'property="og:title"' in homepage.text
+    assert "mc.yandex.ru/metrika/tag.js?id=107006613" in homepage.text
+    assert "ym(107006613, 'init'" in homepage.text
+    assert "mc.yandex.ru/watch/107006613" in homepage.text
 
     assert events_feed.status_code == 200
     assert "Лента" in events_feed.text
@@ -112,10 +115,12 @@ async def test_site_shell_routes_render_real_media_pages(session_factory):
     assert event_detail.text.count("<div class=\"detail-prose\"><p>") == 1
     assert "</p><p>" in event_detail.text
     assert f'/events/{event_slug}' in event_detail.text
+    assert "mc.yandex.ru/metrika/tag.js?id=107006613" in event_detail.text
 
     assert issues_list.status_code == 200
     assert "Архив выпусков" in issues_list.text
     assert issue.title in issues_list.text
+    assert "mc.yandex.ru/metrika/tag.js?id=107006613" in issues_list.text
 
     assert issue_detail.status_code == 200
     assert issue.title in issue_detail.text
