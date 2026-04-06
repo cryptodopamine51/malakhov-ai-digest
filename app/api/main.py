@@ -1714,7 +1714,16 @@ async def _build_issue_context_for_event(
 
     ordered_items = [item for item in target_issue.items if item.event_id is not None]
     ordered_items.sort(key=lambda item: (item.rank_order, item.id))
-    ordered_event_ids = [int(item.event_id) for item in ordered_items if item.event_id is not None]
+    ordered_event_ids: list[int] = []
+    seen_event_ids: set[int] = set()
+    for item in ordered_items:
+        if item.event_id is None:
+            continue
+        event_id_value = int(item.event_id)
+        if event_id_value in seen_event_ids:
+            continue
+        seen_event_ids.add(event_id_value)
+        ordered_event_ids.append(event_id_value)
     current_index = ordered_event_ids.index(event_id) if event_id in ordered_event_ids else -1
 
     cache: dict[int, dict[str, object]] = {}
