@@ -3,9 +3,11 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import date as date_cls, datetime
+from html import escape as html_escape
 import re
 
-from fastapi import FastAPI, HTTPException, Request
+from aiogram.types import BufferedInputFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import desc, select, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -34,6 +36,7 @@ from app.db.models import (
     Source,
     SourceRun,
     SourceType,
+    User,
 )
 from app.db.session import AsyncSessionLocal
 from app.jobs import (
@@ -95,6 +98,76 @@ from app.web import (
 
 def _serialize_datetime(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
+
+
+_SITE_LEAD_ALLOWED_FILE_TYPES = {
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/plain",
+    "image/png",
+    "image/jpeg",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+}
+_SITE_LEAD_MAX_FILE_SIZE = 10 * 1024 * 1024
+_SITE_LEAD_REQUEST_TAGS = {
+    "Аудит": "#аудит",
+    "Пилот": "#пилот",
+    "Проект": "#проект",
+    "Внедрение": "#экосистема",
+}
+
+
+def _normalize_site_lead_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    compact = re.sub(r"\s+", " ", value).strip()
+    return compact or None
+
+
+def _format_site_lead_message(
+    *,
+    name: str,
+    company: str | None,
+    contact: str,
+    description: str,
+    request_type: str | None,
+    subject: str | None,
+    page: str | None,
+    utm: str | None,
+) -> str:
+    now = datetime.now().astimezone().strftime("%d.%m.%Y %H:%M")
+    request_tag = _SITE_LEAD_REQUEST_TAGS.get(request_type or "", "")
+    tags = " ".join(part for part in ("#заявка", "#malakhovai", request_tag) if part)
+    lines = [
+        tags,
+        "",
+        f"<b>Тип запроса:</b> {html_escape(request_type or '—')}",
+        f"<b>Имя:</b> {html_escape(name)}",
+        f"<b>Контакт:</b> {html_escape(contact)}",
+    ]
+    if company:
+        lines.append(f"<b>Компания:</b> {html_escape(company)}")
+    lines.append(f"<b>Описание:</b> {html_escape(description)}")
+    if subject:
+        lines.append(f"<b>Тема:</b> {html_escape(subject)}")
+    if page:
+        lines.append(f"<b>Страница:</b> {html_escape(page)}")
+    if utm:
+        lines.append(f"<b>UTM:</b> {html_escape(utm)}")
+    lines.append(f"<b>Время:</b> {html_escape(now)}")
+    return "\n".join(lines)
+
+
+async def _resolve_site_leads_chat_id(
+    *,
+    session: AsyncSession,
+    settings,
+) -> int | None:
+    if settings.site_leads_chat_id is not None:
+        return settings.site_leads_chat_id
+    return await session.scalar(select(User.telegram_chat_id).order_by(User.id.asc()).limit(1))
 
 
 def _serialize_source(source: Source) -> dict[str, object]:
@@ -632,6 +705,82 @@ def create_app(
             return {"status": "ok", "database": "connected"}
         except SQLAlchemyError as exc:
             raise HTTPException(status_code=503, detail="database unavailable") from exc
+
+    @app.post("/api/leads")
+    async def submit_site_lead(
+        name: str = Form(...),
+        company: str | None = Form(default=None),
+        contact: str = Form(...),
+        description: str = Form(...),
+        requestType: str | None = Form(default=None),
+        subject: str | None = Form(default=None),
+        page: str | None = Form(default=None),
+        utm: str | None = Form(default=None),
+        hp: str | None = Form(default=None, alias="_hp"),
+        file: UploadFile | None = File(default=None),
+    ) -> dict[str, object]:
+        if _normalize_site_lead_text(hp):
+            return {"ok": True}
+
+        normalized_name = _normalize_site_lead_text(name)
+        normalized_company = _normalize_site_lead_text(company)
+        normalized_contact = _normalize_site_lead_text(contact)
+        normalized_description = _normalize_site_lead_text(description)
+        normalized_request_type = _normalize_site_lead_text(requestType)
+        normalized_subject = _normalize_site_lead_text(subject)
+        normalized_page = _normalize_site_lead_text(page)
+        normalized_utm = _normalize_site_lead_text(utm)
+
+        if not normalized_name or not normalized_contact or not normalized_description:
+            raise HTTPException(status_code=400, detail="Заполните обязательные поля")
+
+        file_bytes: bytes | None = None
+        file_name: str | None = None
+        if file is not None and file.filename:
+            if file.content_type not in _SITE_LEAD_ALLOWED_FILE_TYPES:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Недопустимый тип файла. Допустимы: PDF, DOCX, TXT, PNG, JPG, XLS.",
+                )
+            file_bytes = await file.read()
+            if len(file_bytes) > _SITE_LEAD_MAX_FILE_SIZE:
+                raise HTTPException(status_code=400, detail="Файл слишком большой. Максимум 10 МБ.")
+            file_name = file.filename
+
+        async with db_session_factory() as session:
+            chat_id = await _resolve_site_leads_chat_id(session=session, settings=settings)
+
+        if chat_id is None:
+            raise HTTPException(status_code=503, detail="Не настроен чат для приёма заявок")
+
+        bot = telegram_bot or create_bot()
+        message = _format_site_lead_message(
+            name=normalized_name,
+            company=normalized_company,
+            contact=normalized_contact,
+            description=normalized_description,
+            request_type=normalized_request_type,
+            subject=normalized_subject,
+            page=normalized_page,
+            utm=normalized_utm,
+        )
+
+        try:
+            await bot.send_message(chat_id=chat_id, text=message)
+            if file_bytes is not None and file_name is not None:
+                caption = f"Файл к заявке: {normalized_name} — {normalized_contact}"[:1024]
+                await bot.send_document(
+                    chat_id=chat_id,
+                    document=BufferedInputFile(file=file_bytes, filename=file_name),
+                    caption=caption,
+                )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="Не удалось отправить заявку в Telegram") from exc
+        finally:
+            if telegram_bot is None:
+                await bot.session.close()
+
+        return {"ok": True, "delivered": True}
 
     @app.get("/internal/sources")
     async def list_sources() -> dict[str, list[dict[str, object]]]:

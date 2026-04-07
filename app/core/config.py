@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     database_url: str = Field(alias="DATABASE_URL")
     bot_token: str = Field(alias="BOT_TOKEN")
     bot_polling_enabled: bool = Field(default=False, alias="BOT_POLLING_ENABLED")
+    site_leads_chat_id: int | None = Field(default=None, alias="SITE_LEADS_CHAT_ID")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
     openai_summary_enabled: bool = Field(default=True, alias="OPENAI_SUMMARY_ENABLED")
     openai_summary_model: str = Field(default="gpt-5-mini", alias="OPENAI_SUMMARY_MODEL")
