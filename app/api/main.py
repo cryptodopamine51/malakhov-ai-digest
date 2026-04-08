@@ -3,8 +3,11 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import date as date_cls, datetime
+from email.message import EmailMessage
 from html import escape as html_escape
 import re
+import smtplib
+import ssl
 
 from aiogram.types import BufferedInputFile
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -158,6 +161,125 @@ def _format_site_lead_message(
         lines.append(f"<b>UTM:</b> {html_escape(utm)}")
     lines.append(f"<b>Время:</b> {html_escape(now)}")
     return "\n".join(lines)
+
+
+def _format_site_lead_email_subject(
+    *,
+    name: str,
+    request_type: str | None,
+    subject: str | None,
+) -> str:
+    parts = ["Новая заявка с malakhovai.ru"]
+    if request_type:
+        parts.append(request_type)
+    elif subject:
+        parts.append(subject)
+    parts.append(name)
+    return " | ".join(parts)
+
+
+def _format_site_lead_email_body(
+    *,
+    name: str,
+    company: str | None,
+    contact: str,
+    description: str,
+    request_type: str | None,
+    subject: str | None,
+    page: str | None,
+    utm: str | None,
+) -> str:
+    now = datetime.now().astimezone().strftime("%d.%m.%Y %H:%M")
+    lines = [
+        "Новая заявка с сайта malakhovai.ru",
+        "",
+        f"Тип запроса: {request_type or '—'}",
+        f"Имя: {name}",
+        f"Контакт: {contact}",
+    ]
+    if company:
+        lines.append(f"Компания: {company}")
+    lines.append("")
+    lines.append("Описание:")
+    lines.append(description)
+    if subject:
+        lines.append("")
+        lines.append(f"Тема: {subject}")
+    if page:
+        lines.append(f"Страница: {page}")
+    if utm:
+        lines.append(f"UTM: {utm}")
+    lines.append(f"Время: {now}")
+    return "\n".join(lines)
+
+
+def _site_leads_email_configured(settings) -> bool:
+    return bool(
+        settings.smtp_host
+        and settings.smtp_port
+        and settings.smtp_user
+        and settings.smtp_pass
+        and settings.leads_email_to
+        and settings.leads_email_from
+    )
+
+
+def _send_site_lead_email_sync(
+    *,
+    settings,
+    subject: str,
+    body: str,
+    file_bytes: bytes | None,
+    file_name: str | None,
+    file_content_type: str | None,
+) -> None:
+    message = EmailMessage()
+    from_name = settings.leads_email_from_name or "Malakhov AI"
+    message["Subject"] = subject
+    message["From"] = f"{from_name} <{settings.leads_email_from}>"
+    message["To"] = settings.leads_email_to
+    message.set_content(body)
+
+    if file_bytes is not None and file_name is not None:
+        maintype = "application"
+        subtype = "octet-stream"
+        if file_content_type and "/" in file_content_type:
+            maintype, subtype = file_content_type.split("/", 1)
+        message.add_attachment(file_bytes, maintype=maintype, subtype=subtype, filename=file_name)
+
+    if settings.smtp_secure:
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, context=context, timeout=20) as smtp:
+            smtp.login(settings.smtp_user, settings.smtp_pass)
+            smtp.send_message(message)
+        return
+
+    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20) as smtp:
+        smtp.ehlo()
+        smtp.starttls(context=ssl.create_default_context())
+        smtp.ehlo()
+        smtp.login(settings.smtp_user, settings.smtp_pass)
+        smtp.send_message(message)
+
+
+async def _send_site_lead_email(
+    *,
+    settings,
+    subject: str,
+    body: str,
+    file_bytes: bytes | None,
+    file_name: str | None,
+    file_content_type: str | None,
+) -> None:
+    await asyncio.to_thread(
+        _send_site_lead_email_sync,
+        settings=settings,
+        subject=subject,
+        body=body,
+        file_bytes=file_bytes,
+        file_name=file_name,
+        file_content_type=file_content_type,
+    )
 
 
 async def _resolve_site_leads_chat_id(
@@ -736,6 +858,7 @@ def create_app(
 
         file_bytes: bytes | None = None
         file_name: str | None = None
+        file_content_type: str | None = None
         if file is not None and file.filename:
             if file.content_type not in _SITE_LEAD_ALLOWED_FILE_TYPES:
                 raise HTTPException(
@@ -746,6 +869,7 @@ def create_app(
             if len(file_bytes) > _SITE_LEAD_MAX_FILE_SIZE:
                 raise HTTPException(status_code=400, detail="Файл слишком большой. Максимум 10 МБ.")
             file_name = file.filename
+            file_content_type = file.content_type
 
         async with db_session_factory() as session:
             chat_id = await _resolve_site_leads_chat_id(session=session, settings=settings)
@@ -755,6 +879,21 @@ def create_app(
 
         bot = telegram_bot or create_bot()
         message = _format_site_lead_message(
+            name=normalized_name,
+            company=normalized_company,
+            contact=normalized_contact,
+            description=normalized_description,
+            request_type=normalized_request_type,
+            subject=normalized_subject,
+            page=normalized_page,
+            utm=normalized_utm,
+        )
+        email_subject = _format_site_lead_email_subject(
+            name=normalized_name,
+            request_type=normalized_request_type,
+            subject=normalized_subject,
+        )
+        email_body = _format_site_lead_email_body(
             name=normalized_name,
             company=normalized_company,
             contact=normalized_contact,
@@ -774,8 +913,17 @@ def create_app(
                     document=BufferedInputFile(file=file_bytes, filename=file_name),
                     caption=caption,
                 )
+            if _site_leads_email_configured(settings):
+                await _send_site_lead_email(
+                    settings=settings,
+                    subject=email_subject,
+                    body=email_body,
+                    file_bytes=file_bytes,
+                    file_name=file_name,
+                    file_content_type=file_content_type,
+                )
         except Exception as exc:
-            raise HTTPException(status_code=502, detail="Не удалось отправить заявку в Telegram") from exc
+            raise HTTPException(status_code=502, detail="Не удалось доставить заявку") from exc
         finally:
             if telegram_bot is None:
                 await bot.session.close()
