@@ -11,7 +11,7 @@ import smtplib
 import ssl
 
 from aiogram.types import BufferedInputFile
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import desc, select, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -252,12 +252,12 @@ def _send_site_lead_email_sync(
 
     if settings.smtp_secure:
         context = ssl.create_default_context()
-        with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, context=context, timeout=20) as smtp:
+        with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, context=context, timeout=8) as smtp:
             smtp.login(settings.smtp_user, settings.smtp_pass)
             smtp.send_message(message)
         return
 
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20) as smtp:
+    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=8) as smtp:
         smtp.ehlo()
         smtp.starttls(context=ssl.create_default_context())
         smtp.ehlo()
@@ -283,6 +283,38 @@ async def _send_site_lead_email(
         file_name=file_name,
         file_content_type=file_content_type,
     )
+
+
+async def _send_site_lead_email_background(
+    *,
+    settings,
+    subject: str,
+    body: str,
+    file_bytes: bytes | None,
+    file_name: str | None,
+    file_content_type: str | None,
+    page: str | None,
+    contact: str,
+    request_type: str | None,
+) -> None:
+    try:
+        await _send_site_lead_email(
+            settings=settings,
+            subject=subject,
+            body=body,
+            file_bytes=file_bytes,
+            file_name=file_name,
+            file_content_type=file_content_type,
+        )
+    except Exception:
+        logger.exception(
+            "site_lead_email_delivery_failed",
+            extra={
+                "page": page,
+                "contact": contact,
+                "request_type": request_type,
+            },
+        )
 
 
 async def _resolve_site_leads_chat_id(
@@ -833,6 +865,7 @@ def create_app(
 
     @app.post("/api/leads")
     async def submit_site_lead(
+        background_tasks: BackgroundTasks,
         name: str = Form(...),
         company: str | None = Form(default=None),
         contact: str = Form(...),
@@ -923,24 +956,18 @@ def create_app(
                 await bot.session.close()
 
         if _site_leads_email_configured(settings):
-            try:
-                await _send_site_lead_email(
-                    settings=settings,
-                    subject=email_subject,
-                    body=email_body,
-                    file_bytes=file_bytes,
-                    file_name=file_name,
-                    file_content_type=file_content_type,
-                )
-            except Exception:
-                logger.exception(
-                    "site_lead_email_delivery_failed",
-                    extra={
-                        "page": normalized_page,
-                        "contact": normalized_contact,
-                        "request_type": normalized_request_type,
-                    },
-                )
+            background_tasks.add_task(
+                _send_site_lead_email_background,
+                settings=settings,
+                subject=email_subject,
+                body=email_body,
+                file_bytes=file_bytes,
+                file_name=file_name,
+                file_content_type=file_content_type,
+                page=normalized_page,
+                contact=normalized_contact,
+                request_type=normalized_request_type,
+            )
 
         return {"ok": True, "delivered": True}
 
