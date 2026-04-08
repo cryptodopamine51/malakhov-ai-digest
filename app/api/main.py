@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from datetime import date as date_cls, datetime
 from email.message import EmailMessage
 from html import escape as html_escape
+import logging
 import re
 import smtplib
 import ssl
@@ -97,6 +98,8 @@ from app.web import (
     render_site_issues_page,
     select_site_russia_events,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _serialize_datetime(value: datetime | None) -> str | None:
@@ -913,7 +916,14 @@ def create_app(
                     document=BufferedInputFile(file=file_bytes, filename=file_name),
                     caption=caption,
                 )
-            if _site_leads_email_configured(settings):
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="Не удалось доставить заявку") from exc
+        finally:
+            if telegram_bot is None:
+                await bot.session.close()
+
+        if _site_leads_email_configured(settings):
+            try:
                 await _send_site_lead_email(
                     settings=settings,
                     subject=email_subject,
@@ -922,11 +932,15 @@ def create_app(
                     file_name=file_name,
                     file_content_type=file_content_type,
                 )
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail="Не удалось доставить заявку") from exc
-        finally:
-            if telegram_bot is None:
-                await bot.session.close()
+            except Exception:
+                logger.exception(
+                    "site_lead_email_delivery_failed",
+                    extra={
+                        "page": normalized_page,
+                        "contact": normalized_contact,
+                        "request_type": normalized_request_type,
+                    },
+                )
 
         return {"ok": True, "delivered": True}
 

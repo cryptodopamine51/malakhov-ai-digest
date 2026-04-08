@@ -50,6 +50,11 @@ class FakeSmtp:
         self.messages.append(message)
 
 
+class BrokenSmtp(FakeSmtp):
+    def send_message(self, message):
+        raise TimeoutError("smtp timeout")
+
+
 @pytest.mark.asyncio
 async def test_site_lead_endpoint_sends_message_and_document(session_factory):
     async with session_factory() as session:
@@ -131,6 +136,41 @@ async def test_site_lead_endpoint_sends_email_when_smtp_configured(session_facto
     assert "Новая заявка с malakhovai.ru" in message["Subject"]
     assert "Нужен пилот" in message.get_body(preferencelist=("plain",)).get_content()
     assert len(list(message.iter_attachments())) == 1
+    get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_site_lead_endpoint_keeps_telegram_delivery_when_email_fails(session_factory, monkeypatch):
+    async with session_factory() as session:
+        session.add(User(telegram_user_id=123456789, telegram_chat_id=123456789))
+        await session.commit()
+
+    monkeypatch.setenv("SMTP_HOST", "mail.example.com")
+    monkeypatch.setenv("SMTP_PORT", "465")
+    monkeypatch.setenv("SMTP_SECURE", "true")
+    monkeypatch.setenv("SMTP_USER", "robot@example.com")
+    monkeypatch.setenv("SMTP_PASS", "secret")
+    monkeypatch.setenv("LEADS_EMAIL_TO", "sales@example.com")
+    monkeypatch.setenv("LEADS_EMAIL_FROM", "robot@example.com")
+    get_settings.cache_clear()
+    monkeypatch.setattr("app.api.main.smtplib.SMTP_SSL", BrokenSmtp)
+
+    bot = FakeBot()
+    app = create_app(session_factory=session_factory, telegram_bot=bot, enable_scheduler=False)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/leads",
+            data={
+                "name": "Иван",
+                "contact": "+7 900 000-00-00",
+                "description": "Нужен проект",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "delivered": True}
+    assert len(bot.messages) == 1
     get_settings.cache_clear()
 
 
