@@ -18,6 +18,10 @@ malakhovai.ru {
 
 api.malakhovai.ru {
 	encode zstd gzip
+
+	@vless path /vless-a4c5a3b624212c6bfa26d18ea9e5c458 /vless-a4c5a3b624212c6bfa26d18ea9e5c458/*
+	reverse_proxy @vless 172.18.0.1:10000
+
 	reverse_proxy api:8000
 }
 
