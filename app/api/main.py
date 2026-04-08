@@ -22,7 +22,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
 from app.core.digest_dates import default_daily_issue_date, default_weekly_issue_date
-from app.core.logging import configure_logging
+from app.core.logging import configure_logging, log_structured
 from app.db.models import (
     AlphaEntryStatus,
     Delivery,
@@ -132,6 +132,21 @@ def _normalize_site_lead_text(value: str | None) -> str | None:
         return None
     compact = re.sub(r"\s+", " ", value).strip()
     return compact or None
+
+
+def _mask_site_lead_contact(value: str) -> str:
+    value = value.strip()
+    if "@" in value:
+        local, _, domain = value.partition("@")
+        if len(local) <= 2:
+            local_masked = local[:1] + "*"
+        else:
+            local_masked = local[:2] + "***"
+        return f"{local_masked}@{domain}"
+    digits = re.sub(r"\D", "", value)
+    if len(digits) >= 4:
+        return f"***{digits[-4:]}"
+    return "***"
 
 
 def _format_site_lead_message(
@@ -364,25 +379,24 @@ async def _send_site_lead_email_background(
             file_name=file_name,
             file_content_type=file_content_type,
         )
-        logger.info(
+        log_structured(
+            logger,
             "site_lead_email_delivered",
-            extra={
-                "page": page,
-                "contact": contact,
-                "request_type": request_type,
-                "provider": (delivery or {}).get("provider"),
-                "message_id": (delivery or {}).get("message_id"),
-            },
+            page=page,
+            contact=_mask_site_lead_contact(contact),
+            request_type=request_type,
+            provider=(delivery or {}).get("provider"),
+            message_id=(delivery or {}).get("message_id"),
         )
     except Exception:
-        logger.exception(
+        log_structured(
+            logger,
             "site_lead_email_delivery_failed",
-            extra={
-                "page": page,
-                "contact": contact,
-                "request_type": request_type,
-            },
+            page=page,
+            contact=_mask_site_lead_contact(contact),
+            request_type=request_type,
         )
+        logger.exception("site_lead_email_delivery_failed_trace")
 
 
 async def _resolve_site_leads_chat_id(
@@ -1017,14 +1031,13 @@ def create_app(
                     document=BufferedInputFile(file=file_bytes, filename=file_name),
                     caption=caption,
                 )
-            logger.info(
+            log_structured(
+                logger,
                 "site_lead_telegram_delivered",
-                extra={
-                    "page": normalized_page,
-                    "contact": normalized_contact,
-                    "request_type": normalized_request_type,
-                    "has_attachment": bool(file_bytes and file_name),
-                },
+                page=normalized_page,
+                contact=_mask_site_lead_contact(normalized_contact),
+                request_type=normalized_request_type,
+                has_attachment=bool(file_bytes and file_name),
             )
         except Exception as exc:
             raise HTTPException(status_code=502, detail="Не удалось доставить заявку") from exc
