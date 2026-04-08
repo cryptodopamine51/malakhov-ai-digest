@@ -7,12 +7,14 @@ from email.message import EmailMessage
 from html import escape as html_escape
 import logging
 import re
+import json
 import smtplib
 import ssl
 
 from aiogram.types import BufferedInputFile
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
+import httpx
 from sqlalchemy import desc, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -218,6 +220,10 @@ def _format_site_lead_email_body(
 
 def _site_leads_email_configured(settings) -> bool:
     return bool(
+        settings.resend_api_key
+        and settings.leads_email_to
+        and settings.leads_email_from
+    ) or bool(
         settings.smtp_host
         and settings.smtp_port
         and settings.smtp_user
@@ -236,6 +242,17 @@ def _send_site_lead_email_sync(
     file_name: str | None,
     file_content_type: str | None,
 ) -> None:
+    if settings.resend_api_key:
+        _send_site_lead_email_via_resend_sync(
+            settings=settings,
+            subject=subject,
+            body=body,
+            file_bytes=file_bytes,
+            file_name=file_name,
+            file_content_type=file_content_type,
+        )
+        return
+
     message = EmailMessage()
     from_name = settings.leads_email_from_name or "Malakhov AI"
     message["Subject"] = subject
@@ -263,6 +280,42 @@ def _send_site_lead_email_sync(
         smtp.ehlo()
         smtp.login(settings.smtp_user, settings.smtp_pass)
         smtp.send_message(message)
+
+
+def _send_site_lead_email_via_resend_sync(
+    *,
+    settings,
+    subject: str,
+    body: str,
+    file_bytes: bytes | None,
+    file_name: str | None,
+    file_content_type: str | None,
+) -> None:
+    payload: dict[str, object] = {
+        "from": f"{settings.leads_email_from_name or 'Malakhov AI'} <{settings.leads_email_from}>",
+        "to": [settings.leads_email_to],
+        "subject": subject,
+        "text": body,
+    }
+    if file_bytes is not None and file_name is not None:
+        payload["attachments"] = [
+            {
+                "filename": file_name,
+                "content": __import__("base64").b64encode(file_bytes).decode("ascii"),
+                "content_type": file_content_type or "application/octet-stream",
+            }
+        ]
+
+    response = httpx.post(
+        "https://api.resend.com/emails",
+        headers={
+            "Authorization": f"Bearer {settings.resend_api_key}",
+            "Content-Type": "application/json",
+        },
+        content=json.dumps(payload),
+        timeout=12.0,
+    )
+    response.raise_for_status()
 
 
 async def _send_site_lead_email(

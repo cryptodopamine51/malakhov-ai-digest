@@ -1,4 +1,5 @@
 import pytest
+import json
 from httpx import ASGITransport, AsyncClient
 
 from app.api.main import create_app
@@ -53,6 +54,25 @@ class FakeSmtp:
 class BrokenSmtp(FakeSmtp):
     def send_message(self, message):
         raise TimeoutError("smtp timeout")
+
+
+class FakeResendResponse:
+    def raise_for_status(self):
+        return None
+
+
+class FakeResendClient:
+    last_request = None
+
+    @staticmethod
+    def post(url, headers=None, content=None, timeout=None):
+        FakeResendClient.last_request = {
+            "url": url,
+            "headers": headers,
+            "content": content,
+            "timeout": timeout,
+        }
+        return FakeResendResponse()
 
 
 @pytest.mark.asyncio
@@ -171,6 +191,44 @@ async def test_site_lead_endpoint_keeps_telegram_delivery_when_email_fails(sessi
     assert response.status_code == 200
     assert response.json() == {"ok": True, "delivered": True}
     assert len(bot.messages) == 1
+    get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_site_lead_endpoint_sends_email_via_resend_when_configured(session_factory, monkeypatch):
+    async with session_factory() as session:
+        session.add(User(telegram_user_id=123456789, telegram_chat_id=123456789))
+        await session.commit()
+
+    monkeypatch.setenv("RESEND_API_KEY", "re_test_123")
+    monkeypatch.setenv("LEADS_EMAIL_TO", "sales@example.com")
+    monkeypatch.setenv("LEADS_EMAIL_FROM", "noreply@example.com")
+    monkeypatch.setenv("LEADS_EMAIL_FROM_NAME", "Malakhov AI")
+    get_settings.cache_clear()
+    monkeypatch.setattr("app.api.main.httpx.post", FakeResendClient.post)
+
+    bot = FakeBot()
+    app = create_app(session_factory=session_factory, telegram_bot=bot, enable_scheduler=False)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/leads",
+            data={
+                "name": "Иван",
+                "contact": "+7 900 000-00-00",
+                "description": "Нужен проект",
+                "requestType": "Проект",
+            },
+            files={"file": ("brief.txt", b"hello", "text/plain")},
+        )
+
+    assert response.status_code == 200
+    assert FakeResendClient.last_request is not None
+    assert FakeResendClient.last_request["url"] == "https://api.resend.com/emails"
+    assert FakeResendClient.last_request["headers"]["Authorization"] == "Bearer re_test_123"
+    payload = json.loads(FakeResendClient.last_request["content"])
+    assert payload["subject"] == "Новая заявка с malakhovai.ru | Проект | Иван"
+    assert len(payload["attachments"]) == 1
     get_settings.cache_clear()
 
 

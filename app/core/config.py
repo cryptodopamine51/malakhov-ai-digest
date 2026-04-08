@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     bot_token: str = Field(alias="BOT_TOKEN")
     bot_polling_enabled: bool = Field(default=False, alias="BOT_POLLING_ENABLED")
     site_leads_chat_id: int | None = Field(default=None, alias="SITE_LEADS_CHAT_ID")
+    resend_api_key: str | None = Field(default=None, alias="RESEND_API_KEY")
     smtp_host: str | None = Field(default=None, alias="SMTP_HOST")
     smtp_port: int | None = Field(default=None, alias="SMTP_PORT")
     smtp_secure: bool = Field(default=False, alias="SMTP_SECURE")
