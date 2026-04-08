@@ -316,6 +316,11 @@ def _send_site_lead_email_via_resend_sync(
         timeout=12.0,
     )
     response.raise_for_status()
+    data = response.json()
+    return {
+        "provider": "resend",
+        "message_id": data.get("id"),
+    }
 
 
 async def _send_site_lead_email(
@@ -326,8 +331,8 @@ async def _send_site_lead_email(
     file_bytes: bytes | None,
     file_name: str | None,
     file_content_type: str | None,
-) -> None:
-    await asyncio.to_thread(
+) -> dict[str, object] | None:
+    return await asyncio.to_thread(
         _send_site_lead_email_sync,
         settings=settings,
         subject=subject,
@@ -351,13 +356,23 @@ async def _send_site_lead_email_background(
     request_type: str | None,
 ) -> None:
     try:
-        await _send_site_lead_email(
+        delivery = await _send_site_lead_email(
             settings=settings,
             subject=subject,
             body=body,
             file_bytes=file_bytes,
             file_name=file_name,
             file_content_type=file_content_type,
+        )
+        logger.info(
+            "site_lead_email_delivered",
+            extra={
+                "page": page,
+                "contact": contact,
+                "request_type": request_type,
+                "provider": (delivery or {}).get("provider"),
+                "message_id": (delivery or {}).get("message_id"),
+            },
         )
     except Exception:
         logger.exception(
@@ -1002,6 +1017,15 @@ def create_app(
                     document=BufferedInputFile(file=file_bytes, filename=file_name),
                     caption=caption,
                 )
+            logger.info(
+                "site_lead_telegram_delivered",
+                extra={
+                    "page": normalized_page,
+                    "contact": normalized_contact,
+                    "request_type": normalized_request_type,
+                    "has_attachment": bool(file_bytes and file_name),
+                },
+            )
         except Exception as exc:
             raise HTTPException(status_code=502, detail="Не удалось доставить заявку") from exc
         finally:
