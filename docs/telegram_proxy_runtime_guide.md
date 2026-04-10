@@ -19,6 +19,7 @@
 - Автозапуск: `restart unless-stopped`
 - Внешний порт: `2443/tcp`
 - Внутренний порт контейнера: `3128`
+- Fronting secret сейчас выпущен под `www.cloudflare.com`
 
 Проверки:
 
