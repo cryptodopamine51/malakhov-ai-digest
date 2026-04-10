@@ -87,6 +87,14 @@ vless://ab9e51a4-f848-4044-81fb-07f3083b1dbb@api.malakhovai.ru:443?encryption=no
 
 ## Базовая проверка после любых правок
 
+### Одна команда на полную проверку
+
+После выкладки серверного скрипта:
+
+```bash
+ssh malakhov-ai-vps 'SOCKS_USER=... SOCKS_PASS=... /opt/malakhov-ai-digest/scripts/vpn_doctor.sh'
+```
+
 ### Проверка сервиса
 
 ```bash
