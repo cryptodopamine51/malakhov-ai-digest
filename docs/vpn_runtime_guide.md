@@ -8,9 +8,8 @@
 
 - Сервис: `xray`
 - Типы профилей:
-  - `VLESS TCP TLS` на `9443` — основной профиль
+  - `VLESS WS TLS` через `api.malakhovai.ru:443` — основной профиль
   - `VLESS TCP REALITY` на `8443` — запасной профиль
-  - `VLESS WS TLS` через `api.malakhovai.ru:443` — резервный профиль
 - Публичный домен для всех профилей: `api.malakhovai.ru`
 
 ## Где живет конфигурация
@@ -29,19 +28,21 @@
 
 ## Активные входящие каналы
 
-### 1. Основной: VLESS TCP TLS
+### 1. Основной: VLESS WS TLS
 
 - Адрес: `api.malakhovai.ru`
-- Порт: `9443`
-- Transport: `tcp`
+- Порт: `443`
+- Transport: `ws`
 - Security: `tls`
+- Path: `/vless-a4c5a3b624212c6bfa26d18ea9e5c458`
+- Host: `api.malakhovai.ru`
 - SNI: `api.malakhovai.ru`
 - UUID: `ab9e51a4-f848-4044-81fb-07f3083b1dbb`
 
 URI:
 
 ```text
-vless://ab9e51a4-f848-4044-81fb-07f3083b1dbb@api.malakhovai.ru:9443?encryption=none&security=tls&sni=api.malakhovai.ru&fp=safari&type=tcp#Malakhov%20VLESS%20TCP%20TLS
+vless://ab9e51a4-f848-4044-81fb-07f3083b1dbb@api.malakhovai.ru:443?encryption=none&security=tls&type=ws&host=api.malakhovai.ru&path=%2Fvless-a4c5a3b624212c6bfa26d18ea9e5c458&sni=api.malakhovai.ru&fp=safari#Malakhov%20VLESS%20WS%20TLS
 ```
 
 ### 2. Запасной: VLESS TCP REALITY
@@ -62,28 +63,10 @@ URI:
 vless://ab9e51a4-f848-4044-81fb-07f3083b1dbb@api.malakhovai.ru:8443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.cloudflare.com&fp=safari&pbk=dnZJOIMlaOyMQccZXjca_GsFSnQJwueseaEKi8MEdlI&sid=6ba85179d8&type=tcp#Malakhov%20VLESS%20TCP%20REALITY
 ```
 
-### 3. Резервный: VLESS WS TLS
-
-- Адрес: `api.malakhovai.ru`
-- Порт: `443`
-- Transport: `ws`
-- Security: `tls`
-- Path: `/vless-a4c5a3b624212c6bfa26d18ea9e5c458`
-- Host: `api.malakhovai.ru`
-- SNI: `api.malakhovai.ru`
-- UUID: `ab9e51a4-f848-4044-81fb-07f3083b1dbb`
-
-URI:
-
-```text
-vless://ab9e51a4-f848-4044-81fb-07f3083b1dbb@api.malakhovai.ru:443?encryption=none&security=tls&type=ws&host=api.malakhovai.ru&path=%2Fvless-a4c5a3b624212c6bfa26d18ea9e5c458&sni=api.malakhovai.ru&fp=safari#Malakhov%20VLESS%20WS%20TLS
-```
-
 ## Что должно быть открыто на сервере
 
 - `443/tcp`
 - `8443/tcp`
-- `9443/tcp`
 
 ## Базовая проверка после любых правок
 
@@ -104,7 +87,7 @@ ssh malakhov-ai-vps 'systemctl is-active xray && systemctl status xray --no-page
 ### Проверка слушающих портов
 
 ```bash
-ssh malakhov-ai-vps 'ss -tulpn | grep -E ":(8443|9443|10000)\\b"'
+ssh malakhov-ai-vps 'ss -tulpn | grep -E ":(8443|10000)\\b"'
 ```
 
 ### Проверка WebSocket-маршрута
@@ -124,7 +107,7 @@ curl --http1.1 -skI https://api.malakhovai.ru/vless-a4c5a3b624212c6bfa26d18ea9e5
 ```bash
 python3 - <<'PY'
 import socket
-for port in (8443, 9443):
+for port in (8443,):
     s = socket.socket()
     s.settimeout(10)
     try:
@@ -142,13 +125,12 @@ PY
 1. Из `Caddy` выпадал маршрут `WS` до `xray`, и тогда `api.malakhovai.ru/...path...` уходил в API с `404`.
 2. Был только один клиентский путь, поэтому при сбое не было нормального резерва.
 3. `REALITY` на нестандартном порту может быть менее совместим с отдельными приложениями и сетями.
-4. Прямой `TCP` на нестандартных портах (`8443` и `9443`) технически рабочий, но для мобильной сети может быть менее устойчивым, чем `WS + TLS` на `443`.
+4. Прямые нестандартные порты не должны быть основным профилем для телефона.
 
 ## Рекомендуемый порядок профилей в телефоне
 
 1. `VLESS WS TLS` на `443`
-2. `VLESS TCP TLS` на `9443`
-3. `VLESS TCP REALITY` на `8443`
+2. `VLESS TCP REALITY` на `8443`
 
 ## Вывод по диагностике от 2026-04-10
 
@@ -157,8 +139,9 @@ PY
 - Память, диск и таблица соединений в норме.
 - Прямо в логах `xray` виден реальный трафик телефона с адреса `109.252.3.24`.
 - Длинный сквозной тест через `VLESS WS TLS` на `443` дал `10/10` успешных запросов подряд в течение более чем 5 минут.
+- На 2026-04-11 профиль `9443` извне не прошёл проверку и исключён из рабочего набора.
 
-Практический вывод: корневая проблема не в падении VPS, а в том, что прямые нестандартные `TCP`-профили на `8443/9443` менее надежны для мобильной сети. Для телефона основным должен быть профиль на `443`.
+Практический вывод: корневая проблема не в падении VPS, а в том, что прямые нестандартные профили менее надежны для мобильной сети. Для телефона основным должен быть профиль на `443`.
 
 ## Локальные файлы с профилями
 
