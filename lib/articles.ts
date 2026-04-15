@@ -5,12 +5,14 @@
  * Все функции используют serverClient (SUPABASE_SERVICE_KEY).
  */
 
-import { getServerClient, type Article } from './supabase'
+import { getBrowserClient, type Article } from './supabase'
 
 // ── Вспомогательная функция ───────────────────────────────────────────────────
+// Сайт только читает публичные данные — anon-ключ достаточен.
+// SERVICE_KEY остаётся только в pipeline-скриптах (ingest, enrich, tg-digest).
 
 function client() {
-  return getServerClient()
+  return getBrowserClient()
 }
 
 // ── Запросы ───────────────────────────────────────────────────────────────────
