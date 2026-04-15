@@ -25,6 +25,7 @@ export default function SafeImage({ fallbackClassName, className, ...props }: Sa
   }
 
   return (
+    // eslint-disable-next-line jsx-a11y/alt-text -- alt передаётся через props
     <Image
       {...props}
       className={className}
