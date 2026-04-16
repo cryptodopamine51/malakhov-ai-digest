@@ -25,7 +25,26 @@ jobs:
 
       - name: Run ingestion
         run: |
-          curl --fail --silent --show-error -X POST "$BASE_URL/internal/jobs/ingest"
+          for _ in $(seq 1 12); do
+            BODY_FILE="$(mktemp)"
+            STATUS_CODE="$(curl --silent --show-error -o "$BODY_FILE" -w '%{http_code}' -X POST "$BASE_URL/internal/jobs/ingest")"
+            BODY="$(cat "$BODY_FILE")"
+            rm -f "$BODY_FILE"
+            if [ "$STATUS_CODE" = "200" ]; then
+              echo "$BODY"
+              exit 0
+            fi
+            if [ "$STATUS_CODE" = "409" ]; then
+              echo "ingest is locked, waiting for retry"
+              sleep 15
+              continue
+            fi
+            echo "$BODY"
+            echo "ingest failed with status $STATUS_CODE" >&2
+            exit 1
+          done
+          echo "ingest stayed locked for too long" >&2
+          exit 1
 
       - name: Process events until queue drains
         run: |
