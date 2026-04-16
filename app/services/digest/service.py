@@ -88,13 +88,16 @@ class DigestBuilderService:
                 .options(selectinload(DigestIssue.items))
             )
             if existing is not None:
-                return IssueBuildResult(
-                    issue_id=existing.id,
-                    issue_type=existing.issue_type,
-                    issue_date=existing.issue_date,
-                    status=existing.status,
-                    reused_snapshot=True,
-                )
+                if existing.status is DigestIssueStatus.SENT or self._is_issue_publishable(existing.items):
+                    return IssueBuildResult(
+                        issue_id=existing.id,
+                        issue_type=existing.issue_type,
+                        issue_date=existing.issue_date,
+                        status=existing.status,
+                        reused_snapshot=True,
+                    )
+                await session.delete(existing)
+                await session.flush()
 
             issue = DigestIssue(
                 issue_type=request.issue_type,
@@ -121,7 +124,7 @@ class DigestBuilderService:
             for item in items:
                 item.issue_id = issue.id
                 session.add(item)
-            issue.status = DigestIssueStatus.READY
+            issue.status = DigestIssueStatus.READY if self._is_issue_publishable(items) else DigestIssueStatus.DRAFT
             await session.commit()
 
             preview = self._daily_main_preview_from_items(items, events=events) if request.issue_type is DigestIssueType.DAILY else None
@@ -1045,3 +1048,6 @@ class DigestBuilderService:
 
     def _is_weak_day(self, events: list[Event]) -> bool:
         return sum(1 for event in events if self._signal_score(event) >= 65) <= 1
+
+    def _is_issue_publishable(self, items: list[DigestIssueItem]) -> bool:
+        return any(item.event_id is not None for item in items)

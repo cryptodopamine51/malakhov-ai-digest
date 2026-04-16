@@ -94,7 +94,7 @@ async def test_raw_item_shortlist_rejects_stale_item(session_factory):
         title="Anthropic updates Claude pricing guidance",
         text="Anthropic updated pricing guidance and API positioning for enterprise buyers.",
         url="https://example.com/anthropic-pricing",
-        published_at=datetime.now(UTC) - timedelta(days=20),
+        published_at=datetime(2026, 3, 1, 12, 0, tzinfo=UTC),
     )
 
     async with session_factory() as session:

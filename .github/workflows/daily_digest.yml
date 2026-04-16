@@ -14,7 +14,7 @@ jobs:
     steps:
       - name: Wake API
         run: |
-          for attempt in $(seq 1 12); do
+          for _ in $(seq 1 12); do
             if curl --fail --silent --show-error "$BASE_URL/health" >/dev/null; then
               exit 0
             fi
@@ -30,7 +30,7 @@ jobs:
       - name: Process events until queue drains
         run: |
           DRAINED=false
-          for attempt in $(seq 1 20); do
+          for _ in $(seq 1 20); do
             RESPONSE="$(curl --fail --silent --show-error -X POST "$BASE_URL/internal/jobs/process-events")"
             echo "$RESPONSE"
             RAW_ITEMS_CONSIDERED="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("raw_items_considered", 0))' "$RESPONSE")"
@@ -46,11 +46,11 @@ jobs:
       - name: Build and send daily digest
         run: |
           TARGET_DATE="$(python3 - <<'PY'
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
-today_moscow = datetime.now(ZoneInfo("Europe/Moscow")).date()
-print((today_moscow - timedelta(days=1)).isoformat())
-PY
+          from datetime import datetime, timedelta
+          from zoneinfo import ZoneInfo
+          today_moscow = datetime.now(ZoneInfo("Europe/Moscow")).date()
+          print((today_moscow - timedelta(days=1)).isoformat())
+          PY
           )"
           echo "Building and sending daily issue for $TARGET_DATE"
           curl --fail --silent --show-error -X POST "$BASE_URL/internal/jobs/build-daily?date=$TARGET_DATE"
