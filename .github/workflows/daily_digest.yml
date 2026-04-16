@@ -9,7 +9,7 @@ jobs:
   daily-pipeline:
     runs-on: ubuntu-latest
     env:
-      BASE_URL: https://malakhov-ai-digest-api.onrender.com
+      BASE_URL: https://news.malakhovai.ru
       TZ: Europe/Moscow
     steps:
       - name: Wake API
