@@ -27,6 +27,7 @@ from app.db.models import (
     AlphaEntryStatus,
     Delivery,
     DigestIssue,
+    DigestIssueStatus,
     DigestIssueItem,
     DigestIssueType,
     DigestSection,
@@ -748,6 +749,14 @@ def _serialize_public_issue_item(item: DigestIssueItem) -> dict[str, object]:
         "event_id": item.event_id,
         "alpha_entry_id": item.alpha_entry_id,
     }
+
+
+def _public_issue_event_count(issue: DigestIssue) -> int:
+    return sum(1 for item in issue.items if item.event_id is not None)
+
+
+def _is_public_issue(issue: DigestIssue) -> bool:
+    return issue.status in {DigestIssueStatus.READY, DigestIssueStatus.SENT} and _public_issue_event_count(issue) > 0
 
 
 def _serialize_public_alpha_entry(entry) -> dict[str, object]:
@@ -1527,7 +1536,8 @@ def create_app(
         parsed_date = date_cls.fromisoformat(date) if date is not None else None
         safe_limit = max(1, min(limit, 100))
         safe_page = max(1, min(page, 500))
-        issues = await digest_builder.list_issues(issue_type=parsed_issue_type, issue_date=parsed_date, limit=safe_limit * safe_page + 1)
+        issues = await digest_builder.list_issues(issue_type=parsed_issue_type, issue_date=parsed_date, limit=min(safe_limit * safe_page + 100, 500))
+        issues = [issue for issue in issues if _is_public_issue(issue)]
         start = (safe_page - 1) * safe_limit
         sliced = issues[start:start + safe_limit + 1]
         has_next = len(sliced) > safe_limit
@@ -1561,7 +1571,7 @@ def create_app(
     @app.get("/api/issues/{issue_id}")
     async def public_get_issue(issue_id: int) -> dict[str, object]:
         issue = await digest_builder.get_issue(issue_id)
-        if issue is None:
+        if issue is None or not _is_public_issue(issue):
             raise HTTPException(status_code=404, detail="issue not found")
         section_counts: dict[str, int] = {}
         for section in DigestSection:
@@ -1629,7 +1639,7 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="invalid section") from exc
         issue = await digest_builder.get_issue(issue_id)
-        if issue is None:
+        if issue is None or not _is_public_issue(issue):
             raise HTTPException(status_code=404, detail="issue not found")
         items = await digest_builder.get_section_items(issue_id, parsed_section)
         return {

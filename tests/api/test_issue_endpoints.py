@@ -5,7 +5,10 @@ from datetime import date
 from httpx import ASGITransport, AsyncClient
 
 from app.api.main import create_app
-from app.db.models import Event, EventCategory, EventSection, Source, SourceType, SubscriptionMode, User
+from sqlalchemy import select
+
+from app.db.models import DigestIssue, Event, EventCategory, EventSection, Source, SourceType, SubscriptionMode, User
+from app.services.digest import DigestBuilderService
 from tests.digest.test_digest_builder_and_delivery import FakeBot
 
 
@@ -38,10 +41,26 @@ async def seed_issue_endpoint_data(session_factory):
             confidence_score=90,
             is_highlight=True,
         )
-        session.add(event)
+        second_event = Event(
+            event_date=date(2026, 3, 25),
+            title="Anthropic expands Claude enterprise controls",
+            short_summary="Anthropic added more enterprise controls and admin workflows for Claude.",
+            long_summary="Anthropic expanded enterprise controls, admin workflows and governance tooling for Claude deployments.",
+            primary_source_id=source.id,
+            primary_source_url="https://openai.com/news/claude-enterprise-controls",
+            importance_score=78,
+            market_impact_score=62,
+            ai_news_score=84,
+            coding_score=58,
+            investment_score=12,
+            confidence_score=82,
+            is_highlight=False,
+        )
+        session.add_all([event, second_event])
         await session.flush()
         session.add(EventCategory(event_id=event.id, section=EventSection.IMPORTANT, score=0.9, is_primary_section=True))
         session.add(EventCategory(event_id=event.id, section=EventSection.AI_NEWS, score=0.8, is_primary_section=False))
+        session.add(EventCategory(event_id=second_event.id, section=EventSection.AI_NEWS, score=0.88, is_primary_section=True))
         session.add(User(telegram_user_id=1, telegram_chat_id=101, subscription_mode=SubscriptionMode.DAILY, is_active=True))
         session.add(User(telegram_user_id=2, telegram_chat_id=202, subscription_mode=SubscriptionMode.WEEKLY, is_active=True))
         await session.commit()
@@ -92,3 +111,58 @@ async def test_manual_issue_build_and_send_endpoints(session_factory):
     assert debug_deliveries_after.json()["aggregate_by_type"]["daily_main"] >= 1
     assert resend.status_code == 200
     assert len(bot.messages) == 3
+
+
+async def test_public_issue_endpoints_hide_empty_stub_issues(session_factory):
+    service = DigestBuilderService(session_factory)
+    result = await service.build_daily_issue(date(2026, 3, 26))
+    app = create_app(session_factory=session_factory, enable_scheduler=False)
+
+    async with session_factory() as session:
+        issue = await session.scalar(select(DigestIssue).where(DigestIssue.id == result.issue_id))
+
+    assert issue is not None
+    assert issue.status.value == "draft"
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        issues = await client.get("/api/issues")
+        issue_detail = await client.get(f"/api/issues/{result.issue_id}")
+        issue_section = await client.get(f"/api/issues/{result.issue_id}/sections/all")
+
+    assert issues.status_code == 200
+    assert issues.json()["items"] == []
+    assert issue_detail.status_code == 404
+    assert issue_section.status_code == 404
+
+
+async def test_build_daily_issue_replaces_existing_stub_when_real_events_arrive(session_factory):
+    service = DigestBuilderService(session_factory)
+    first = await service.build_daily_issue(date(2026, 3, 27))
+
+    async with session_factory() as session:
+        first_issue = await session.scalar(select(DigestIssue).where(DigestIssue.id == first.issue_id))
+    assert first_issue is not None
+    assert first_issue.status.value == "draft"
+
+    await seed_issue_endpoint_data(session_factory)
+    async with session_factory() as session:
+        event = await session.scalar(select(Event).where(Event.title == "OpenAI launches GPT-5"))
+        assert event is not None
+        event.event_date = date(2026, 3, 27)
+        await session.commit()
+
+    second = await service.build_daily_issue(date(2026, 3, 27))
+
+    async with session_factory() as session:
+        issues = list(
+            (
+                await session.scalars(
+                    select(DigestIssue).where(DigestIssue.issue_date == date(2026, 3, 27)).order_by(DigestIssue.id.asc())
+                )
+            ).all()
+        )
+
+    assert second.reused_snapshot is False
+    assert len(issues) == 1
+    assert issues[0].id == second.issue_id
+    assert issues[0].status.value == "ready"

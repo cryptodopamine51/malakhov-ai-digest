@@ -1,5 +1,7 @@
--- Схема базы данных для Malakhov AI Digest
--- Применяется через Supabase Dashboard -> SQL Editor
+-- LEGACY schema.
+-- Этот файл описывает только старую таблицу `articles` для legacy Node/Supabase слоя.
+-- Для актуального Python/FastAPI runtime инициализация схемы должна идти через Alembic.
+-- Применяется через Supabase Dashboard -> SQL Editor только если вы осознанно работаете со старым `articles`-stack.
 
 CREATE TABLE articles (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),

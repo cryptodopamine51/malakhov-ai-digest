@@ -440,7 +440,9 @@ async def test_summary_builder_fallback_returns_russian_text(session_factory):
     assert "OpenAI" in result.payload.short_summary
     assert any("\u0400" <= ch <= "\u04FF" for ch in result.payload.short_summary)
     assert result.payload.short_summary.count(".") >= 2
-    assert "Инфоповод подтверждает" in result.payload.long_summary
+    assert any("\u0400" <= ch <= "\u04FF" for ch in result.payload.long_summary)
+    assert "OpenAI" in result.payload.long_summary
+    assert "Событие влияет на рынок" in result.payload.long_summary
 
 
 async def test_process_events_uses_async_summary_builder_output(session_factory):

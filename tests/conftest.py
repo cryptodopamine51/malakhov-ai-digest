@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy.pool import StaticPool
@@ -38,3 +39,14 @@ async def session_factory() -> AsyncGenerator[async_sessionmaker[AsyncSession], 
 async def db_session(session_factory: async_sessionmaker[AsyncSession]) -> AsyncGenerator[AsyncSession, None]:
     async with session_factory() as session:
         yield session
+
+
+@pytest.fixture(autouse=True)
+def freeze_shortlist_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    fixed_now = datetime(2026, 3, 26, 12, 0, tzinfo=UTC)
+
+    def _fixed_now() -> datetime:
+        return fixed_now
+
+    monkeypatch.setattr("app.services.shortlist.policy.utc_now", _fixed_now)
+    monkeypatch.setattr("app.services.shortlist.service.utc_now", _fixed_now)
