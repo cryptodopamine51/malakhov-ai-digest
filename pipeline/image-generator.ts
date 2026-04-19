@@ -32,7 +32,7 @@ export async function generateAndStoreImage(
     response_format: 'url',
   })
 
-  const imageUrl = response.data[0]?.url
+  const imageUrl = response.data?.[0]?.url
   if (!imageUrl) throw new Error('DALL-E 3 returned no URL')
 
   // 2. Скачиваем изображение
