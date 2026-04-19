@@ -531,10 +531,13 @@ export default async function ArticlePage({
         {/* Related — вне сетки, полная ширина */}
         {related.length > 0 && (
           <section className="mt-10 border-t border-line pt-8">
-            <h3 className="mb-4 font-serif text-2xl font-bold text-ink">Читать также</h3>
+            <p className="mb-1 font-serif text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
+              По теме
+            </p>
+            <h3 className="mb-5 font-serif text-xl font-bold text-ink">Читать также</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               {related.map((rel) => (
-                <ArticleCard key={rel.id} article={rel} variant="compact" />
+                <ArticleCard key={rel.id} article={rel} variant="related" />
               ))}
             </div>
           </section>

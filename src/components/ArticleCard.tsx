@@ -6,7 +6,7 @@ import SafeImage from './SafeImage'
 
 interface ArticleCardProps {
   article: Article
-  variant?: 'default' | 'compact' | 'featured'
+  variant?: 'default' | 'compact' | 'featured' | 'related'
 }
 
 function SourceLabel({ name }: { name: string }) {
@@ -148,6 +148,53 @@ function DefaultCard({ article }: { article: Article }) {
   )
 }
 
+/* ─── Related card: thumbnail + title (for "Читать также") ─── */
+function RelatedCard({ article }: { article: Article }) {
+  const href  = `/articles/${article.slug}`
+  const title = article.ru_title ?? article.original_title
+  const time  = formatRelativeTime(article.pub_date ?? article.created_at)
+  const topic = (article.topics ?? [])[0]
+
+  return (
+    <Link href={href} className="group block h-full">
+      <article className="flex h-full flex-col overflow-hidden rounded border border-line bg-base transition-all duration-150 hover:border-accent/40 hover:shadow-sm">
+        {/* Thumbnail */}
+        <div className="relative aspect-[16/9] flex-shrink-0 overflow-hidden bg-surface">
+          {article.cover_image_url ? (
+            <SafeImage
+              src={article.cover_image_url}
+              alt={title}
+              fill
+              sizes="(max-width: 640px) 100vw, 33vw"
+              className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+            />
+          ) : (
+            <ImagePlaceholder />
+          )}
+          {/* Topic overlay badge */}
+          {topic && (
+            <span className="absolute bottom-2 left-2 rounded-sm border border-white/30 bg-black/50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-white/90 backdrop-blur-sm">
+              {TOPIC_LABELS[topic] ?? topic}
+            </span>
+          )}
+        </div>
+
+        {/* Content */}
+        <div className="flex flex-1 flex-col gap-2 p-3">
+          <div className="flex items-center gap-1.5 text-[11px] text-muted">
+            <span className="font-medium uppercase tracking-[0.04em]">{article.source_name}</span>
+            <span className="text-line">·</span>
+            <span>{time}</span>
+          </div>
+          <h3 className="line-clamp-3 text-[14px] font-semibold leading-snug text-ink transition-colors group-hover:text-accent">
+            {title}
+          </h3>
+        </div>
+      </article>
+    </Link>
+  )
+}
+
 /* ─── Compact card: text-only row ─── */
 function CompactCard({ article }: { article: Article }) {
   const href  = `/articles/${article.slug}`
@@ -183,6 +230,7 @@ function CompactCard({ article }: { article: Article }) {
 export default function ArticleCard({ article, variant = 'default' }: ArticleCardProps) {
   if (variant === 'featured') return <FeaturedCard article={article} />
   if (variant === 'compact')  return <CompactCard  article={article} />
+  if (variant === 'related')  return <RelatedCard  article={article} />
   return <DefaultCard article={article} />
 }
 
