@@ -5,34 +5,93 @@ import ArticleCard from '../../src/components/ArticleCard'
 export const revalidate = 300
 
 export const metadata: Metadata = {
-  title: 'ИИ в России',
-  description: 'Новости об искусственном интеллекте в российских компаниях и медиа',
+  title: 'ИИ в России — новости и тренды',
+  description: 'Российский рынок ИИ: государственная политика, отечественные модели, кейсы компаний и академические достижения.',
+  alternates: { canonical: '/russia' },
+  openGraph: {
+    title: 'ИИ в России — новости и тренды',
+    description: 'Российский рынок ИИ: государственная политика, отечественные модели, кейсы компаний и академические достижения.',
+    type: 'website',
+  },
+}
+
+const SITE_URL = 'https://news.malakhovai.ru'
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: 'ИИ в России',
+  description: 'Российский рынок ИИ: государственная политика, отечественные модели, кейсы компаний и академические достижения.',
+  url: `${SITE_URL}/russia`,
+  publisher: { '@type': 'Organization', name: 'Malakhov AI Дайджест', url: SITE_URL },
 }
 
 export default async function RussiaPage() {
   const articles = await getRussiaArticles(30)
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 md:py-10">
-      <div className="mb-6 border-l-[3px] border-russia pl-4">
-        <h1 className="font-serif text-2xl font-bold text-ink">🇷🇺 ИИ в России</h1>
-        <p className="mt-1 text-sm text-muted">
-          Новости об искусственном интеллекте в российских компаниях и медиа
-        </p>
-      </div>
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <div className="mx-auto max-w-6xl px-4 py-8 md:py-10">
 
-      {articles.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 text-muted">
-          <span className="text-4xl mb-3">📡</span>
-          <p className="text-lg">Статьи появятся совсем скоро</p>
+        {/* Hero с wireframe-иллюстрацией */}
+        <div className="relative mb-8 overflow-hidden rounded border border-line bg-surface" style={{ minHeight: 200 }}>
+          {/* SVG: схема «центр → регионы» */}
+          <svg viewBox="0 0 640 200" className="absolute inset-0 h-full w-full opacity-60" aria-hidden>
+            <circle cx={320} cy={100} r={32} fill="none" stroke="var(--ink)" strokeWidth="1.2"/>
+            <text x={320} y={104} textAnchor="middle" fontSize="9" fill="var(--muted)" fontFamily="var(--font-mono)">RU</text>
+            {[
+              { cx: 160, cy: 50 }, { cx: 480, cy: 50 },
+              { cx: 140, cy: 155 }, { cx: 500, cy: 155 },
+              { cx: 320, cy: 30 },
+            ].map(({ cx, cy }, i) => (
+              <g key={i}>
+                <line x1={320} y1={100} x2={cx} y2={cy} stroke="var(--ink)" strokeWidth="0.7" strokeDasharray="4 4"/>
+                <circle cx={cx} cy={cy} r={18} fill="none" stroke="var(--ink)" strokeWidth="0.8"/>
+              </g>
+            ))}
+            <circle cx={320} cy={100} r={32} fill="var(--accent)" fillOpacity="0.06" stroke="var(--accent)" strokeWidth="1"/>
+          </svg>
+          {/* Градиент: левые 45% непрозрачны (текст), правые — иллюстрация */}
+          <div className="absolute inset-0 z-[5]" style={{
+            background: 'linear-gradient(to right, var(--surface) 45%, color-mix(in srgb, var(--surface) 60%, transparent) 65%, transparent 100%)'
+          }} />
+          <div className="relative z-10 px-8 py-10">
+            <p className="mb-2 font-serif text-[10px] font-semibold uppercase tracking-[0.22em] text-accent">
+              Раздел
+            </p>
+            <h1 className="font-serif text-3xl font-extrabold tracking-tight text-ink md:text-4xl">
+              🇷🇺 Россия
+            </h1>
+            <p className="mt-3 max-w-xl text-[14px] leading-relaxed text-muted">
+              Российский рынок ИИ: государственная политика, отечественные модели, кейсы компаний и академические достижения.
+            </p>
+          </div>
         </div>
-      ) : (
-        <div>
-          {articles.map((article) => (
-            <ArticleCard key={article.id} article={article} variant="compact" />
-          ))}
-        </div>
-      )}
-    </div>
+
+        {articles.length === 0 ? (
+          <div className="py-20 text-center text-muted">
+            Статьи появятся совсем скоро
+          </div>
+        ) : (
+          <>
+            <div className="mb-4">
+              <ArticleCard article={articles[0]} variant="featured" />
+            </div>
+            {articles.length > 1 && (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                {articles.slice(1).map((article) => (
+                  <ArticleCard key={article.id} article={article} variant="default" />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+      </div>
+    </>
   )
 }
