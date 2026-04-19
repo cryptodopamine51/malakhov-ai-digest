@@ -13,9 +13,9 @@ export default async function RussiaPage() {
   const articles = await getRussiaArticles(30)
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
-      <div className="mb-6 border-l-4 border-russia pl-4">
-        <h1 className="text-2xl font-bold text-[#e5e5e5]">🇷🇺 ИИ в России</h1>
+    <div className="mx-auto max-w-6xl px-4 py-8 md:py-10">
+      <div className="mb-6 border-l-[3px] border-russia pl-4">
+        <h1 className="font-serif text-2xl font-bold text-ink">🇷🇺 ИИ в России</h1>
         <p className="mt-1 text-sm text-muted">
           Новости об искусственном интеллекте в российских компаниях и медиа
         </p>
@@ -27,7 +27,7 @@ export default async function RussiaPage() {
           <p className="text-lg">Статьи появятся совсем скоро</p>
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
+        <div>
           {articles.map((article) => (
             <ArticleCard key={article.id} article={article} variant="compact" />
           ))}

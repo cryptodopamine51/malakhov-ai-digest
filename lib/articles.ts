@@ -11,6 +11,23 @@ function client() {
   return getBrowserClient()
 }
 
+const MOSCOW_TZ = 'Europe/Moscow'
+
+function getMoscowDateKey(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: MOSCOW_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+
+  const year = parts.find((part) => part.type === 'year')?.value
+  const month = parts.find((part) => part.type === 'month')?.value
+  const day = parts.find((part) => part.type === 'day')?.value
+
+  return `${year}-${month}-${day}`
+}
+
 export async function getLatestArticles(limit = 20): Promise<Article[]> {
   const { data, error } = await client()
     .from('articles')
@@ -89,7 +106,9 @@ export async function getAllSlugs(): Promise<string[]> {
 }
 
 export async function getTopTodayArticles(limit = 7): Promise<Article[]> {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const moscowToday = getMoscowDateKey()
+  const since = new Date(`${moscowToday}T00:00:00+03:00`).toISOString()
+  const until = new Date(`${moscowToday}T23:59:59.999+03:00`).toISOString()
 
   const { data, error } = await client()
     .from('articles')
@@ -97,6 +116,7 @@ export async function getTopTodayArticles(limit = 7): Promise<Article[]> {
     .eq('published', true)
     .eq('quality_ok', true)
     .gte('created_at', since)
+    .lte('created_at', until)
     .order('score', { ascending: false })
     .limit(limit)
 

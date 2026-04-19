@@ -5,7 +5,7 @@
  */
 
 import { parse as parseHtml } from 'node-html-parser'
-import { JSDOM } from 'jsdom'
+import { JSDOM, VirtualConsole } from 'jsdom'
 import { Readability } from '@mozilla/readability'
 
 const FETCH_TIMEOUT_MS = 15_000
@@ -133,7 +133,9 @@ function extractInlineImages(document: Document, baseUrl: string): ExtractedImag
 
 function extractReadableText(html: string, url: string): string {
   try {
-    const dom = new JSDOM(html, { url })
+    const virtualConsole = new VirtualConsole()
+    virtualConsole.on('jsdomError', () => undefined)
+    const dom = new JSDOM(html, { url, virtualConsole })
     const reader = new Readability(dom.window.document)
     const article = reader.parse()
     const raw = (article?.textContent ?? '').replace(/\s+/g, ' ').trim()
@@ -173,7 +175,9 @@ export async function fetchArticleContent(url: string): Promise<FetchedContent> 
     let tables: ExtractedTable[] = []
     let inlineImages: ExtractedImage[] = []
     try {
-      const dom = new JSDOM(html, { url })
+      const virtualConsole = new VirtualConsole()
+      virtualConsole.on('jsdomError', () => undefined)
+      const dom = new JSDOM(html, { url, virtualConsole })
       tables = extractTables(dom.window.document)
       inlineImages = extractInlineImages(dom.window.document, url)
     } catch { /* некритично */ }

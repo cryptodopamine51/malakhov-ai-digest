@@ -70,6 +70,34 @@ export const FEEDS: FeedConfig[] = [
     topics: ['ai-labs'],
   },
   {
+    name: 'AWS Machine Learning Blog',
+    url: 'https://aws.amazon.com/blogs/machine-learning/feed/',
+    lang: 'en',
+    topics: ['ai-labs', 'coding'],
+  },
+  {
+    name: 'Microsoft Blogs',
+    url: 'https://blogs.microsoft.com/feed/',
+    lang: 'en',
+    topics: ['ai-labs', 'ai-industry'],
+    needsKeywordFilter: true,
+    keywords: [
+      'copilot', 'azure ai', 'openai', 'phi', 'machine learning', 'artificial intelligence',
+      'generative ai', 'agent', 'llm', 'language model',
+    ],
+  },
+  {
+    name: 'NVIDIA Blog',
+    url: 'https://blogs.nvidia.com/feed/',
+    lang: 'en',
+    topics: ['ai-labs', 'coding'],
+    needsKeywordFilter: true,
+    keywords: [
+      'artificial intelligence', 'generative ai', 'llm', 'agent', 'robotics',
+      'nemo', 'blackwell', 'cuda', 'inference', 'training', 'machine learning',
+    ],
+  },
+  {
     name: 'Google Research Blog',
     url: 'https://research.google/blog/rss',
     lang: 'en',
@@ -102,15 +130,28 @@ export const FEEDS: FeedConfig[] = [
       'series a', 'series b', 'series c', 'seed round',
     ],
   },
+  // Axios Pro Rata — текущий feed endpoint стабильно отвечает 404, возвращать после замены на рабочий URL.
+  // {
+  //   name: 'Axios Pro Rata',
+  //   url: 'https://www.axios.com/feeds/feed/pro-rata',
+  //   lang: 'en',
+  //   topics: ['ai-investments'],
+  //   needsKeywordFilter: true,
+  //   keywords: [
+  //     'openai', 'anthropic', 'deepmind', 'mistral', 'artificial intelligence',
+  //     ' ai ', 'machine learning', 'llm', 'generative', 'raises', 'funding round',
+  //   ],
+  // },
   {
-    name: 'Axios Pro Rata',
-    url: 'https://www.axios.com/feeds/feed/pro-rata',
+    name: 'Crunchbase News',
+    url: 'https://news.crunchbase.com/feed/',
     lang: 'en',
-    topics: ['ai-investments'],
+    topics: ['ai-investments', 'ai-startups'],
     needsKeywordFilter: true,
     keywords: [
-      'openai', 'anthropic', 'deepmind', 'mistral', 'artificial intelligence',
-      ' ai ', 'machine learning', 'llm', 'generative', 'raises', 'funding round',
+      'artificial intelligence', ' ai ', 'machine learning', 'llm', 'generative ai',
+      'startup', 'funding', 'series a', 'series b', 'series c', 'seed', 'valuation',
+      'anthropic', 'openai', 'mistral', 'cursor', 'character.ai', 'perplexity',
     ],
   },
 
@@ -122,15 +163,28 @@ export const FEEDS: FeedConfig[] = [
     lang: 'en',
     topics: ['ai-startups'],
   },
+  // a16z Blog — текущий feed endpoint стабильно отвечает 404, возвращать после замены на рабочий URL.
+  // {
+  //   name: 'a16z Blog',
+  //   url: 'https://a16z.com/feed/',
+  //   lang: 'en',
+  //   topics: ['ai-startups'],
+  //   needsKeywordFilter: true,
+  //   keywords: [
+  //     'artificial intelligence', ' ai ', 'machine learning', 'llm', 'generative',
+  //     'language model', 'foundation model', 'openai', 'anthropic',
+  //   ],
+  // },
   {
-    name: 'a16z Blog',
-    url: 'https://a16z.com/feed/',
+    name: 'Sequoia Capital',
+    url: 'https://sequoiacap.com/feed/',
     lang: 'en',
-    topics: ['ai-startups'],
+    topics: ['ai-startups', 'ai-investments'],
     needsKeywordFilter: true,
     keywords: [
-      'artificial intelligence', ' ai ', 'machine learning', 'llm', 'generative',
-      'language model', 'foundation model', 'openai', 'anthropic',
+      'artificial intelligence', ' ai ', 'machine learning', 'llm', 'generative ai',
+      'startup', 'seed', 'series a', 'series b', 'funding', 'company building',
+      'openai', 'anthropic', 'cursor', 'perplexity',
     ],
   },
 
@@ -165,29 +219,30 @@ export const FEEDS: FeedConfig[] = [
     topics: ['ai-russia'],
     needsKeywordFilter: true,
   },
-  {
-    name: 'vc.ru Финансы',
-    url: 'https://vc.ru/finance/rss',
-    lang: 'ru',
-    topics: ['ai-investments'],
-    needsKeywordFilter: true,
-    keywords: [
-      'искусственный интеллект', 'нейросеть', 'нейросети', 'машинное обучение',
-      'языковая модель', 'генеративн', 'ии ', ' ии', 'gpt', 'llm',
-      'openai', 'anthropic', 'яндекс', 'сбер', 'раунд', 'инвестиции',
-    ],
-  },
-  {
-    name: 'vc.ru Стартапы',
-    url: 'https://vc.ru/startups/rss',
-    lang: 'ru',
-    topics: ['ai-startups'],
-    needsKeywordFilter: true,
-    keywords: [
-      'искусственный интеллект', 'нейросеть', 'нейросети', 'машинное обучение',
-      'языковая модель', 'генеративн', 'ии ', ' ии', 'gpt', 'llm',
-      'openai', 'anthropic', 'яндекс', 'сбер', 'стартап', 'запустили',
-      'mvp', 'traction', 'основали',
-    ],
-  },
+  // vc.ru Финансы / Стартапы — текущие feed endpoints отвечают 404, вернём после проверки новых URL.
+  // {
+  //   name: 'vc.ru Финансы',
+  //   url: 'https://vc.ru/finance/rss',
+  //   lang: 'ru',
+  //   topics: ['ai-investments'],
+  //   needsKeywordFilter: true,
+  //   keywords: [
+  //     'искусственный интеллект', 'нейросеть', 'нейросети', 'машинное обучение',
+  //     'языковая модель', 'генеративн', 'ии ', ' ии', 'gpt', 'llm',
+  //     'openai', 'anthropic', 'яндекс', 'сбер', 'раунд', 'инвестиции',
+  //   ],
+  // },
+  // {
+  //   name: 'vc.ru Стартапы',
+  //   url: 'https://vc.ru/startups/rss',
+  //   lang: 'ru',
+  //   topics: ['ai-startups'],
+  //   needsKeywordFilter: true,
+  //   keywords: [
+  //     'искусственный интеллект', 'нейросеть', 'нейросети', 'машинное обучение',
+  //     'языковая модель', 'генеративн', 'ии ', ' ии', 'gpt', 'llm',
+  //     'openai', 'anthropic', 'яндекс', 'сбер', 'стартап', 'запустили',
+  //     'mvp', 'traction', 'основали',
+  //   ],
+  // },
 ]

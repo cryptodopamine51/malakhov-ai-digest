@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation'
+import Link from 'next/link'
 import type { Metadata } from 'next'
 import { getSourceNameBySlug, getAllSourceSlugs, getArticlesBySource } from '../../../lib/articles'
 import ArticleCard from '../../../src/components/ArticleCard'
@@ -33,15 +34,15 @@ export default async function SourcePage({
   const articles = await getArticlesBySource(sourceName, 24)
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
+    <div className="mx-auto max-w-6xl px-4 py-8 md:py-10">
       <nav className="mb-6 flex items-center gap-2 text-sm text-muted">
-        <a href="/sources" className="hover:text-accent transition-colors">Источники</a>
+        <Link href="/sources" className="transition-colors hover:text-ink">Источники</Link>
         <span>→</span>
         <span>{sourceName}</span>
       </nav>
 
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-[#e5e5e5]">{sourceName}</h1>
+        <h1 className="font-serif text-2xl font-bold text-ink">{sourceName}</h1>
         <p className="mt-1 text-sm text-muted">
           {articles.length} материалов
         </p>

@@ -10,13 +10,28 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        surface: '#1a1a1a',
-        accent: '#6366f1',
-        russia: '#dc2626',
-        muted: '#737373',
+        base:    'var(--base)',
+        surface: 'var(--surface)',
+        ink:     'var(--ink)',
+        muted:   'var(--muted)',
+        line:    'var(--line)',
+        accent:  'var(--accent)',
+        russia:  '#dc2626',
+        footer:  '#0a0a0a',
       },
       fontFamily: {
-        sans: ['Inter', ...defaultTheme.fontFamily.sans],
+        sans:  ['var(--font-golos)',  ...defaultTheme.fontFamily.sans],
+        serif: ['var(--font-onest)',  ...defaultTheme.fontFamily.sans],
+        mono:  ['var(--font-mono)',   ...defaultTheme.fontFamily.mono],
+      },
+      borderRadius: {
+        sm:    '3px',
+        DEFAULT: '4px',
+        md:    '4px',
+        lg:    '4px',
+        xl:    '4px',
+        '2xl': '4px',
+        full:  '9999px',
       },
     },
   },

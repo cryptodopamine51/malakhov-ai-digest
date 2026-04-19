@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import { getArticlesByDate } from '../../../lib/articles'
+import { formatMoscowDate, getMoscowDateKey, shiftMoscowDateKey } from '../../../lib/utils'
 import ArticleCard from '../../../src/components/ArticleCard'
 
 export const revalidate = 3600
@@ -13,11 +14,11 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(params.date)) return {}
 
-  const formatted = new Intl.DateTimeFormat('ru-RU', {
+  const formatted = formatMoscowDate(params.date, {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
-  }).format(new Date(params.date + 'T12:00:00'))
+  })
 
   return {
     title: `AI новости за ${formatted}`,
@@ -34,21 +35,21 @@ export default async function ArchivePage({
 
   const articles = await getArticlesByDate(params.date)
 
-  const formatted = new Intl.DateTimeFormat('ru-RU', {
+  const formatted = formatMoscowDate(params.date, {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
-  }).format(new Date(params.date + 'T12:00:00'))
+  })
 
   const prev = offsetDate(params.date, -1)
   const next = offsetDate(params.date, +1)
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayStr = getMoscowTodayDate()
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
+    <div className="mx-auto max-w-6xl px-4 py-8 md:py-10">
       <nav className="mb-6 flex items-center gap-2 text-sm text-muted">
-        <Link href="/" className="hover:text-accent transition-colors">Главная</Link>
+        <Link href="/" className="transition-colors hover:text-ink">Главная</Link>
         <span>→</span>
         <span>Архив</span>
         <span>→</span>
@@ -56,7 +57,7 @@ export default async function ArchivePage({
       </nav>
 
       <div className="mb-8 flex flex-wrap items-baseline gap-4">
-        <h1 className="text-2xl font-bold text-[#e5e5e5] capitalize">{formatted}</h1>
+        <h1 className="font-serif text-2xl font-bold text-ink capitalize">{formatted}</h1>
         {articles.length > 0 && (
           <span className="text-sm text-muted">{articles.length} материалов</span>
         )}
@@ -75,12 +76,12 @@ export default async function ArchivePage({
         </div>
       )}
 
-      <div className="mt-10 flex items-center justify-between text-sm text-muted border-t border-white/10 pt-5">
-        <Link href={`/archive/${prev}`} className="hover:text-accent transition-colors">
+      <div className="mt-10 flex items-center justify-between border-t border-line pt-5 text-sm text-muted">
+        <Link href={`/archive/${prev}`} className="transition-colors hover:text-ink">
           ← {formatShort(prev)}
         </Link>
         {next <= todayStr && (
-          <Link href={`/archive/${next}`} className="hover:text-accent transition-colors">
+          <Link href={`/archive/${next}`} className="transition-colors hover:text-ink">
             {formatShort(next)} →
           </Link>
         )}
@@ -90,13 +91,13 @@ export default async function ArchivePage({
 }
 
 function offsetDate(dateStr: string, days: number): string {
-  const d = new Date(dateStr + 'T12:00:00')
-  d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
+  return shiftMoscowDateKey(dateStr, days)
 }
 
 function formatShort(dateStr: string): string {
-  return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' }).format(
-    new Date(dateStr + 'T12:00:00')
-  )
+  return formatMoscowDate(dateStr, { day: 'numeric', month: 'long' })
+}
+
+function getMoscowTodayDate(): string {
+  return getMoscowDateKey()
 }

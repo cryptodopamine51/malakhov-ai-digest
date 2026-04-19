@@ -2,8 +2,9 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { cn } from '../../lib/utils'
+import ThemeToggle from './ThemeToggle'
 
 const NAV_LINKS = [
   { href: '/',                      label: 'Главная' },
@@ -19,27 +20,42 @@ const NAV_LINKS = [
 export default function Header() {
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [scrolled, setScrolled] = useState(false)
+
+  useEffect(() => {
+    const handler = () => setScrolled(window.scrollY > 8)
+    window.addEventListener('scroll', handler, { passive: true })
+    return () => window.removeEventListener('scroll', handler)
+  }, [])
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/5 bg-[#0f0f0f]/80 backdrop-blur-md">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+    <header className={cn(
+      'sticky top-0 z-50 bg-base/90 backdrop-blur-md border-b transition-colors duration-150',
+      scrolled ? 'border-line' : 'border-transparent'
+    )}>
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 h-14">
+
         {/* Логотип */}
-        <Link href="/" className="flex items-center gap-1 text-lg">
-          <span className="font-bold text-white">Malakhov AI</span>
-          <span className="text-muted font-normal">Дайджест</span>
+        <Link href="/" className="flex items-center gap-1.5 flex-shrink-0">
+          <span className="font-serif font-bold text-[17px] text-ink tracking-tight">
+            Malakhov AI
+          </span>
+          <span className="text-muted text-[13px] font-sans hidden sm:inline">
+            Дайджест
+          </span>
         </Link>
 
         {/* Десктопная навигация */}
-        <nav className="hidden md:flex items-center gap-1">
+        <nav className="hidden lg:flex items-center gap-0.5">
           {NAV_LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
               className={cn(
-                'rounded-md px-3 py-1.5 text-sm transition-colors',
+                'px-3 py-1.5 text-[11px] font-sans font-medium uppercase tracking-[0.07em] transition-colors rounded',
                 pathname === link.href
-                  ? 'bg-accent/15 text-accent'
-                  : 'text-muted hover:text-[#e5e5e5] hover:bg-white/5'
+                  ? 'text-ink font-semibold'
+                  : 'text-muted hover:text-ink'
               )}
             >
               {link.label}
@@ -47,38 +63,44 @@ export default function Header() {
           ))}
         </nav>
 
-        {/* Бургер-кнопка (мобильная) */}
-        <button
-          className="md:hidden p-2 text-muted hover:text-[#e5e5e5]"
-          aria-label="Открыть меню"
-          onClick={() => setMenuOpen((v) => !v)}
-        >
-          {menuOpen ? (
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-            </svg>
-          ) : (
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm1 5a1 1 0 100 2h12a1 1 0 100-2H4z" clipRule="evenodd" />
-            </svg>
-          )}
-        </button>
+        {/* Правые иконки */}
+        <div className="flex items-center gap-1">
+          <ThemeToggle />
+
+          {/* Бургер */}
+          <button
+            className="lg:hidden flex h-8 w-8 items-center justify-center text-muted hover:text-ink transition-colors"
+            aria-label="Открыть меню"
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            {menuOpen ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Мобильное меню */}
       {menuOpen && (
-        <nav className="md:hidden border-t border-white/5 bg-[#0f0f0f]/95 px-4 py-2">
-          <div className="grid grid-cols-2 gap-x-2">
+        <nav className="lg:hidden border-t border-line bg-base px-4 py-3">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
             {NAV_LINKS.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 onClick={() => setMenuOpen(false)}
                 className={cn(
-                  'block rounded-md px-3 py-2 text-sm transition-colors',
-                  pathname === link.href
-                    ? 'text-accent'
-                    : 'text-muted hover:text-[#e5e5e5]'
+                  'block py-2 text-[12px] font-medium uppercase tracking-[0.07em] transition-colors',
+                  pathname === link.href ? 'text-ink font-semibold' : 'text-muted hover:text-ink'
                 )}
               >
                 {link.label}

@@ -35,6 +35,7 @@ export function scoreArticle(article: Article): number {
   if (TOP_OUTLETS.some((outlet) => article.source_name.includes(outlet))) score += 1
   if ((article.original_text?.length ?? 0) > 1000) score += 1
   if (article.cover_image_url) score += 1
+  if (article.source_lang === 'ru') score += 1
   if (article.original_title.trim().split(/\s+/).length < 5) score -= 1
 
   return Math.max(0, score)

@@ -33,7 +33,13 @@ async function enrichArticle(
   supabase: ReturnType<typeof getServerClient>,
   article: Article,
 ): Promise<'published' | 'skipped' | 'rejected' | 'error'> {
-  const score = scoreArticle(article)
+  const { text: fullText, imageUrl, tables, inlineImages } = await fetchArticleContent(article.original_url)
+  const articleForScoring: Article = {
+    ...article,
+    original_text: fullText || article.original_text,
+    cover_image_url: imageUrl || article.cover_image_url,
+  }
+  const score = scoreArticle(articleForScoring)
 
   // Слишком слабая статья — не тратим токены Claude
   if (score < MIN_SCORE_FOR_CLAUDE) {
@@ -45,6 +51,8 @@ async function enrichArticle(
         quality_ok: false,
         quality_reason: 'low_score',
         score,
+        original_text: fullText || article.original_text,
+        cover_image_url: imageUrl || article.cover_image_url,
       })
       .eq('id', article.id)
 
@@ -57,8 +65,6 @@ async function enrichArticle(
     return 'skipped'
   }
 
-  // Загрузка полного текста
-  const { text: fullText, imageUrl, tables, inlineImages } = await fetchArticleContent(article.original_url)
   const contentForClaude = fullText || article.original_text || ''
 
   // Вызов редактора

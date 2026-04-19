@@ -54,3 +54,37 @@ export function truncate(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text
   return text.slice(0, maxLength - 1) + '…'
 }
+
+const MOSCOW_TZ = 'Europe/Moscow'
+
+export function getMoscowDateKey(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: MOSCOW_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+
+  const year = parts.find((part) => part.type === 'year')?.value
+  const month = parts.find((part) => part.type === 'month')?.value
+  const day = parts.find((part) => part.type === 'day')?.value
+
+  return `${year}-${month}-${day}`
+}
+
+export function shiftMoscowDateKey(dateKey: string, days: number): string {
+  const date = new Date(`${dateKey}T12:00:00+03:00`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return getMoscowDateKey(date)
+}
+
+export function formatMoscowDate(
+  dateKey: string,
+  options: Intl.DateTimeFormatOptions,
+  locale = 'ru-RU'
+): string {
+  return new Intl.DateTimeFormat(locale, {
+    ...options,
+    timeZone: MOSCOW_TZ,
+  }).format(new Date(`${dateKey}T12:00:00+03:00`))
+}

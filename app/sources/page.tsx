@@ -20,12 +20,17 @@ const SOURCE_DOMAINS: Record<string, string> = {
   'Ars Technica': 'arstechnica.com',
   'MIT Technology Review AI': 'technologyreview.com',
   'OpenAI News': 'openai.com',
+  'AWS Machine Learning Blog': 'aws.amazon.com',
+  'Microsoft Blogs': 'blogs.microsoft.com',
+  'NVIDIA Blog': 'blogs.nvidia.com',
   'Google Research Blog': 'research.google',
   'Hugging Face Blog': 'huggingface.co',
   '404 Media': '404media.co',
   'Axios Pro Rata': 'axios.com',
   'YC Blog': 'ycombinator.com',
   'a16z Blog': 'a16z.com',
+  'Crunchbase News': 'news.crunchbase.com',
+  'Sequoia Capital': 'sequoiacap.com',
   'Habr AI': 'habr.com',
   'CNews': 'cnews.ru',
   'vc.ru': 'vc.ru',
@@ -42,8 +47,11 @@ const SOURCE_LANG: Record<string, 'EN' | 'RU'> = {
 }
 
 function pluralCount(n: number): string {
-  if (n === 1) return `${n} материал`
-  if (n >= 2 && n <= 4) return `${n} материала`
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod100 >= 11 && mod100 <= 19) return `${n} материалов`
+  if (mod10 === 1) return `${n} материал`
+  if (mod10 >= 2 && mod10 <= 4) return `${n} материала`
   return `${n} материалов`
 }
 
@@ -51,9 +59,9 @@ export default async function SourcesPage() {
   const sources = await getSourcesStats()
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
+    <div className="mx-auto max-w-6xl px-4 py-8 md:py-10">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-[#e5e5e5]">Источники</h1>
+        <h1 className="font-serif text-2xl font-bold text-ink">Источники</h1>
         <p className="mt-1 text-sm text-muted">
           {sources.length} источников — международные и российские медиа об ИИ
         </p>
@@ -70,7 +78,7 @@ export default async function SourcesPage() {
 
           return (
             <Link key={source.source_name} href={`/sources/${slug}`} className="group block">
-              <article className="h-full rounded-xl border border-white/5 bg-surface p-5 hover:bg-[#222222] hover:border-accent/20 transition-colors">
+              <article className="h-full rounded border border-line bg-base p-5 transition-all hover:-translate-y-0.5 hover:shadow-sm">
                 <div className="flex items-center gap-3 mb-3">
                   {faviconUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -78,10 +86,10 @@ export default async function SourcesPage() {
                   ) : (
                     <div className="w-5 h-5 rounded-sm bg-accent/20" />
                   )}
-                  <h2 className="text-base font-semibold text-[#e5e5e5] group-hover:text-white transition-colors flex-1 min-w-0 truncate">
+                  <h2 className="min-w-0 flex-1 truncate text-base font-semibold text-ink">
                     {source.source_name}
                   </h2>
-                  <span className="flex-shrink-0 rounded px-1.5 py-0.5 text-xs font-medium bg-white/5 text-muted">
+                  <span className="flex-shrink-0 rounded-sm border border-line px-1.5 py-0.5 text-xs text-muted">
                     {lang}
                   </span>
                 </div>
@@ -91,7 +99,7 @@ export default async function SourcesPage() {
                 {source.latest_titles.length > 0 && (
                   <ul className="space-y-1">
                     {source.latest_titles.map((title, i) => (
-                      <li key={i} className="text-xs text-muted line-clamp-1 pl-2 border-l border-white/10">
+                      <li key={i} className="border-l border-line pl-2 text-xs text-muted line-clamp-1">
                         {title}
                       </li>
                     ))}
