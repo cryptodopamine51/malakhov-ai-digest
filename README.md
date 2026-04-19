@@ -1,213 +1,70 @@
-# Malakhov AI Digest
+# Malakhov AI Дайджест
 
-Текущая версия проекта: `FastAPI + PostgreSQL + event-layer + Telegram delivery + HTML site shell`.
+Русскоязычный медиа-дайджест об искусственном интеллекте.  
+Сайт: [news.malakhovai.ru](https://news.malakhovai.ru)
 
-В репозитории также остался legacy-слой на `Next.js + Supabase articles + Node pipeline`, но он больше не является основной архитектурой проекта.
+## Стек
 
-Сводный review и карта расхождений: [docs/architecture_review_2026-04-16.md](docs/architecture_review_2026-04-16.md)
+- **Сайт:** Next.js 14, Tailwind CSS → Vercel
+- **БД:** Supabase (PostgreSQL, таблица `articles`)
+- **Пайплайн:** GitHub Actions → `pipeline/*.ts` → Supabase
+- **Telegram:** GitHub Actions (cron 06:00 UTC) → `bot/daily-digest.ts`
+- **Редактор:** Claude Sonnet 4.6 (один вызов = заголовок + лид + тезисы + тело + TG-тизер)
 
-## Текущее состояние
+## Структура
 
-Основной runtime:
-
-- `app/api/` — FastAPI API и HTML-страницы сайта
-- `app/services/` — ingestion, normalization, clustering, scoring, digest, alpha, quality
-- `app/db/` — SQLAlchemy-модели и сессии
-- `app/jobs/` — scheduler и фоновые jobs
-- `app/bot/` — Telegram bot/runtime
-- `alembic/` — миграции
-
-Legacy-слой:
-
-- `pipeline/`
-- `bot/*.ts`
-- `lib/articles.ts`
-- `src/app/` и часть `app/*.tsx`
-- `supabase/schema.sql`
-- старые workflow `rss-parse.yml`, `enrich.yml`, `tg-digest.yml`
-
-## Требования
-
-- Python `3.12+`
-- Node `20+`
-- Docker / Docker Compose для локального Postgres
-
-Репозиторий сейчас не ориентирован на системный Python `3.9` и старый Node `18.15`.
-
-## Быстрый старт
-
-### 1. Поднять PostgreSQL
-
-```bash
-docker compose up -d postgres
 ```
-
-По умолчанию локальная БД:
-
-- host: `127.0.0.1`
-- port: `5432`
-- db: `malakhov_ai_digest`
-- user: `postgres`
-- password: `postgres`
-
-### 2. Подготовить Python-окружение
-
-Пример через `venv`:
-
-```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
+app/               Next.js pages (App Router)
+src/components/    React-компоненты
+lib/               Supabase-клиент, запросы, утилиты
+pipeline/          RSS-парсер, фетчер, скорер, редактор Claude, enricher
+bot/               Telegram-дайджест
+scripts/           Одноразовые скрипты (backfill, link-check)
+supabase/          Схема БД и миграции
+docs/              Документация актуального стека
+legacy/            Старый Python/FastAPI слой (не использовать)
 ```
-
-### 3. Подготовить `.env`
-
-```bash
-cp .env.example .env
-```
-
-Минимально для локального backend нужны:
-
-- `DATABASE_URL`
-- `BOT_TOKEN`
-
-Если Telegram-бот пока не нужен, можно оставить тестовый placeholder `BOT_TOKEN`, но полноценная отправка сообщений и часть runtime-функций без рабочего токена не будут валидироваться.
-
-### 4. Применить миграции
-
-```bash
-alembic upgrade head
-```
-
-### 5. Засидировать источники
-
-```bash
-python scripts/seed_sources.py
-```
-
-### 6. Запустить API
-
-```bash
-bash scripts/run_api.sh
-```
-
-API по умолчанию поднимается на `http://127.0.0.1:8000`.
-
-Проверки:
-
-```bash
-curl http://127.0.0.1:8000/health
-curl http://127.0.0.1:8000/health/db
-```
-
-## Локальные команды
-
-### Backend
-
-```bash
-alembic upgrade head
-python scripts/seed_sources.py
-bash scripts/run_api.sh
-bash scripts/run_scheduler.sh
-bash scripts/run_bot.sh
-pytest -q
-```
-
-### Frontend / legacy Node-слой
-
-```bash
-npm install
-npm run build
-npm run ingest
-npm run enrich
-npm run tg-digest
-```
-
-Этот слой не считается текущим каноническим runtime и должен использоваться только осознанно как legacy/transition часть проекта.
 
 ## Переменные окружения
 
-Актуальные backend env берутся из `app/core/config.py`.
+`.env.local`:
 
-Ключевые:
-
-- `APP_ENV`
-- `APP_HOST`
-- `APP_PORT`
-- `DATABASE_URL`
-- `BOT_TOKEN`
-- `BOT_POLLING_ENABLED`
-- `OPENAI_API_KEY`
-- `OPENAI_SUMMARY_ENABLED`
-- `OPENAI_SUMMARY_MODEL`
-- `DEFAULT_TIMEZONE`
-- `INGESTION_SCHEDULER_ENABLED`
-- `PROCESS_EVENTS_SCHEDULER_ENABLED`
-- `DAILY_DIGEST_HOUR`
-- `DAILY_DIGEST_MINUTE`
-- `WEEKLY_DIGEST_WEEKDAY`
-- `WEEKLY_DIGEST_HOUR`
-- `WEEKLY_DIGEST_MINUTE`
-- `SITE_LEADS_CHAT_ID`
-- `RESEND_API_KEY`
-- `SMTP_HOST`
-- `SMTP_PORT`
-- `SMTP_USER`
-- `SMTP_PASS`
-- `LEADS_EMAIL_TO`
-- `LEADS_EMAIL_FROM`
-
-Legacy Node env:
-
-- `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_KEY`
-- `DEEPL_API_KEY`
-- `ANTHROPIC_API_KEY`
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHANNEL_ID`
-- `NEXT_PUBLIC_SITE_URL`
-
-## Миграции и БД
-
-Для актуального backend единственный корректный путь инициализации схемы — `Alembic`.
-
-`supabase/schema.sql` описывает только legacy-таблицу `articles` и не подходит как bootstrap для текущего Python runtime.
-
-## Workflow и деплой
-
-В репозитории сейчас есть два поколения workflow:
-
-- current: `daily_digest.yml`, `weekly_digest.yml`
-- legacy: `rss-parse.yml`, `enrich.yml`, `tg-digest.yml`
-
-Перед изменениями в CI/CD сначала проверь, какой контур реально используется в проде.
-
-Production compose и ops-скрипты лежат в:
-
-- `deploy/compose.production.yml`
-- `scripts/ops/`
-
-## Тесты
-
-Основной тестовый контур:
-
-```bash
-pytest -q
+```
+SUPABASE_URL=
+SUPABASE_SERVICE_KEY=
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+ANTHROPIC_API_KEY=
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHANNEL_ID=
+TELEGRAM_ADMIN_CHAT_ID=   # опционально
+NEXT_PUBLIC_SITE_URL=https://news.malakhovai.ru
 ```
 
-Есть покрытие для:
+## Команды
 
-- API
-- миграций
-- ingestion/source policy
-- shortlist/scoring
-- digest builder/delivery
-- public site shell
+```bash
+npm run dev          # локальная разработка
+npm run build        # сборка
+npm run enrich       # запустить enricher (обогащение статей)
+npm run tg-digest    # отправить дайджест в Telegram
 
-## Что стоит сделать дальше
+npx tsx scripts/reenrich-all.ts   # backfill за 14 дней
+npx tsx scripts/check-links.ts   # проверка всех ссылок
+```
 
-- окончательно зафиксировать `Python/FastAPI/event-layer` как каноническую архитектуру
-- архивировать или удалить дубли legacy Next/Supabase слоя
-- развести current и legacy workflow по явным статусам
-- вынести deployment-specific значения в env/config
+## GitHub Actions
+
+| Workflow | Расписание | Действие |
+|---|---|---|
+| `rss-parse.yml` | каждые 30 мин | парсит RSS, пишет в Supabase |
+| `enrich.yml` | каждые 45 мин | обогащает статьи через Claude |
+| `tg-digest.yml` | 06:00 UTC ежедневно | отправляет дайджест в TG |
+
+## Применить миграцию БД
+
+Открой `supabase/migrations/001_content_engine.sql` и выполни в Supabase Dashboard → SQL Editor.
+
+## legacy/
+
+Старый Python/FastAPI слой. Код заморожен. Не правь, не запускай.

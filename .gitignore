@@ -38,3 +38,14 @@ malakhov-ai-keys.env
 keys.env.txt
 local_dev.db
 *.rtf
+
+# Python virtual envs
+.venv/
+.venv311/
+.venv312/
+.python-version
+
+# Python caches
+__pycache__/
+*.pyc
+.pytest_cache/
