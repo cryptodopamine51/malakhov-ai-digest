@@ -28,6 +28,9 @@ type InlineInsertions = Record<number, ReactNode[]>
 
 const SHOWCASE_SLUG = 'sequoia-sobrala-7-mlrd-na-novyy-fond-pochti-vdvoe-bolshe-pre-0dd089'
 
+// Источники, чьи og:image содержат текст заголовка — пропускаем на странице статьи
+const SOURCES_WITH_TEXT_COVERS = new Set(['Habr AI', 'vc.ru', 'CNews'])
+
 function renderBodyWithAnchors(body: string, anchors: AnchorLink[]): ReactNode[] {
   const paragraphs = body.split('\n\n').filter(Boolean)
   const usedAnchors = new Set<string>()
@@ -380,8 +383,8 @@ export default async function ArticlePage({
           <span>{article.source_name}</span>
         </nav>
 
-        {/* Cover image — полная ширина, вне сетки */}
-        {article.cover_image_url && (
+        {/* Cover image — полная ширина, вне сетки; источники с текстом в обложке пропускаем */}
+        {article.cover_image_url && !SOURCES_WITH_TEXT_COVERS.has(article.source_name) && (
           <div className="relative mb-8 w-full overflow-hidden rounded border border-line" style={{ maxHeight: 420 }}>
             <Image
               src={article.cover_image_url}

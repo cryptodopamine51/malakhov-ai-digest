@@ -9,6 +9,14 @@ interface ArticleCardProps {
   variant?: 'default' | 'compact' | 'featured' | 'related'
 }
 
+// Источники, чьи og:image содержат текст заголовка — не используем их как обложку в карточках
+const SOURCES_WITH_TEXT_COVERS = new Set(['Habr AI', 'vc.ru', 'CNews'])
+
+function getCardImageUrl(article: Article): string | null {
+  if (SOURCES_WITH_TEXT_COVERS.has(article.source_name)) return null
+  return article.cover_image_url ?? null
+}
+
 function SourceLabel({ name }: { name: string }) {
   return (
     <span className="text-[11px] font-medium uppercase tracking-[0.05em]">
@@ -27,62 +35,134 @@ function ImagePlaceholder() {
   )
 }
 
-/* ─── Featured card: full-width with overlay ─── */
+/* ─── Featured card: full-width with overlay (image) or light editorial (no image) ─── */
 function FeaturedCard({ article }: { article: Article }) {
-  const href  = `/articles/${article.slug}`
-  const title = article.ru_title ?? article.original_title
-  const time  = formatRelativeTime(article.pub_date ?? article.created_at)
-  const teaser = article.lead ?? article.card_teaser
+  const href    = `/articles/${article.slug}`
+  const title   = article.ru_title ?? article.original_title
+  const time    = formatRelativeTime(article.pub_date ?? article.created_at)
+  const teaser  = article.lead ?? article.card_teaser
+  const imageUrl = getCardImageUrl(article)
 
-  return (
-    <Link href={href} className="group block">
-      <article className="relative overflow-hidden rounded border border-line" style={{ minHeight: 340 }}>
-        {/* Background image */}
-        <div className="absolute inset-0 bg-surface">
-          {article.cover_image_url ? (
+  if (imageUrl) {
+    return (
+      <Link href={href} className="group block">
+        <article className="relative overflow-hidden rounded border border-line" style={{ minHeight: 340 }}>
+          <div className="absolute inset-0 bg-surface">
             <SafeImage
-              src={article.cover_image_url}
+              src={imageUrl}
               alt={title}
               fill
               sizes="(max-width: 768px) 100vw, 70vw"
               className="object-cover"
             />
-          ) : (
-            <ImagePlaceholder />
-          )}
-        </div>
+          </div>
 
-        {/* Gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
 
-        {/* Content */}
-        <div className="relative flex flex-col justify-end h-full p-6" style={{ minHeight: 340 }}>
-          <div className="flex flex-wrap gap-1.5 mb-3">
+          <div className="relative flex flex-col justify-end h-full p-6" style={{ minHeight: 340 }}>
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {(article.topics ?? []).slice(0, 3).map((t) => (
+                <span
+                  key={t}
+                  className="px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.06em] border border-white/40 text-white/90 rounded-sm"
+                >
+                  {TOPIC_LABELS[t] ?? t}
+                </span>
+              ))}
+            </div>
+
+            <h2 className="font-serif font-bold text-white text-xl md:text-2xl leading-tight mb-3 group-hover:text-white/90 transition-colors line-clamp-3">
+              {title}
+            </h2>
+
+            {teaser && (
+              <p className="text-white/70 text-sm leading-relaxed line-clamp-2 mb-4 hidden sm:block">
+                {teaser}
+              </p>
+            )}
+
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center gap-2 rounded border border-white/40 px-4 py-1.5 text-xs font-medium text-white uppercase tracking-[0.06em] group-hover:bg-white group-hover:text-black transition-colors">
+                Читать
+              </span>
+              <div className="flex items-center gap-2 text-white/50 text-xs">
+                <SourceLabel name={article.source_name} />
+                <span>·</span>
+                <span>{time}</span>
+              </div>
+            </div>
+          </div>
+        </article>
+      </Link>
+    )
+  }
+
+  /* ── Light editorial variant (no image / text-cover source) ── */
+  return (
+    <Link href={href} className="group block">
+      <article
+        className="relative overflow-hidden rounded border border-line bg-surface"
+        style={{ minHeight: 340 }}
+      >
+        {/* Subtle wireframe decoration — right side */}
+        <svg
+          viewBox="0 0 640 340"
+          className="absolute inset-0 h-full w-full opacity-[0.07] pointer-events-none"
+          aria-hidden
+        >
+          {/* Simple neural net nodes */}
+          {[
+            { cx: 420, cy: 170 },
+            { cx: 510, cy: 110 }, { cx: 510, cy: 170 }, { cx: 510, cy: 230 },
+            { cx: 590, cy: 140 }, { cx: 590, cy: 200 },
+          ].map(({ cx, cy }, i) => (
+            <circle key={i} cx={cx} cy={cy} r={i === 0 ? 18 : 13} fill="none" stroke="var(--ink)" strokeWidth="1.2" />
+          ))}
+          {[
+            [420,170,510,110],[420,170,510,170],[420,170,510,230],
+            [510,110,590,140],[510,110,590,200],
+            [510,170,590,140],[510,170,590,200],
+            [510,230,590,140],[510,230,590,200],
+          ].map(([x1,y1,x2,y2], i) => (
+            <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="var(--ink)" strokeWidth="0.8" strokeDasharray="5 3" />
+          ))}
+        </svg>
+
+        {/* Gradient: right side fades to transparent (wireframe visible on right) */}
+        <div
+          className="absolute inset-0 z-[1]"
+          style={{ background: 'linear-gradient(to right, var(--surface) 50%, color-mix(in srgb, var(--surface) 40%, transparent) 75%, transparent 100%)' }}
+        />
+
+        <div className="relative z-10 flex flex-col justify-between h-full p-6 md:max-w-[65%]" style={{ minHeight: 340 }}>
+          <div className="flex flex-wrap gap-1.5 mb-4">
             {(article.topics ?? []).slice(0, 3).map((t) => (
               <span
                 key={t}
-                className="px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.06em] border border-white/40 text-white/90 rounded-sm"
+                className="px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.06em] border border-line text-muted rounded-sm"
               >
                 {TOPIC_LABELS[t] ?? t}
               </span>
             ))}
           </div>
 
-          <h2 className="font-serif font-bold text-white text-xl md:text-2xl leading-tight mb-3 group-hover:text-white/90 transition-colors line-clamp-3">
-            {title}
-          </h2>
+          <div className="flex-1 flex flex-col justify-center">
+            <h2 className="font-serif font-bold text-ink text-xl md:text-2xl leading-tight mb-3 group-hover:text-accent transition-colors line-clamp-3">
+              {title}
+            </h2>
 
-          {teaser && (
-            <p className="text-white/70 text-sm leading-relaxed line-clamp-2 mb-4 hidden sm:block">
-              {teaser}
-            </p>
-          )}
+            {teaser && (
+              <p className="text-muted text-sm leading-relaxed line-clamp-3 hidden sm:block">
+                {teaser}
+              </p>
+            )}
+          </div>
 
-          <div className="flex items-center justify-between">
-            <span className="inline-flex items-center gap-2 rounded border border-white/40 px-4 py-1.5 text-xs font-medium text-white uppercase tracking-[0.06em] group-hover:bg-white group-hover:text-black transition-colors">
+          <div className="flex items-center justify-between mt-4">
+            <span className="inline-flex items-center gap-2 rounded border border-line px-4 py-1.5 text-xs font-medium text-ink uppercase tracking-[0.06em] group-hover:border-accent group-hover:text-accent transition-colors">
               Читать
             </span>
-            <div className="flex items-center gap-2 text-white/50 text-xs">
+            <div className="flex items-center gap-2 text-muted text-xs">
               <SourceLabel name={article.source_name} />
               <span>·</span>
               <span>{time}</span>
@@ -96,9 +176,10 @@ function FeaturedCard({ article }: { article: Article }) {
 
 /* ─── Default card: image + text ─── */
 function DefaultCard({ article }: { article: Article }) {
-  const href  = `/articles/${article.slug}`
-  const title = article.ru_title ?? article.original_title
-  const time  = formatRelativeTime(article.pub_date ?? article.created_at)
+  const href    = `/articles/${article.slug}`
+  const title   = article.ru_title ?? article.original_title
+  const time    = formatRelativeTime(article.pub_date ?? article.created_at)
+  const imageUrl = getCardImageUrl(article)
 
   const isTop = article.score >= 7
 
@@ -108,9 +189,9 @@ function DefaultCard({ article }: { article: Article }) {
         className={`flex flex-col h-full border border-line rounded overflow-hidden bg-base hover:-translate-y-0.5 hover:shadow-sm transition-all duration-150 ${isTop ? 'border-l-[3px] border-l-accent' : ''}`}
       >
         <div className="relative aspect-video bg-surface flex-shrink-0">
-          {article.cover_image_url ? (
+          {imageUrl ? (
             <SafeImage
-              src={article.cover_image_url}
+              src={imageUrl}
               alt={title}
               fill
               sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
@@ -150,19 +231,20 @@ function DefaultCard({ article }: { article: Article }) {
 
 /* ─── Related card: thumbnail + title (for "Читать также") ─── */
 function RelatedCard({ article }: { article: Article }) {
-  const href  = `/articles/${article.slug}`
-  const title = article.ru_title ?? article.original_title
-  const time  = formatRelativeTime(article.pub_date ?? article.created_at)
-  const topic = (article.topics ?? [])[0]
+  const href    = `/articles/${article.slug}`
+  const title   = article.ru_title ?? article.original_title
+  const time    = formatRelativeTime(article.pub_date ?? article.created_at)
+  const topic   = (article.topics ?? [])[0]
+  const imageUrl = getCardImageUrl(article)
 
   return (
     <Link href={href} className="group block h-full">
       <article className="flex h-full flex-col overflow-hidden rounded border border-line bg-base transition-all duration-150 hover:border-accent/40 hover:shadow-sm">
         {/* Thumbnail */}
         <div className="relative aspect-[16/9] flex-shrink-0 overflow-hidden bg-surface">
-          {article.cover_image_url ? (
+          {imageUrl ? (
             <SafeImage
-              src={article.cover_image_url}
+              src={imageUrl}
               alt={title}
               fill
               sizes="(max-width: 640px) 100vw, 33vw"
@@ -171,8 +253,8 @@ function RelatedCard({ article }: { article: Article }) {
           ) : (
             <ImagePlaceholder />
           )}
-          {/* Topic overlay badge */}
-          {topic && (
+          {/* Topic overlay badge — only when there IS a real image */}
+          {imageUrl && topic && (
             <span className="absolute bottom-2 left-2 rounded-sm border border-white/30 bg-black/50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-white/90 backdrop-blur-sm">
               {TOPIC_LABELS[topic] ?? topic}
             </span>

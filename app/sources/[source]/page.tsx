@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import { getSourceNameBySlug, getAllSourceSlugs, getArticlesBySource } from '../../../lib/articles'
+import { pluralize } from '../../../lib/utils'
 import ArticleCard from '../../../src/components/ArticleCard'
 
 export const revalidate = 3600
@@ -44,7 +45,7 @@ export default async function SourcePage({
       <div className="mb-8">
         <h1 className="font-serif text-2xl font-bold text-ink">{sourceName}</h1>
         <p className="mt-1 text-sm text-muted">
-          {articles.length} материалов
+          {articles.length} {pluralize(articles.length, 'материал', 'материала', 'материалов')}
         </p>
       </div>
 

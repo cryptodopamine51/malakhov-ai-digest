@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import { getSourcesStats, sourceNameToSlug } from '../../lib/articles'
+import { pluralize } from '../../lib/utils'
 
 export const revalidate = 3600
 
@@ -46,14 +47,6 @@ const SOURCE_LANG: Record<string, 'EN' | 'RU'> = {
   'vc.ru Стартапы': 'RU',
 }
 
-function pluralCount(n: number): string {
-  const mod10 = n % 10
-  const mod100 = n % 100
-  if (mod100 >= 11 && mod100 <= 19) return `${n} материалов`
-  if (mod10 === 1) return `${n} материал`
-  if (mod10 >= 2 && mod10 <= 4) return `${n} материала`
-  return `${n} материалов`
-}
 
 export default async function SourcesPage() {
   const sources = await getSourcesStats()
@@ -94,7 +87,7 @@ export default async function SourcesPage() {
                   </span>
                 </div>
 
-                <p className="text-xs text-muted mb-3">{pluralCount(source.count)}</p>
+                <p className="text-xs text-muted mb-3">{source.count} {pluralize(source.count, 'материал', 'материала', 'материалов')}</p>
 
                 {source.latest_titles.length > 0 && (
                   <ul className="space-y-1">

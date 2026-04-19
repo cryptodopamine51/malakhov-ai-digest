@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import { getArticlesByDate } from '../../../lib/articles'
-import { formatMoscowDate, getMoscowDateKey, shiftMoscowDateKey } from '../../../lib/utils'
+import { formatMoscowDate, getMoscowDateKey, shiftMoscowDateKey, pluralize } from '../../../lib/utils'
 import ArticleCard from '../../../src/components/ArticleCard'
 
 export const revalidate = 3600
@@ -59,7 +59,7 @@ export default async function ArchivePage({
       <div className="mb-8 flex flex-wrap items-baseline gap-4">
         <h1 className="font-serif text-2xl font-bold text-ink capitalize">{formatted}</h1>
         {articles.length > 0 && (
-          <span className="text-sm text-muted">{articles.length} материалов</span>
+          <span className="text-sm text-muted">{articles.length} {pluralize(articles.length, 'материал', 'материала', 'материалов')}</span>
         )}
       </div>
 

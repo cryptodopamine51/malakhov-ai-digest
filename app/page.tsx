@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { getTopTodayArticles, getArticlesFeed } from '../lib/articles'
-import { getMoscowDateKey, shiftMoscowDateKey } from '../lib/utils'
+import { getMoscowDateKey, shiftMoscowDateKey, pluralize } from '../lib/utils'
 import ArticleCard from '../src/components/ArticleCard'
 
 export const dynamic = 'force-dynamic'
@@ -67,7 +67,7 @@ export default async function HomePage({
             {page === 1 ? 'Все новости' : `Все новости — страница ${page}`}
           </h2>
           {total > 0 && (
-            <span className="text-sm text-muted">{total} материалов</span>
+            <span className="text-sm text-muted">{total} {pluralize(total, 'материал', 'материала', 'материалов')}</span>
           )}
         </div>
 
