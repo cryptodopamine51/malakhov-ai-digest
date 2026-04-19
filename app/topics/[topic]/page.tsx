@@ -256,8 +256,10 @@ export default async function TopicPage({
         {/* Hero с wireframe-иллюстрацией */}
         <div className="relative mb-8 overflow-hidden rounded border border-line bg-surface" style={{ minHeight: 200 }}>
           <TopicIllustration topic={params.topic} />
-          {/* Градиент слева защищает текст от SVG-иллюстрации */}
-          <div className="absolute inset-0 z-[5] bg-gradient-to-r from-surface via-surface/80 to-transparent" />
+          {/* Градиент: левые 55% непрозрачны (текст), правые — иллюстрация */}
+          <div className="absolute inset-0 z-[5]" style={{
+            background: 'linear-gradient(to right, var(--surface) 45%, color-mix(in srgb, var(--surface) 60%, transparent) 65%, transparent 100%)'
+          }} />
           <div className="relative z-10 px-8 py-10">
             <p className="mb-2 font-serif text-[10px] font-semibold uppercase tracking-[0.22em] text-accent">
               Раздел
