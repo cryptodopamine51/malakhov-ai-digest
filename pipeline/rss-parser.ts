@@ -135,27 +135,42 @@ export async function fetchAllFeeds(maxAgeMinutes = 60): Promise<ParsedItem[]> {
       'User-Agent':
         'Mozilla/5.0 (compatible; MalakhovAIDigestBot/1.0; +https://news.malakhovai.ru)',
     },
-    timeout: 10_000, // 10 секунд на фид
+    timeout: 20_000, // 20 секунд на фид
   })
 
   const cutoff = new Date(Date.now() - maxAgeMinutes * 60 * 1000)
 
-  // Парсим все фиды параллельно; один сломанный фид не валит весь запуск
-  const results = await Promise.allSettled(
-    FEEDS.map((feed) => parseFeed(parser, feed, cutoff))
-  )
-
+  // Парсим батчами по 5 фидов параллельно — не перегружаем сеть
   const allItems: ParsedItem[] = []
-
-  for (const result of results) {
-    if (result.status === 'fulfilled') {
-      allItems.push(...result.value)
+  for (let i = 0; i < FEEDS.length; i += 5) {
+    const batch = FEEDS.slice(i, i + 5)
+    const results = await Promise.allSettled(
+      batch.map((feed) => parseFeedWithRetry(parser, feed, cutoff))
+    )
+    for (const result of results) {
+      if (result.status === 'fulfilled') allItems.push(...result.value)
     }
-    // Ошибки уже залогированы внутри parseFeed
   }
-
   return allItems
 }
+
+/**
+ * Парсит фид с одним retry при ошибке таймаута.
+ */
+async function parseFeedWithRetry(
+  parser: RSSParser,
+  feed: FeedConfig,
+  cutoff: Date
+): Promise<ParsedItem[]> {
+  try {
+    return await parseFeed(parser, feed, cutoff)
+  } catch {
+    // Пауза 3 секунды и одна повторная попытка
+    await new Promise(r => setTimeout(r, 3_000))
+    return parseFeed(parser, feed, cutoff)
+  }
+}
+
 
 /**
  * Парсит один RSS-фид и фильтрует элементы по свежести и ключевым словам.
@@ -197,7 +212,8 @@ async function parseFeed(
           .join(' ')
           .toLowerCase()
 
-        const hasKeyword = RU_AI_KEYWORDS.some((kw) => searchText.includes(kw))
+        const keywordList = feed.keywords ?? RU_AI_KEYWORDS
+        const hasKeyword = keywordList.some((kw) => searchText.includes(kw))
         if (!hasKeyword) continue
       }
 

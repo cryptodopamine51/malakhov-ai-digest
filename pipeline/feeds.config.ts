@@ -8,6 +8,8 @@ export interface FeedConfig {
   // Для источников без жёсткой AI-тематики (РБК, vc.ru, CNews) —
   // нужна дополнительная фильтрация по ключевым словам
   needsKeywordFilter?: boolean
+  // Переопределить список ключевых слов для этого фида (вместо глобального RU_AI_KEYWORDS)
+  keywords?: string[]
 }
 
 export const FEEDS: FeedConfig[] = [
@@ -86,6 +88,52 @@ export const FEEDS: FeedConfig[] = [
     topics: ['ai-industry'],
   },
 
+  // ── Инвестиции (en) ────────────────────────────────────────────────────────
+
+  {
+    name: 'TechCrunch Venture',
+    url: 'https://techcrunch.com/category/venture/feed/',
+    lang: 'en',
+    topics: ['ai-investments'],
+    needsKeywordFilter: true,
+    keywords: [
+      'openai', 'anthropic', 'deepmind', 'mistral', 'cohere', 'stability ai',
+      'artificial intelligence', ' ai ', 'machine learning', 'llm', 'generative',
+      'series a', 'series b', 'series c', 'seed round',
+    ],
+  },
+  {
+    name: 'Axios Pro Rata',
+    url: 'https://www.axios.com/feeds/feed/pro-rata',
+    lang: 'en',
+    topics: ['ai-investments'],
+    needsKeywordFilter: true,
+    keywords: [
+      'openai', 'anthropic', 'deepmind', 'mistral', 'artificial intelligence',
+      ' ai ', 'machine learning', 'llm', 'generative', 'raises', 'funding round',
+    ],
+  },
+
+  // ── Стартапы (en) ─────────────────────────────────────────────────────────
+
+  {
+    name: 'YC Blog',
+    url: 'https://www.ycombinator.com/blog/rss.xml',
+    lang: 'en',
+    topics: ['ai-startups'],
+  },
+  {
+    name: 'a16z Blog',
+    url: 'https://a16z.com/feed/',
+    lang: 'en',
+    topics: ['ai-startups'],
+    needsKeywordFilter: true,
+    keywords: [
+      'artificial intelligence', ' ai ', 'machine learning', 'llm', 'generative',
+      'language model', 'foundation model', 'openai', 'anthropic',
+    ],
+  },
+
   // ── Российские источники (ru) ───────────────────────────────────────────────
 
   {
@@ -116,5 +164,30 @@ export const FEEDS: FeedConfig[] = [
     lang: 'ru',
     topics: ['ai-russia'],
     needsKeywordFilter: true,
+  },
+  {
+    name: 'vc.ru Финансы',
+    url: 'https://vc.ru/finance/rss',
+    lang: 'ru',
+    topics: ['ai-investments'],
+    needsKeywordFilter: true,
+    keywords: [
+      'искусственный интеллект', 'нейросеть', 'нейросети', 'машинное обучение',
+      'языковая модель', 'генеративн', 'ии ', ' ии', 'gpt', 'llm',
+      'openai', 'anthropic', 'яндекс', 'сбер', 'раунд', 'инвестиции',
+    ],
+  },
+  {
+    name: 'vc.ru Стартапы',
+    url: 'https://vc.ru/startups/rss',
+    lang: 'ru',
+    topics: ['ai-startups'],
+    needsKeywordFilter: true,
+    keywords: [
+      'искусственный интеллект', 'нейросеть', 'нейросети', 'машинное обучение',
+      'языковая модель', 'генеративн', 'ии ', ' ии', 'gpt', 'llm',
+      'openai', 'anthropic', 'яндекс', 'сбер', 'стартап', 'запустили',
+      'mvp', 'traction', 'основали',
+    ],
   },
 ]

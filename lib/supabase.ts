@@ -1,6 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
-// Типы для таблицы articles
 export interface Article {
   id: string
   original_url: string
@@ -14,6 +13,20 @@ export interface Article {
   ru_title: string | null
   ru_text: string | null
   why_it_matters: string | null
+  // Content engine v2
+  lead: string | null
+  summary: string[] | null
+  card_teaser: string | null
+  tg_teaser: string | null
+  editorial_body: string | null
+  editorial_model: string | null
+  glossary: { term: string; definition: string }[] | null
+  link_anchors: string[] | null
+  article_tables: { headers: string[]; rows: string[][] }[] | null
+  article_images: { src: string; alt: string }[] | null
+  quality_ok: boolean
+  quality_reason: string | null
+  // ---
   dedup_hash: string | null
   enriched: boolean
   published: boolean
@@ -26,7 +39,6 @@ export interface Article {
 
 export type ArticleInsert = Omit<Article, 'id' | 'created_at' | 'updated_at'>
 
-// Клиент для браузера (анонимный ключ, можно использовать в компонентах)
 let browserClientInstance: SupabaseClient | null = null
 
 export function getBrowserClient(): SupabaseClient {
@@ -43,7 +55,6 @@ export function getBrowserClient(): SupabaseClient {
   return browserClientInstance
 }
 
-// Серверный клиент (service role key — только для server-side и pipeline-скриптов!)
 export function getServerClient(): SupabaseClient {
   const url = process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_KEY
@@ -53,8 +64,6 @@ export function getServerClient(): SupabaseClient {
   }
 
   return createClient(url, key, {
-    auth: {
-      persistSession: false,
-    },
+    auth: { persistSession: false },
   })
 }

@@ -6,11 +6,14 @@ import { useState } from 'react'
 import { cn } from '../../lib/utils'
 
 const NAV_LINKS = [
-  { href: '/',                    label: 'Главная' },
-  { href: '/russia',              label: 'Россия' },
-  { href: '/topics/ai-research',  label: 'Исследования' },
-  { href: '/topics/ai-labs',      label: 'Лаборатории' },
-  { href: '/topics/coding',       label: 'Код' },
+  { href: '/',                      label: 'Главная' },
+  { href: '/topics/ai-industry',    label: 'Индустрия' },
+  { href: '/topics/ai-research',    label: 'Исследования' },
+  { href: '/topics/ai-labs',        label: 'Лаборатории' },
+  { href: '/topics/ai-investments', label: 'Инвестиции' },
+  { href: '/topics/ai-startups',    label: 'Стартапы' },
+  { href: '/russia',                label: 'Россия' },
+  { href: '/topics/coding',         label: 'Код' },
 ]
 
 export default function Header() {
@@ -65,21 +68,23 @@ export default function Header() {
       {/* Мобильное меню */}
       {menuOpen && (
         <nav className="md:hidden border-t border-white/5 bg-[#0f0f0f]/95 px-4 py-2">
-          {NAV_LINKS.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              onClick={() => setMenuOpen(false)}
-              className={cn(
-                'block rounded-md px-3 py-2 text-sm transition-colors',
-                pathname === link.href
-                  ? 'text-accent'
-                  : 'text-muted hover:text-[#e5e5e5]'
-              )}
-            >
-              {link.label}
-            </Link>
-          ))}
+          <div className="grid grid-cols-2 gap-x-2">
+            {NAV_LINKS.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setMenuOpen(false)}
+                className={cn(
+                  'block rounded-md px-3 py-2 text-sm transition-colors',
+                  pathname === link.href
+                    ? 'text-accent'
+                    : 'text-muted hover:text-[#e5e5e5]'
+                )}
+              >
+                {link.label}
+              </Link>
+            ))}
+          </div>
         </nav>
       )}
     </header>

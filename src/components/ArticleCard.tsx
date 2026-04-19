@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import type { Article } from '../../lib/supabase'
-import { formatRelativeTime, truncate } from '../../lib/utils'
+import { formatRelativeTime } from '../../lib/utils'
+import { sourceNameToSlug } from '../../lib/articles'
 import TopicBadge from './TopicBadge'
 import SafeImage from './SafeImage'
 
@@ -9,17 +10,17 @@ interface ArticleCardProps {
   variant?: 'default' | 'compact' | 'featured'
 }
 
-// ── Бейдж источника ───────────────────────────────────────────────────────────
-
 function SourceBadge({ name }: { name: string }) {
+  const slug = sourceNameToSlug(name)
   return (
-    <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-accent text-white">
+    <Link
+      href={`/sources/${slug}`}
+      className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-accent text-white hover:bg-accent/80 transition-colors"
+    >
       {name}
-    </span>
+    </Link>
   )
 }
-
-// ── Заглушка (для случая без картинки) ───────────────────────────────────────
 
 function ImagePlaceholder() {
   return (
@@ -31,17 +32,16 @@ function ImagePlaceholder() {
   )
 }
 
-// ── variant='featured' ────────────────────────────────────────────────────────
-
+// variant='featured' — большая карточка, показывает lead
 function FeaturedCard({ article }: { article: Article }) {
   const href = `/articles/${article.slug}`
   const title = article.ru_title ?? article.original_title
   const time = formatRelativeTime(article.pub_date ?? article.created_at)
+  const teaser = article.lead ?? article.card_teaser
 
   return (
     <Link href={href} className="group block">
       <article className="flex flex-col md:flex-row rounded-xl overflow-hidden bg-surface hover:bg-[#222222] transition-colors border border-white/5">
-        {/* Картинка — 40% */}
         <div className="relative md:w-2/5 aspect-video md:aspect-auto md:min-h-[260px] flex-shrink-0 bg-[#111]">
           {article.cover_image_url ? (
             <SafeImage
@@ -56,7 +56,6 @@ function FeaturedCard({ article }: { article: Article }) {
           )}
         </div>
 
-        {/* Текст — 60% */}
         <div className="flex flex-col justify-between p-5 md:p-6 gap-3">
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
             <SourceBadge name={article.source_name} />
@@ -70,9 +69,9 @@ function FeaturedCard({ article }: { article: Article }) {
             {title}
           </h2>
 
-          {article.why_it_matters && (
-            <p className="text-sm text-muted line-clamp-2">
-              {article.why_it_matters}
+          {teaser && (
+            <p className="text-sm text-muted line-clamp-3">
+              {teaser}
             </p>
           )}
         </div>
@@ -81,8 +80,7 @@ function FeaturedCard({ article }: { article: Article }) {
   )
 }
 
-// ── variant='default' ─────────────────────────────────────────────────────────
-
+// variant='default' — стандартная карточка с card_teaser
 function DefaultCard({ article }: { article: Article }) {
   const href = `/articles/${article.slug}`
   const title = article.ru_title ?? article.original_title
@@ -91,7 +89,6 @@ function DefaultCard({ article }: { article: Article }) {
   return (
     <Link href={href} className="group block h-full">
       <article className="flex flex-col h-full rounded-xl overflow-hidden bg-surface hover:bg-[#222222] transition-colors border border-white/5">
-        {/* Картинка 16:9 */}
         <div className="relative aspect-video bg-[#111] flex-shrink-0">
           {article.cover_image_url ? (
             <SafeImage
@@ -106,15 +103,14 @@ function DefaultCard({ article }: { article: Article }) {
           )}
         </div>
 
-        {/* Текст */}
         <div className="flex flex-col flex-1 p-4 gap-2">
           <h2 className="text-base font-semibold text-[#e5e5e5] leading-snug group-hover:text-white transition-colors line-clamp-3">
             {title}
           </h2>
 
-          {article.why_it_matters && (
+          {article.card_teaser && (
             <p className="text-sm text-muted line-clamp-2 flex-1">
-              {truncate(article.why_it_matters, 120)}
+              {article.card_teaser}
             </p>
           )}
 
@@ -128,8 +124,7 @@ function DefaultCard({ article }: { article: Article }) {
   )
 }
 
-// ── variant='compact' ─────────────────────────────────────────────────────────
-
+// variant='compact' — компактная строка
 function CompactCard({ article }: { article: Article }) {
   const href = `/articles/${article.slug}`
   const title = article.ru_title ?? article.original_title
@@ -147,17 +142,15 @@ function CompactCard({ article }: { article: Article }) {
           {title}
         </h2>
 
-        {article.why_it_matters && (
+        {article.card_teaser && (
           <p className="mt-1 text-sm text-muted line-clamp-2">
-            {article.why_it_matters}
+            {article.card_teaser}
           </p>
         )}
       </article>
     </Link>
   )
 }
-
-// ── Экспорт ───────────────────────────────────────────────────────────────────
 
 export default function ArticleCard({ article, variant = 'default' }: ArticleCardProps) {
   if (variant === 'featured') return <FeaturedCard article={article} />
