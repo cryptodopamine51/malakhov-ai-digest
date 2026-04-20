@@ -9,7 +9,11 @@ export const WORKER_ID = process.env.GITHUB_RUN_ID
 
 /**
  * Atomically claims up to `limit` articles ready for enrichment.
- * Uses UPDATE … WHERE … RETURNING to prevent race conditions between parallel workers.
+ *
+ * Uses optimistic locking via UPDATE … WHERE claim_token IS NULL … RETURNING.
+ * Two workers overfetching the same candidates will compete for each row —
+ * only the first UPDATE wins; the other gets 0 rows and moves to the next candidate.
+ * Safe for concurrent parallel runners.
  */
 export async function claimBatch(
   supabase: SupabaseClient,
@@ -19,35 +23,8 @@ export async function claimBatch(
   const expiresAt = leaseExpiresAt().toISOString()
   const now = new Date().toISOString()
 
-  // PostgreSQL: UPDATE with subquery selects only unclaimed rows, sets lease atomically
-  const { data, error } = await supabase.rpc('claim_enrich_batch', {
-    p_worker_id: WORKER_ID,
-    p_claim_token: claimToken,
-    p_lease_expires_at: expiresAt,
-    p_processing_started_at: now,
-    p_limit: limit,
-  })
-
-  if (error) {
-    // RPC not yet deployed — fall back to sequential claim
-    return claimSequential(supabase, limit, claimToken, expiresAt, now)
-  }
-
-  return (data as Article[]) ?? []
-}
-
-/**
- * Fallback: claim articles one by one with optimistic locking.
- * Less efficient but safe without the RPC function.
- */
-async function claimSequential(
-  supabase: SupabaseClient,
-  limit: number,
-  claimToken: string,
-  expiresAt: string,
-  now: string,
-): Promise<Article[]> {
-  // Select candidates (not yet claimed)
+  // Overfetch so that concurrent workers each find enough unclaimed candidates
+  const overfetch = limit * 3
   const { data: candidates, error: selectError } = await supabase
     .from('articles')
     .select('id')
@@ -55,7 +32,7 @@ async function claimSequential(
     .or(`next_retry_at.is.null,next_retry_at.lte.${now}`)
     .is('claim_token', null)
     .order('created_at', { ascending: true })
-    .limit(limit * 2) // overfetch to handle races
+    .limit(overfetch)
 
   if (selectError || !candidates?.length) return []
 
@@ -64,7 +41,9 @@ async function claimSequential(
   for (const candidate of candidates) {
     if (claimed.length >= limit) break
 
-    // Atomic update: only succeeds if still unclaimed
+    // Atomic update: WHERE clause guarantees only one worker wins per article.
+    // If another worker already claimed this id, enrich_status or claim_token
+    // won't match and Supabase returns 0 rows (PGRST116 / null data).
     const { data: updated, error: updateError } = await supabase
       .from('articles')
       .update({
@@ -79,26 +58,33 @@ async function claimSequential(
       .in('enrich_status', ['pending', 'retry_wait'])
       .is('claim_token', null)
       .select('*')
-      .single()
+      .maybeSingle() // maybeSingle avoids throwing on 0 rows
 
     if (!updateError && updated) {
       claimed.push(updated as Article)
     }
   }
 
+  if (claimed.length > 0 && claimed.length < limit / 2) {
+    console.warn(
+      `[claims] Low yield: claimed ${claimed.length}/${limit} requested. ` +
+      `High contention or small queue.`
+    )
+  }
+
   return claimed
 }
 
 /**
- * Releases the claim on an article (sets claim_token to null).
- * Used when returning an article to retry_wait or failed state.
+ * Writes status updates back to an article and clears the claim lease.
+ * All enrichment outcomes (ok, retry, fail, reject) go through here.
  */
 export async function releaseClaim(
   supabase: SupabaseClient,
   articleId: string,
   updates: Record<string, unknown>,
 ): Promise<void> {
-  await supabase
+  const { error } = await supabase
     .from('articles')
     .update({
       ...updates,
@@ -109,4 +95,8 @@ export async function releaseClaim(
       updated_at: new Date().toISOString(),
     })
     .eq('id', articleId)
+
+  if (error) {
+    console.error(`[claims] releaseClaim failed for ${articleId}: ${error.message}`)
+  }
 }

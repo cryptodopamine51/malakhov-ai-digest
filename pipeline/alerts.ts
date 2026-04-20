@@ -29,67 +29,92 @@ export interface AlertPayload {
 
 /**
  * Fires an alert. Skips if an identical alert was fired within its cooldown window.
- * Returns true if the alert was sent, false if suppressed by dedup.
+ * Returns true if the alert was sent (Telegram notified), false if suppressed by dedup.
  */
 export async function fireAlert(opts: AlertPayload): Promise<boolean> {
   const { supabase, alertType, severity, entityKey, message, payload = {} } = opts
   const dedupKey = entityKey ? `${alertType}:${entityKey}` : alertType
   const now = new Date().toISOString()
 
-  // Check for existing open alert within cooldown
-  const { data: existing } = await supabase
-    .from('pipeline_alerts')
-    .select('id, cooldown_until, occurrence_count')
-    .eq('dedupe_key', dedupKey)
-    .eq('status', 'open')
-    .order('last_seen_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (existing && existing.cooldown_until && existing.cooldown_until > now) {
-    // Still in cooldown — just increment occurrence_count silently
-    await supabase
+  try {
+    // Check for existing open alert within cooldown
+    const { data: existing, error: selectError } = await supabase
       .from('pipeline_alerts')
-      .update({
-        occurrence_count: (existing.occurrence_count ?? 1) + 1,
-        last_seen_at: now,
-      })
-      .eq('id', existing.id)
-    return false
-  }
+      .select('id, cooldown_until, occurrence_count')
+      .eq('dedupe_key', dedupKey)
+      .eq('status', 'open')
+      .order('last_seen_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
-  const cooldownHours = COOLDOWN_HOURS[alertType] ?? 2
-  const cooldownUntil = new Date(Date.now() + cooldownHours * 60 * 60 * 1000).toISOString()
+    if (selectError) {
+      console.error(`[alerts] Failed to query pipeline_alerts: ${selectError.message}`)
+      // Still attempt Telegram even if DB is down
+      if (opts.botToken && opts.adminChatId) {
+        await sendTelegramAlert(opts.botToken, opts.adminChatId, severity, message)
+      }
+      return true
+    }
 
-  if (existing) {
-    // Reopen and reset cooldown
-    await supabase
-      .from('pipeline_alerts')
-      .update({
-        occurrence_count: (existing.occurrence_count ?? 1) + 1,
-        last_seen_at: now,
-        cooldown_until: cooldownUntil,
+    if (existing && existing.cooldown_until && existing.cooldown_until > now) {
+      // Still in cooldown — increment occurrence_count silently
+      const { error: updateError } = await supabase
+        .from('pipeline_alerts')
+        .update({
+          occurrence_count: (existing.occurrence_count ?? 1) + 1,
+          last_seen_at: now,
+        })
+        .eq('id', existing.id)
+
+      if (updateError) {
+        console.error(`[alerts] Failed to update occurrence_count: ${updateError.message}`)
+      }
+      return false
+    }
+
+    const cooldownHours = COOLDOWN_HOURS[alertType] ?? 2
+    const cooldownUntil = new Date(Date.now() + cooldownHours * 60 * 60 * 1000).toISOString()
+
+    if (existing) {
+      // Alert exists but cooldown expired — reopen and reset
+      const { error: updateError } = await supabase
+        .from('pipeline_alerts')
+        .update({
+          occurrence_count: (existing.occurrence_count ?? 1) + 1,
+          last_seen_at: now,
+          cooldown_until: cooldownUntil,
+          message,
+          payload,
+        })
+        .eq('id', existing.id)
+
+      if (updateError) {
+        console.error(`[alerts] Failed to reopen alert ${dedupKey}: ${updateError.message}`)
+      }
+    } else {
+      const { error: insertError } = await supabase.from('pipeline_alerts').insert({
+        alert_type: alertType,
+        severity,
+        status: 'open',
+        entity_key: entityKey ?? null,
+        dedupe_key: dedupKey,
         message,
         payload,
+        occurrence_count: 1,
+        first_seen_at: now,
+        last_seen_at: now,
+        cooldown_until: cooldownUntil,
       })
-      .eq('id', existing.id)
-  } else {
-    await supabase.from('pipeline_alerts').insert({
-      alert_type: alertType,
-      severity,
-      status: 'open',
-      entity_key: entityKey ?? null,
-      dedupe_key: dedupKey,
-      message,
-      payload,
-      occurrence_count: 1,
-      first_seen_at: now,
-      last_seen_at: now,
-      cooldown_until: cooldownUntil,
-    })
+
+      if (insertError) {
+        console.error(`[alerts] Failed to insert alert ${dedupKey}: ${insertError.message}`)
+      }
+    }
+  } catch (err) {
+    console.error(`[alerts] Unexpected error in fireAlert: ${err instanceof Error ? err.message : String(err)}`)
   }
 
-  // Send Telegram notification if configured
+  // Send Telegram notification regardless of DB outcome
   if (opts.botToken && opts.adminChatId) {
     await sendTelegramAlert(opts.botToken, opts.adminChatId, severity, message)
   }
@@ -106,11 +131,15 @@ export async function resolveAlert(
   entityKey?: string,
 ): Promise<void> {
   const dedupKey = entityKey ? `${alertType}:${entityKey}` : alertType
-  await supabase
+  const { error } = await supabase
     .from('pipeline_alerts')
     .update({ status: 'resolved', resolved_at: new Date().toISOString() })
     .eq('dedupe_key', dedupKey)
     .eq('status', 'open')
+
+  if (error) {
+    console.error(`[alerts] Failed to resolve alert ${dedupKey}: ${error.message}`)
+  }
 }
 
 async function sendTelegramAlert(
@@ -121,7 +150,7 @@ async function sendTelegramAlert(
 ): Promise<void> {
   const icon = severity === 'critical' ? '🔴' : severity === 'warning' ? '⚠️' : 'ℹ️'
   try {
-    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -131,7 +160,11 @@ async function sendTelegramAlert(
         disable_web_page_preview: true,
       }),
     })
-  } catch {
+    if (!res.ok) {
+      console.error(`[alerts] Telegram send failed: ${res.status}`)
+    }
+  } catch (err) {
     // Non-critical — alert is already written to DB
+    console.error(`[alerts] Telegram send error: ${err instanceof Error ? err.message : String(err)}`)
   }
 }

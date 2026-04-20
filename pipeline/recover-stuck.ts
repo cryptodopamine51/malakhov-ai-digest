@@ -14,7 +14,7 @@ import { resolve } from 'path'
 config({ path: resolve(process.cwd(), '.env.local') })
 
 import { getServerClient } from '../lib/supabase'
-import { nextRetryAt } from './types'
+import { nextRetryAt, RETRY_POLICY } from './types'
 
 function log(msg: string): void {
   const ts = new Date().toTimeString().slice(0, 8)
@@ -50,32 +50,37 @@ async function recoverStuck(): Promise<void> {
   let recovered = 0
 
   for (const article of stuck) {
-    const attemptCount = (article.attempt_count ?? 0) + 1
+    // Lease expiry is NOT an enrichment attempt — don't charge attempt_count.
+    // The worker that held this lease may have crashed before even calling Claude.
+    const attemptCount = article.attempt_count ?? 0
     const retryAt = nextRetryAt(attemptCount).toISOString()
 
-    // Transition: processing → retry_wait (via stuck marker in last_error_code)
+    // Articles that have already exhausted retries get failed, not recycled.
+    const targetStatus = attemptCount >= RETRY_POLICY.maxAttempts ? 'failed' : 'retry_wait'
+
     const { error } = await supabase
       .from('articles')
       .update({
-        enrich_status: 'retry_wait',
-        attempt_count: attemptCount,
-        next_retry_at: retryAt,
+        enrich_status: targetStatus,
+        next_retry_at: targetStatus === 'retry_wait' ? retryAt : null,
         claim_token: null,
         processing_by: null,
         lease_expires_at: null,
         processing_finished_at: now,
         last_error: `lease expired (was held by ${article.processing_by ?? 'unknown'})`,
-        last_error_code: 'fetch_timeout',
+        last_error_code: 'lease_expired',
         updated_at: now,
       })
       .eq('id', article.id)
-      .eq('enrich_status', 'processing') // guard: only if still processing
+      .eq('enrich_status', 'processing') // guard: only touch still-processing rows
 
     if (!error) {
       recovered++
       log(
-        `  ↻ recovered: ${article.original_title?.slice(0, 60)} ` +
-        `[was held by ${article.processing_by ?? 'unknown'}, retry at ${retryAt}]`,
+        `  ↻ ${targetStatus}: ${article.original_title?.slice(0, 60)} ` +
+        `[held by ${article.processing_by ?? 'unknown'}` +
+        (targetStatus === 'retry_wait' ? `, retry at ${retryAt}` : ', exhausted') +
+        `]`,
       )
     }
   }

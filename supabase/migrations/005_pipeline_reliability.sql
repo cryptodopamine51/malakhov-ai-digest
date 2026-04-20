@@ -161,7 +161,7 @@ create index if not exists idx_articles_processing_lease
   on articles(enrich_status, lease_expires_at);
 
 create index if not exists idx_articles_verified_public
-  on articles(published, quality_ok, verified_live, created_at desc);
+  on articles(published, quality_ok, verified_live, score desc, created_at desc);
 
 create index if not exists idx_articles_last_seen
   on articles(last_seen_at desc);
@@ -174,6 +174,9 @@ create index if not exists idx_pipeline_alerts_dedupe_open
 
 create index if not exists idx_article_attempts_article_started
   on article_attempts(article_id, started_at desc);
+
+create index if not exists idx_article_attempts_stage_started
+  on article_attempts(stage, started_at desc);
 
 -- Backfill: align existing rows with new status model
 -- Published+quality articles → enriched_ok / live

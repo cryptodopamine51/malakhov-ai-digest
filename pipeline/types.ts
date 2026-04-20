@@ -17,6 +17,7 @@ export type ErrorCode =
   | 'claude_parse_failed'
   | 'editorial_parse_failed'
   | 'quality_reject'
+  | 'lease_expired'
   | 'unhandled_error'
 
 export const RETRYABLE_ERRORS: ErrorCode[] = [
@@ -24,6 +25,7 @@ export const RETRYABLE_ERRORS: ErrorCode[] = [
   'fetch_timeout',
   'claude_api_error',
   'claude_rate_limit',
+  'lease_expired',
 ]
 
 export const PERMANENT_ERRORS: ErrorCode[] = [
