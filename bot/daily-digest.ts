@@ -271,6 +271,7 @@ async function main(): Promise<void> {
       .select('*')
       .eq('published', true)
       .eq('quality_ok', true)
+      .eq('verified_live', true)
       .eq('tg_sent', false)
       .not('tg_teaser', 'is', null)
       .not('slug', 'is', null)
@@ -326,6 +327,7 @@ async function main(): Promise<void> {
       .select('*', { count: 'exact', head: true })
       .eq('published', true)
       .eq('quality_ok', true)
+      .eq('verified_live', true)
 
     if (!force) {
       countQuery.gte('pub_date', from.toISOString()).lte('pub_date', to.toISOString())

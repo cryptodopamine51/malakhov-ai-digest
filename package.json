@@ -13,6 +13,9 @@
     "lint": "next lint",
     "ingest": "tsx pipeline/ingest.ts",
     "enrich": "tsx pipeline/enricher.ts",
+    "retry-failed": "tsx pipeline/retry-failed.ts",
+    "recover-stuck": "tsx pipeline/recover-stuck.ts",
+    "publish-verify": "tsx pipeline/publish-verify.ts",
     "tg-digest": "tsx bot/daily-digest.ts",
     "bot": "tsx bot/bot.ts"
   },

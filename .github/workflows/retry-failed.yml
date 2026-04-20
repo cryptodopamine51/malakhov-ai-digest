@@ -1,13 +1,13 @@
-name: Enrich Articles
+name: Retry Failed Articles
 
 on:
   schedule:
-    # Каждые 2 часа — обогащаем статьи, которые накопились после ingest
-    - cron: '0 */2 * * *'
+    # Every 4 hours — pick up retry_wait articles whose timer has expired
+    - cron: '30 */4 * * *'
   workflow_dispatch:
 
 jobs:
-  enrich:
+  retry:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,13 +23,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Recover stuck articles
-        run: npm run recover-stuck
+      - name: Reset retry_wait articles to pending
+        run: npm run retry-failed
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
 
-      - name: Run enricher
+      - name: Enrich newly unlocked articles
         run: npm run enrich
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

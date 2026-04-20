@@ -56,7 +56,7 @@ async function main() {
   const supabase = getServerClient()
   log(`Feed backfill window: ${MAX_AGE_MINUTES} min`)
 
-  const items = await fetchAllFeeds(MAX_AGE_MINUTES)
+  const { items } = await fetchAllFeeds(MAX_AGE_MINUTES)
   log(`Получено элементов: ${items.length}`)
 
   let inserted = 0

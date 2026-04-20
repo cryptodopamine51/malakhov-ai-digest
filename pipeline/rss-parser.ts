@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import RSSParser from 'rss-parser'
 import { FEEDS, type FeedConfig } from './feeds.config'
 
@@ -12,6 +13,22 @@ export interface ParsedItem {
   sourceLang: 'en' | 'ru'
   topics: string[]
   dedupHash: string
+}
+
+export interface SourceFeedResult {
+  sourceName: string
+  feedUrl: string
+  status: 'ok' | 'empty' | 'failed'
+  itemsSeen: number
+  itemsReturned: number
+  httpStatus: number | null
+  errorMessage: string | null
+  responseTimeMs: number
+}
+
+export interface FetchAllFeedsResult {
+  items: ParsedItem[]
+  sourceResults: SourceFeedResult[]
 }
 
 // ── Ключевые слова для русскоязычных источников с широкой тематикой ──────────
@@ -46,7 +63,6 @@ const RU_AI_KEYWORDS: string[] = [
  * Используется для ru-источников: отсекает вечнозелёные страницы без даты в пути.
  */
 export function hasDateInUrl(url: string): boolean {
-  // Паттерны: /2024/01/, /20240115/, /2024-01-15/
   return /\/\d{4}\/\d{2}\//.test(url) ||
     /\/\d{8}\//.test(url) ||
     /\/\d{4}-\d{2}-\d{2}\//.test(url)
@@ -69,7 +85,6 @@ export function decodeHtmlEntities(text: string): string {
 
 /**
  * Нормализует заголовок для построения дедуп-хэша.
- * Lowercase + убрать пунктуацию + trim.
  */
 export function normalizeTitle(title: string): string {
   return title
@@ -80,97 +95,86 @@ export function normalizeTitle(title: string): string {
 }
 
 /**
- * Простая транслитерация кириллицы → латиница для slug.
+ * Канонизирует URL: убирает tracking-параметры, нормализует trailing slash.
  */
-function transliterate(text: string): string {
-  const map: Record<string, string> = {
-    а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'yo',
-    ж: 'zh', з: 'z', и: 'i', й: 'j', к: 'k', л: 'l', м: 'm',
-    н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u',
-    ф: 'f', х: 'kh', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'shch',
-    ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya',
+export function canonicalizeUrl(url: string): string {
+  try {
+    const u = new URL(url)
+    const TRACKING_PARAMS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content',
+      'utm_term', 'fbclid', 'gclid', 'ref', 'source', '_ga']
+    for (const p of TRACKING_PARAMS) u.searchParams.delete(p)
+    // Normalize: remove trailing slash from path (except root)
+    if (u.pathname.length > 1 && u.pathname.endsWith('/')) {
+      u.pathname = u.pathname.slice(0, -1)
+    }
+    return u.toString()
+  } catch {
+    return url
   }
-  return text
-    .toLowerCase()
-    .split('')
-    .map((ch) => map[ch] ?? ch)
-    .join('')
 }
 
 /**
- * Генерирует URL-slug из русского заголовка + последние 6 символов id.
- * Максимум 80 символов.
- */
-export function generateSlug(ruTitle: string, id: string): string {
-  const suffix = id.slice(-6)
-  const base = transliterate(ruTitle)
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 73) // 80 - 1 (дефис) - 6 (суффикс)
-
-  return `${base}-${suffix}`
-}
-
-// ── Основная функция парсинга ─────────────────────────────────────────────────
-
-/**
- * Формирует простой дедуп-хэш из нормализованного заголовка.
- * При желании можно усилить crypto.createHash('md5').
+ * SHA-256 дедуп-хэш по нормализованному заголовку + канонический URL.
  */
 function buildDedupHash(title: string, url: string): string {
+  const canonical = canonicalizeUrl(url)
   const normalized = normalizeTitle(title)
-  // Простой хэш: длина + первые 64 символа + длина url
-  // Достаточно для MVP; для продакшена заменить на MD5/SHA256
-  return `${normalized.slice(0, 64)}_${url.length}`
+  return createHash('sha256')
+    .update(`${normalized}|${canonical}`)
+    .digest('hex')
+    .slice(0, 32)
 }
 
 /**
- * Парсит все RSS-фиды и возвращает список свежих AI-новостей.
+ * Парсит все RSS-фиды и возвращает список свежих AI-новостей + source-level результаты.
  *
  * @param maxAgeMinutes - максимальный возраст публикации в минутах (по умолчанию 60)
  */
-export async function fetchAllFeeds(maxAgeMinutes = 60): Promise<ParsedItem[]> {
+export async function fetchAllFeeds(maxAgeMinutes = 60): Promise<FetchAllFeedsResult> {
   const parser = new RSSParser({
     headers: {
       'User-Agent':
         'Mozilla/5.0 (compatible; MalakhovAIDigestBot/1.0; +https://news.malakhovai.ru)',
     },
-    timeout: 20_000, // 20 секунд на фид
+    timeout: 20_000,
   })
 
   const cutoff = new Date(Date.now() - maxAgeMinutes * 60 * 1000)
 
-  // Парсим батчами по 5 фидов параллельно — не перегружаем сеть
   const allItems: ParsedItem[] = []
+  const sourceResults: SourceFeedResult[] = []
+
   for (let i = 0; i < FEEDS.length; i += 5) {
     const batch = FEEDS.slice(i, i + 5)
     const results = await Promise.allSettled(
       batch.map((feed) => parseFeedWithRetry(parser, feed, cutoff))
     )
     for (const result of results) {
-      if (result.status === 'fulfilled') allItems.push(...result.value)
+      if (result.status === 'fulfilled') {
+        allItems.push(...result.value.items)
+        sourceResults.push(result.value.sourceResult)
+      }
     }
   }
-  return allItems
+
+  return { items: allItems, sourceResults }
 }
 
 /**
- * Парсит фид с одним retry при ошибке таймаута.
+ * Парсит фид с одним retry при ошибке.
  */
 async function parseFeedWithRetry(
   parser: RSSParser,
   feed: FeedConfig,
   cutoff: Date
-): Promise<ParsedItem[]> {
+): Promise<{ items: ParsedItem[]; sourceResult: SourceFeedResult }> {
   try {
     return await parseFeed(parser, feed, cutoff)
   } catch {
-    // Пауза 3 секунды и одна повторная попытка
     await new Promise(r => setTimeout(r, 3_000))
     return parseFeed(parser, feed, cutoff)
   }
 }
-
 
 /**
  * Парсит один RSS-фид и фильтрует элементы по свежести и ключевым словам.
@@ -179,18 +183,31 @@ async function parseFeed(
   parser: RSSParser,
   feed: FeedConfig,
   cutoff: Date
-): Promise<ParsedItem[]> {
+): Promise<{ items: ParsedItem[]; sourceResult: SourceFeedResult }> {
   const ts = () => new Date().toTimeString().slice(0, 8)
+  const startedAt = Date.now()
+
+  const sourceResult: SourceFeedResult = {
+    sourceName: feed.name,
+    feedUrl: feed.url,
+    status: 'failed',
+    itemsSeen: 0,
+    itemsReturned: 0,
+    httpStatus: null,
+    errorMessage: null,
+    responseTimeMs: 0,
+  }
 
   try {
     const feedData = await parser.parseURL(feed.url)
-    const items = feedData.items.slice(0, 20) // берём не более 20 последних
+    sourceResult.responseTimeMs = Date.now() - startedAt
+
+    const items = feedData.items.slice(0, 20)
+    sourceResult.itemsSeen = items.length
 
     const result: ParsedItem[] = []
 
     for (const item of items) {
-      // ── Проверка свежести ────────────────────────────────────────────────
-      // isoDate — нормализованная дата от rss-parser; pubDate — сырая строка из фида
       const rawDate = item.isoDate ?? item.pubDate
       const pubDate = rawDate ? new Date(rawDate) : null
       if (!pubDate || isNaN(pubDate.getTime()) || pubDate < cutoff) continue
@@ -198,12 +215,10 @@ async function parseFeed(
       const url = item.link ?? item.guid
       if (!url) continue
 
-      // ── Фильтр вечнозелёных страниц для ru-источников ───────────────────
       if (feed.lang === 'ru' && feed.needsKeywordFilter && !hasDateInUrl(url)) {
         continue
       }
 
-      // ── Ключевые слова для широких ru-источников ─────────────────────────
       if (feed.needsKeywordFilter) {
         const searchText = [
           item.title ?? '',
@@ -217,16 +232,16 @@ async function parseFeed(
         if (!hasKeyword) continue
       }
 
-      // ── Сборка элемента ───────────────────────────────────────────────────
       const rawTitle = item.title ?? 'Без заголовка'
       const rawSnippet = item.contentSnippet ?? item.content ?? item.summary ?? ''
 
       const originalTitle = decodeHtmlEntities(rawTitle)
       const snippet = decodeHtmlEntities(rawSnippet).slice(0, 300)
-      const dedupHash = buildDedupHash(originalTitle, url)
+      const canonicalUrl = canonicalizeUrl(url)
+      const dedupHash = buildDedupHash(originalTitle, canonicalUrl)
 
       result.push({
-        originalUrl: url,
+        originalUrl: canonicalUrl,
         originalTitle,
         snippet,
         pubDate: pubDate.toISOString(),
@@ -237,14 +252,19 @@ async function parseFeed(
       })
     }
 
+    sourceResult.itemsReturned = result.length
+    sourceResult.status = result.length === 0 ? 'empty' : 'ok'
+
     console.log(
       `[${ts()}] ${feed.name}: получено ${items.length} записей, отфильтровано ${result.length}`
     )
 
-    return result
+    return { items: result, sourceResult }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
+    sourceResult.responseTimeMs = Date.now() - startedAt
+    sourceResult.errorMessage = message
     console.error(`[${new Date().toTimeString().slice(0, 8)}] Ошибка фида "${feed.name}": ${message}`)
-    return []
+    return { items: [], sourceResult }
   }
 }
