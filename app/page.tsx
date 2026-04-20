@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { getTopTodayArticles, getArticlesFeed } from '../lib/articles'
 import { getMoscowDateKey, shiftMoscowDateKey, pluralize } from '../lib/utils'
 import ArticleCard from '../src/components/ArticleCard'
@@ -24,6 +25,10 @@ export default async function HomePage({
     timeZone: 'Europe/Moscow',
   }).format(new Date())
   const totalPages = Math.ceil(total / PER_PAGE)
+
+  if (totalPages > 0 && page > totalPages) {
+    redirect(totalPages === 1 ? '/' : `/?page=${totalPages}`)
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:py-10">

@@ -145,16 +145,13 @@ function freshnessMultiplier(createdAt: string): number {
 }
 
 export async function getArticlesFeed(page = 1, perPage = 12): Promise<{ articles: Article[]; total: number }> {
-  const POOL = 120
-
-  const { data, error } = await client()
+  const { data, error, count } = await client()
     .from('articles')
-    .select('*')
+    .select('*', { count: 'exact' })
     .eq('published', true)
     .eq('quality_ok', true)
     .order('score', { ascending: false })
     .order('created_at', { ascending: false })
-    .limit(POOL)
 
   if (error) {
     console.error('getArticlesFeed error:', error.message)
@@ -172,8 +169,7 @@ export async function getArticlesFeed(page = 1, perPage = 12): Promise<{ article
   const offset = (page - 1) * perPage
   return {
     articles: sorted.slice(offset, offset + perPage),
-    // Cap to pool size so pagination never shows phantom empty pages
-    total: pool.length,
+    total: count ?? pool.length,
   }
 }
 
