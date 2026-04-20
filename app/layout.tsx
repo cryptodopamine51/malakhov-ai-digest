@@ -34,6 +34,9 @@ export const metadata: Metadata = {
     template: '%s | Malakhov AI Дайджест',
   },
   description: 'Лучшие новости об искусственном интеллекте на русском языке',
+  verification: {
+    yandex: '6b43a6ebf41ca61b',
+  },
   alternates: {
     canonical: SITE_URL,
   },
