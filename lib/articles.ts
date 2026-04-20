@@ -5,9 +5,17 @@
  * Все публичные выборки фильтруют quality_ok=true.
  */
 
-import { getBrowserClient, type Article } from './supabase'
+import { getBrowserClient, getServerClient, type Article } from './supabase'
 
 function client() {
+  if (typeof window === 'undefined') {
+    try {
+      return getServerClient()
+    } catch {
+      // Keep server rendering alive even if Vercel env is missing the service key.
+    }
+  }
+
   return getBrowserClient()
 }
 

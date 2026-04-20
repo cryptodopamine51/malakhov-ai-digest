@@ -29,6 +29,7 @@ next-env.d.ts
 # Локальные env-файлы (никогда не коммитить!)
 .env.local
 .env.*.local
+.env.vercel.*
 
 # Vercel
 .vercel
