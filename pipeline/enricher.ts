@@ -14,7 +14,7 @@ config({ path: resolve(process.cwd(), '.env.local') })
 import { getServerClient, type Article } from '../lib/supabase'
 import { scoreArticle } from './scorer'
 import { fetchArticleContent } from './fetcher'
-import { generateEditorial } from './claude'
+import { generateEditorial, type TokenUsage } from './claude'
 import { generateSlug } from './slug'
 import { claimBatch, releaseClaim, WORKER_ID } from './claims'
 import {
@@ -25,7 +25,7 @@ import {
 } from './types'
 
 const MIN_SCORE_FOR_CLAUDE = 2
-const BATCH_SIZE = 25
+const BATCH_SIZE = 15
 const SLEEP_MS = 2_000
 
 function log(msg: string): void {
@@ -39,11 +39,13 @@ function sleep(ms: number): Promise<void> {
 
 type EnrichResult = 'enriched_ok' | 'rejected' | 'retry_wait' | 'failed' | 'error'
 
+const ZERO_USAGE: TokenUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreateTokens: 0, estimatedCostUsd: 0 }
+
 async function enrichArticle(
   supabase: ReturnType<typeof getServerClient>,
   article: Article,
   runId: string,
-): Promise<EnrichResult> {
+): Promise<{ result: EnrichResult; usage: TokenUsage }> {
   const startedAt = new Date()
   let errorCode: ErrorCode | undefined
   let errorMessage: string | undefined
@@ -79,14 +81,14 @@ async function enrichArticle(
       })
       await writeAttempt(supabase, article, runId, startedAt, 'rejected', 'quality_reject', `low_score: ${score}`)
       log(`— low_score [${score}]: ${article.original_title.slice(0, 60)}`)
-      return 'rejected'
+      return { result: 'rejected', usage: ZERO_USAGE }
     }
 
     const contentForClaude = fullText || article.original_text || ''
 
-    let editorial: Awaited<ReturnType<typeof generateEditorial>>
+    let editorialOutput: Awaited<ReturnType<typeof generateEditorial>>
     try {
-      editorial = await generateEditorial(
+      editorialOutput = await generateEditorial(
         article.original_title,
         contentForClaude,
         article.source_name,
@@ -98,6 +100,8 @@ async function enrichArticle(
       errorMessage = err instanceof Error ? err.message : String(err)
       throw err
     }
+
+    const { output: editorial, usage } = editorialOutput
 
     const slug = generateSlug(editorial?.ru_title || article.original_title, article.id)
 
@@ -117,7 +121,7 @@ async function enrichArticle(
         slug,
       })
       await writeAttempt(supabase, article, runId, startedAt, 'rejected', 'editorial_parse_failed', 'editorial returned null')
-      return 'rejected'
+      return { result: 'rejected', usage }
     }
 
     const enrichStatus = editorial.quality_ok ? 'enriched_ok' : 'rejected'
@@ -161,7 +165,7 @@ async function enrichArticle(
       ` — ${editorial.ru_title.slice(0, 60)}`,
     )
 
-    return editorial.quality_ok ? 'enriched_ok' : 'rejected'
+    return { result: editorial.quality_ok ? 'enriched_ok' : 'rejected', usage }
   } catch (err) {
     const code: ErrorCode = errorCode ?? 'unhandled_error'
     const msg = errorMessage ?? (err instanceof Error ? err.message : String(err))
@@ -181,7 +185,7 @@ async function enrichArticle(
       })
       await writeAttempt(supabase, article, runId, startedAt, 'retryable', code, msg)
       log(`↻ retry_wait [attempt ${attemptCount}] ${code}: ${article.original_title.slice(0, 60)}`)
-      return 'retry_wait'
+      return { result: 'retry_wait', usage: ZERO_USAGE }
     } else {
       await releaseClaim(supabase, article.id, {
         enrich_status: 'failed',
@@ -195,7 +199,7 @@ async function enrichArticle(
       })
       await writeAttempt(supabase, article, runId, startedAt, 'failed', code, msg)
       log(`✗ failed [attempt ${attemptCount}] ${code}: ${article.original_title.slice(0, 60)}`)
-      return exhausted ? 'failed' : 'error'
+      return { result: exhausted ? 'failed' : 'error', usage: ZERO_USAGE }
     }
   }
 }
@@ -284,10 +288,18 @@ async function enrichBatch(): Promise<void> {
   let rejected = 0
   let retryable = 0
   let failed = 0
+  let totalInputTokens = 0
+  let totalOutputTokens = 0
+  let totalCacheReadTokens = 0
+  let totalCostUsd = 0
 
   for (const article of articles) {
     try {
-      const result = await enrichArticle(supabase, article, runId)
+      const { result, usage } = await enrichArticle(supabase, article, runId)
+      totalInputTokens += usage.inputTokens
+      totalOutputTokens += usage.outputTokens
+      totalCacheReadTokens += usage.cacheReadTokens
+      totalCostUsd += usage.estimatedCostUsd
       switch (result) {
         case 'enriched_ok': enrichedOk++; break
         case 'rejected':    rejected++;   break
@@ -326,6 +338,10 @@ async function enrichBatch(): Promise<void> {
     articles_retryable: retryable,
     articles_failed: failed,
     oldest_pending_age_minutes: oldestAgeMinutes,
+    total_input_tokens: totalInputTokens,
+    total_output_tokens: totalOutputTokens,
+    total_cache_read_tokens: totalCacheReadTokens,
+    estimated_cost_usd: Math.round(totalCostUsd * 10000) / 10000,
   }).eq('id', runId)
 
   log('─────────────────────────────────────')
@@ -334,6 +350,8 @@ async function enrichBatch(): Promise<void> {
   log(`Отклонено:    ${rejected}`)
   log(`Retry wait:   ${retryable}`)
   log(`Failed:       ${failed}`)
+  log(`Tokens:       input=${totalInputTokens} output=${totalOutputTokens} cache_read=${totalCacheReadTokens}`)
+  log(`Cost:         $${totalCostUsd.toFixed(4)}`)
   log(`Run status:   ${runStatus}`)
   log('=== enricher.ts завершён ===')
 }

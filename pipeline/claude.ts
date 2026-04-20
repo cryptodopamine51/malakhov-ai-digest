@@ -140,17 +140,33 @@ function validateEditorial(out: EditorialOutput): string | null {
   return null
 }
 
+export interface TokenUsage {
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheCreateTokens: number
+  estimatedCostUsd: number
+}
+
 export async function generateEditorial(
   originalTitle: string,
   originalText: string,
   sourceName: string,
   sourceLang: 'en' | 'ru',
   topics: string[],
-): Promise<EditorialOutput | null> {
+): Promise<{ output: EditorialOutput | null; usage: TokenUsage }> {
+  const ZERO_USAGE: TokenUsage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreateTokens: 0,
+    estimatedCostUsd: 0,
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     console.warn(`[${ts()}] Claude: ANTHROPIC_API_KEY не задан`)
-    return null
+    return { output: null, usage: ZERO_USAGE }
   }
 
   const client = new Anthropic({ apiKey })
@@ -177,25 +193,36 @@ export async function generateEditorial(
       messages: [{ role: 'user', content: userMessage }],
     })
 
-    const usage = message.usage as unknown as Record<string, number>
-    const cacheRead = usage.cache_read_input_tokens ?? 0
-    const cacheCreate = usage.cache_creation_input_tokens ?? 0
+    const rawUsage = message.usage as unknown as Record<string, number>
+    const inputTokens = rawUsage.input_tokens ?? 0
+    const outputTokens = rawUsage.output_tokens ?? 0
+    const cacheReadTokens = rawUsage.cache_read_input_tokens ?? 0
+    const cacheCreateTokens = rawUsage.cache_creation_input_tokens ?? 0
+
+    // Sonnet 4.6 rates: input $3/M, output $15/M, cache_read $0.30/M, cache_create $3.75/M
+    const estimatedCostUsd =
+      (inputTokens * 3 + cacheCreateTokens * 3.75 + cacheReadTokens * 0.3) / 1_000_000 +
+      (outputTokens * 15) / 1_000_000
+
+    const usage: TokenUsage = { inputTokens, outputTokens, cacheReadTokens, cacheCreateTokens, estimatedCostUsd }
+
     console.log(
-      `[${ts()}] Claude usage: input=${usage.input_tokens} output=${usage.output_tokens}` +
-      (cacheCreate > 0 ? ` cache_create=${cacheCreate}` : '') +
-      (cacheRead > 0 ? ` cache_read=${cacheRead}` : '')
+      `[${ts()}] Claude usage: input=${inputTokens} output=${outputTokens}` +
+      (cacheCreateTokens > 0 ? ` cache_create=${cacheCreateTokens}` : '') +
+      (cacheReadTokens > 0 ? ` cache_read=${cacheReadTokens}` : '') +
+      ` cost=$${estimatedCostUsd.toFixed(4)}`
     )
 
     const block = message.content[0]
     if (block.type !== 'text') {
       console.warn(`[${ts()}] Claude: неожиданный тип ответа`)
-      return null
+      return { output: null, usage }
     }
 
     const parsed = parseEditorialJson(block.text)
     if (!parsed) {
       console.warn(`[${ts()}] Claude: не удалось распарсить JSON для "${originalTitle.slice(0, 60)}"`)
-      return null
+      return { output: null, usage }
     }
 
     if (!parsed.glossary) parsed.glossary = []
@@ -204,7 +231,7 @@ export async function generateEditorial(
     const validationError = validateEditorial(parsed)
     if (validationError) {
       console.warn(`[${ts()}] Claude: валидация провалена (${validationError}) для "${originalTitle.slice(0, 60)}"`)
-      return null
+      return { output: null, usage }
     }
 
     console.log(
@@ -214,10 +241,10 @@ export async function generateEditorial(
       ` — "${originalTitle.slice(0, 60)}"`
     )
 
-    return parsed
+    return { output: parsed, usage }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     console.error(`[${ts()}] Claude: ошибка API — ${msg}`)
-    return null
+    return { output: null, usage: ZERO_USAGE }
   }
 }

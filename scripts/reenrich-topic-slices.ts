@@ -72,7 +72,7 @@ async function main() {
         continue
       }
 
-      const editorial = await generateEditorial(
+      const { output: editorial } = await generateEditorial(
         article.original_title,
         fullText || article.original_text || '',
         article.source_name,

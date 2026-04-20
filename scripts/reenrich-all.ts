@@ -104,7 +104,7 @@ async function main() {
 
         const { text: fullText, imageUrl } = await fetchArticleContent(article.original_url)
         const content = fullText || article.original_text || ''
-        const editorial = await generateEditorial(
+        const { output: editorial } = await generateEditorial(
           article.original_title,
           content,
           article.source_name,
