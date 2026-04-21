@@ -30,6 +30,8 @@ export interface FetchedContent {
   imageUrl: string | null
   tables: ExtractedTable[]
   inlineImages: ExtractedImage[]
+  errorCode?: 'fetch_failed' | 'fetch_timeout'
+  errorMessage?: string
 }
 
 function ts(): string {
@@ -163,8 +165,16 @@ export async function fetchArticleContent(url: string): Promise<FetchedContent> 
     clearTimeout(timeoutId)
 
     if (!response.ok) {
-      console.log(`[${ts()}] fetchArticleContent: HTTP ${response.status} для ${url}`)
-      return { text: '', imageUrl: null, tables: [], inlineImages: [] }
+      const message = `HTTP ${response.status} for ${url}`
+      console.log(`[${ts()}] fetchArticleContent: ${message}`)
+      return {
+        text: '',
+        imageUrl: null,
+        tables: [],
+        inlineImages: [],
+        errorCode: 'fetch_failed',
+        errorMessage: message,
+      }
     }
 
     const html = await response.text()
@@ -192,6 +202,13 @@ export async function fetchArticleContent(url: string): Promise<FetchedContent> 
     clearTimeout(timeoutId)
     const message = error instanceof Error ? error.message : String(error)
     console.log(`[${ts()}] fetchArticleContent: ошибка — ${message} [${url.slice(0, 60)}]`)
-    return { text: '', imageUrl: null, tables: [], inlineImages: [] }
+    return {
+      text: '',
+      imageUrl: null,
+      tables: [],
+      inlineImages: [],
+      errorCode: message.toLowerCase().includes('abort') ? 'fetch_timeout' : 'fetch_failed',
+      errorMessage: message,
+    }
   }
 }

@@ -14,6 +14,7 @@ config({ path: resolve(process.cwd(), '.env.local') })
 
 import { getServerClient } from '../lib/supabase'
 import type { Article } from '../lib/supabase'
+import { fireAlert } from '../pipeline/alerts'
 
 // ── Утилиты ───────────────────────────────────────────────────────────────────
 
@@ -171,17 +172,22 @@ function buildDigestText(
 // ── Health-отчёт ──────────────────────────────────────────────────────────────
 
 async function sendHealthReport(
+  supabase: ReturnType<typeof getServerClient>,
   botToken: string,
   adminChatId: string,
   articlesCount: number,
+  dateStr: string,
 ): Promise<void> {
-  const text = [
-    `⚠️ Сегодня в дайджесте всего ${articlesCount} статей`,
-    `Минимум для отправки: 3. Дайджест не отправлен.`,
-    `Проверь pipeline: enrich.yml и scorer.ts`,
-  ].join('\n')
-
-  await sendTelegramMessage(botToken, adminChatId, text, true)
+  await fireAlert({
+    supabase,
+    alertType: 'digest_low_articles',
+    severity: 'warning',
+    entityKey: dateStr,
+    message: `Сегодня в дайджесте всего ${articlesCount} статей. Минимум для отправки: 3. Дайджест не отправлен.`,
+    payload: { articlesCount, date: dateStr },
+    botToken,
+    adminChatId,
+  })
   log('Health-отчёт отправлен администратору')
 }
 
@@ -272,6 +278,7 @@ async function main(): Promise<void> {
       .eq('published', true)
       .eq('quality_ok', true)
       .eq('verified_live', true)
+      .eq('publish_status', 'live')
       .eq('tg_sent', false)
       .not('tg_teaser', 'is', null)
       .not('slug', 'is', null)
@@ -314,7 +321,7 @@ async function main(): Promise<void> {
       site_url: siteUrl,
     })
     if (adminChatId) {
-      try { await sendHealthReport(botToken, adminChatId, digest.length) } catch { /* некритично */ }
+      try { await sendHealthReport(supabase, botToken, adminChatId, digest.length, dateStr) } catch { /* некритично */ }
     }
     process.exit(0)
   }
@@ -328,6 +335,7 @@ async function main(): Promise<void> {
       .eq('published', true)
       .eq('quality_ok', true)
       .eq('verified_live', true)
+      .eq('publish_status', 'live')
 
     if (!force) {
       countQuery.gte('pub_date', from.toISOString()).lte('pub_date', to.toISOString())

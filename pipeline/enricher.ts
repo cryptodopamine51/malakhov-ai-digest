@@ -51,13 +51,15 @@ async function enrichArticle(
   let errorMessage: string | undefined
 
   try {
-    const { text: fullText, imageUrl, tables, inlineImages } = await fetchArticleContent(
+    const { text: fullText, imageUrl, tables, inlineImages, errorCode: fetchErrorCode, errorMessage: fetchErrorMessage } = await fetchArticleContent(
       article.original_url,
-    ).catch((err) => {
-      errorCode = 'fetch_failed'
-      errorMessage = err instanceof Error ? err.message : String(err)
-      throw err
-    })
+    )
+
+    if (fetchErrorCode) {
+      errorCode = fetchErrorCode
+      errorMessage = fetchErrorMessage ?? `fetch failed for ${article.original_url}`
+      throw new Error(errorMessage)
+    }
 
     const articleForScoring: Article = {
       ...article,
@@ -67,7 +69,7 @@ async function enrichArticle(
     const score = scoreArticle(articleForScoring)
 
     if (score < MIN_SCORE_FOR_CLAUDE) {
-      await releaseClaim(supabase, article.id, {
+      await releaseClaim(supabase, article.id, article.claim_token, {
         enrich_status: 'rejected',
         publish_status: 'draft',
         // Legacy dual-write
@@ -95,39 +97,33 @@ async function enrichArticle(
         article.source_lang,
         article.topics ?? [],
       )
+
+      if (editorialOutput.errorCode) {
+        errorCode = editorialOutput.errorCode
+        errorMessage = editorialOutput.errorMessage ?? editorialOutput.errorCode
+        throw new Error(errorMessage)
+      }
     } catch (err) {
-      errorCode = 'claude_api_error'
-      errorMessage = err instanceof Error ? err.message : String(err)
+      if (!errorCode) {
+        errorCode = 'claude_api_error'
+        errorMessage = err instanceof Error ? err.message : String(err)
+      }
       throw err
     }
 
     const { output: editorial, usage } = editorialOutput
-
-    const slug = generateSlug(editorial?.ru_title || article.original_title, article.id)
-
     if (!editorial) {
-      await releaseClaim(supabase, article.id, {
-        enrich_status: 'rejected',
-        publish_status: 'draft',
-        last_error: 'editorial_parse_failed',
-        last_error_code: 'editorial_parse_failed',
-        // Legacy dual-write
-        enriched: true,
-        published: false,
-        quality_ok: false,
-        quality_reason: 'editorial_parse_failed',
-        score,
-        cover_image_url: imageUrl,
-        slug,
-      })
-      await writeAttempt(supabase, article, runId, startedAt, 'rejected', 'editorial_parse_failed', 'editorial returned null')
-      return { result: 'rejected', usage }
+      errorCode = 'claude_parse_failed'
+      errorMessage = editorialOutput.errorMessage ?? 'editorial returned null'
+      throw new Error(errorMessage)
     }
+
+    const slug = generateSlug(editorial.ru_title || article.original_title, article.id)
 
     const enrichStatus = editorial.quality_ok ? 'enriched_ok' : 'rejected'
     const publishStatus = editorial.quality_ok ? 'publish_ready' : 'draft'
 
-    await releaseClaim(supabase, article.id, {
+    const released = await releaseClaim(supabase, article.id, article.claim_token, {
       enrich_status: enrichStatus,
       publish_status: publishStatus,
       publish_ready_at: editorial.quality_ok ? new Date().toISOString() : null,
@@ -156,6 +152,11 @@ async function enrichArticle(
       published: editorial.quality_ok,
     })
 
+    if (!released) {
+      await writeAttempt(supabase, article, runId, startedAt, 'failed', 'lease_expired', 'stale claim release skipped')
+      return { result: 'error', usage }
+    }
+
     await writeAttempt(supabase, article, runId, startedAt, editorial.quality_ok ? 'ok' : 'rejected', undefined, editorial.quality_reason || undefined)
 
     const statusIcon = editorial.quality_ok ? '✓ enriched_ok' : '✗ rejected'
@@ -176,7 +177,7 @@ async function enrichArticle(
 
     if (!exhausted && retryable) {
       const retryAt = nextRetryAt(attemptCount).toISOString()
-      await releaseClaim(supabase, article.id, {
+      await releaseClaim(supabase, article.id, article.claim_token, {
         enrich_status: 'retry_wait',
         attempt_count: attemptCount,
         next_retry_at: retryAt,
@@ -187,15 +188,16 @@ async function enrichArticle(
       log(`↻ retry_wait [attempt ${attemptCount}] ${code}: ${article.original_title.slice(0, 60)}`)
       return { result: 'retry_wait', usage: ZERO_USAGE }
     } else {
-      await releaseClaim(supabase, article.id, {
+      await releaseClaim(supabase, article.id, article.claim_token, {
         enrich_status: 'failed',
         attempt_count: attemptCount,
         last_error: msg,
         last_error_code: code,
         // Legacy dual-write
         enriched: true,
+        published: false,
         quality_ok: false,
-        quality_reason: code,
+        quality_reason: null,
       })
       await writeAttempt(supabase, article, runId, startedAt, 'failed', code, msg)
       log(`✗ failed [attempt ${attemptCount}] ${code}: ${article.original_title.slice(0, 60)}`)
@@ -311,14 +313,15 @@ async function enrichBatch(): Promise<void> {
       failed++
       const msg = err instanceof Error ? err.message : String(err)
       log(`✗ Необработанная ошибка для ${article.original_url}: ${msg}`)
-      await releaseClaim(supabase, article.id, {
+      await releaseClaim(supabase, article.id, article.claim_token, {
         enrich_status: 'failed',
         attempt_count: (article.attempt_count ?? 0) + 1,
         last_error: msg,
         last_error_code: 'unhandled_error',
         enriched: true,
+        published: false,
         quality_ok: false,
-        quality_reason: 'unhandled_error',
+        quality_reason: null,
       })
     }
 
@@ -338,10 +341,9 @@ async function enrichBatch(): Promise<void> {
     articles_retryable: retryable,
     articles_failed: failed,
     oldest_pending_age_minutes: oldestAgeMinutes,
-    total_input_tokens: totalInputTokens,
-    total_output_tokens: totalOutputTokens,
-    total_cache_read_tokens: totalCacheReadTokens,
-    estimated_cost_usd: Math.round(totalCostUsd * 10000) / 10000,
+    error_summary: totalCostUsd > 0
+      ? `tokens: in=${totalInputTokens} out=${totalOutputTokens} cache_read=${totalCacheReadTokens}; cost=$${totalCostUsd.toFixed(4)}`
+      : null,
   }).eq('id', runId)
 
   log('─────────────────────────────────────')

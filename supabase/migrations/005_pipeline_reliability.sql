@@ -184,7 +184,6 @@ update articles
 set
   enrich_status = 'enriched_ok',
   publish_status = 'live',
-  verified_live = true,
   first_seen_at = coalesce(created_at, now()),
   last_seen_at = coalesce(updated_at, created_at, now())
 where published = true

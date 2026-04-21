@@ -29,6 +29,7 @@ export const RETRYABLE_ERRORS: ErrorCode[] = [
 ]
 
 export const PERMANENT_ERRORS: ErrorCode[] = [
+  'claude_parse_failed',
   'editorial_parse_failed',
   'quality_reject',
 ]
@@ -37,10 +38,13 @@ export function isRetryable(code: ErrorCode): boolean {
   return RETRYABLE_ERRORS.includes(code)
 }
 
+export function retryDelayMs(attemptCount: number): number {
+  const index = Math.max(0, attemptCount - 1)
+  return RETRY_POLICY.backoffMs[Math.min(index, RETRY_POLICY.backoffMs.length - 1)]
+}
+
 export function nextRetryAt(attemptCount: number): Date {
-  const delayMs =
-    RETRY_POLICY.backoffMs[Math.min(attemptCount, RETRY_POLICY.backoffMs.length - 1)]
-  return new Date(Date.now() + delayMs)
+  return new Date(Date.now() + retryDelayMs(attemptCount))
 }
 
 export function leaseExpiresAt(): Date {
