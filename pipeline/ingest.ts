@@ -40,7 +40,7 @@ async function insertArticle(
   // Check for existing article by dedup_hash
   const { data: existing, error: checkError } = await supabase
     .from('articles')
-    .select('id')
+    .select('id, discover_count')
     .eq('dedup_hash', item.dedupHash)
     .maybeSingle()
 
@@ -53,7 +53,10 @@ async function insertArticle(
     // Touch last_seen_at; discover_count increment is handled by DB trigger or backfill
     await supabase
       .from('articles')
-      .update({ last_seen_at: new Date().toISOString() })
+      .update({
+        last_seen_at: new Date().toISOString(),
+        discover_count: ((existing.discover_count as number | null) ?? 1) + 1,
+      })
       .eq('id', existing.id)
 
     return 'duplicate'

@@ -154,7 +154,12 @@ export async function generateEditorial(
   sourceName: string,
   sourceLang: 'en' | 'ru',
   topics: string[],
-): Promise<{ output: EditorialOutput | null; usage: TokenUsage }> {
+): Promise<{
+  output: EditorialOutput | null
+  usage: TokenUsage
+  errorCode?: 'claude_api_error' | 'claude_rate_limit' | 'claude_parse_failed'
+  errorMessage?: string
+}> {
   const ZERO_USAGE: TokenUsage = {
     inputTokens: 0,
     outputTokens: 0,
@@ -165,8 +170,9 @@ export async function generateEditorial(
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
-    console.warn(`[${ts()}] Claude: ANTHROPIC_API_KEY не задан`)
-    return { output: null, usage: ZERO_USAGE }
+    const errorMessage = 'ANTHROPIC_API_KEY не задан'
+    console.warn(`[${ts()}] Claude: ${errorMessage}`)
+    return { output: null, usage: ZERO_USAGE, errorCode: 'claude_api_error', errorMessage }
   }
 
   const client = new Anthropic({ apiKey })
@@ -221,8 +227,9 @@ export async function generateEditorial(
 
     const parsed = parseEditorialJson(block.text)
     if (!parsed) {
-      console.warn(`[${ts()}] Claude: не удалось распарсить JSON для "${originalTitle.slice(0, 60)}"`)
-      return { output: null, usage }
+      const errorMessage = `не удалось распарсить JSON для "${originalTitle.slice(0, 60)}"`
+      console.warn(`[${ts()}] Claude: ${errorMessage}`)
+      return { output: null, usage, errorCode: 'claude_parse_failed', errorMessage }
     }
 
     if (!parsed.glossary) parsed.glossary = []
@@ -230,8 +237,9 @@ export async function generateEditorial(
 
     const validationError = validateEditorial(parsed)
     if (validationError) {
-      console.warn(`[${ts()}] Claude: валидация провалена (${validationError}) для "${originalTitle.slice(0, 60)}"`)
-      return { output: null, usage }
+      const errorMessage = `валидация провалена (${validationError}) для "${originalTitle.slice(0, 60)}"`
+      console.warn(`[${ts()}] Claude: ${errorMessage}`)
+      return { output: null, usage, errorCode: 'claude_parse_failed', errorMessage }
     }
 
     console.log(
@@ -245,6 +253,14 @@ export async function generateEditorial(
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     console.error(`[${ts()}] Claude: ошибка API — ${msg}`)
-    return { output: null, usage: ZERO_USAGE }
+    const status = typeof error === 'object' && error !== null && 'status' in error
+      ? Number((error as { status?: unknown }).status)
+      : null
+    return {
+      output: null,
+      usage: ZERO_USAGE,
+      errorCode: status === 429 ? 'claude_rate_limit' : 'claude_api_error',
+      errorMessage: msg,
+    }
   }
 }

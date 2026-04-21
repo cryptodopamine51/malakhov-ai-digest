@@ -19,7 +19,7 @@ const HIGH_PRIORITY_SOURCES = [
   'TechCrunch AI',
   'MIT Technology Review AI',
   'OpenAI News',
-  'Habr AI Hub',
+  'Habr AI',
 ]
 
 const FAILURE_WINDOW_HOURS = 6

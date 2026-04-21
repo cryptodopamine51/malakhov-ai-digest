@@ -82,9 +82,15 @@ export async function claimBatch(
 export async function releaseClaim(
   supabase: SupabaseClient,
   articleId: string,
+  expectedClaimToken: string | null,
   updates: Record<string, unknown>,
-): Promise<void> {
-  const { error } = await supabase
+): Promise<boolean> {
+  if (!expectedClaimToken) {
+    console.error(`[claims] releaseClaim skipped for ${articleId}: missing claim token`)
+    return false
+  }
+
+  const { data: released, error } = await supabase
     .from('articles')
     .update({
       ...updates,
@@ -95,8 +101,19 @@ export async function releaseClaim(
       updated_at: new Date().toISOString(),
     })
     .eq('id', articleId)
+    .eq('claim_token', expectedClaimToken)
+    .select('id')
+    .maybeSingle()
 
   if (error) {
     console.error(`[claims] releaseClaim failed for ${articleId}: ${error.message}`)
+    return false
   }
+
+  if (!released) {
+    console.warn(`[claims] stale claim detected for ${articleId}; release skipped`)
+    return false
+  }
+
+  return true
 }

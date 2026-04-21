@@ -16,6 +16,7 @@ config({ path: resolve(process.cwd(), '.env.local') })
 
 import { getServerClient, type Article } from '../lib/supabase'
 import { fireAlert } from './alerts'
+import { buildVerifyUrl, getVerifyCandidateKind } from './publish-verify-utils'
 
 const BATCH_SIZE = 30
 const VERIFY_TIMEOUT_MS = 5_000
@@ -30,12 +31,18 @@ function log(msg: string): void {
 async function checkLive(
   siteUrl: string,
   slug: string,
+  candidateKind: ReturnType<typeof getVerifyCandidateKind>,
 ): Promise<{ ok: boolean; status: number | null; error: string | null }> {
-  const url = `${siteUrl}/articles/${slug}`
+  const url = buildVerifyUrl(siteUrl, slug, candidateKind)
   try {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), VERIFY_TIMEOUT_MS)
-    const res = await fetch(url, { method: 'HEAD', signal: controller.signal })
+    const headers: Record<string, string> = {}
+    const internalVerifySecret = process.env.PUBLISH_VERIFY_SECRET
+    if (candidateKind !== 'live_sample' && internalVerifySecret) {
+      headers['x-publish-verify-secret'] = internalVerifySecret
+    }
+    const res = await fetch(url, { method: 'HEAD', signal: controller.signal, headers })
     clearTimeout(timeout)
     return { ok: res.ok, status: res.status, error: null }
   } catch (err) {
@@ -54,7 +61,8 @@ async function verifyChunk(articles: Article[], siteUrl: string): Promise<CheckR
   return Promise.all(
     articles.map(async (article) => {
       if (!article.slug) return { article, ok: false, status: null, error: 'no slug' }
-      const { ok, status, error } = await checkLive(siteUrl, article.slug)
+      const candidateKind = getVerifyCandidateKind(article)
+      const { ok, status, error } = await checkLive(siteUrl, article.slug, candidateKind)
       return { article, ok, status, error }
     })
   )
@@ -125,6 +133,22 @@ async function publishVerify(): Promise<void> {
     process.exit(1)
   }
 
+  const { data: legacyBackfill, error: legacySelectError } = await supabase
+    .from('articles')
+    .select('*')
+    .eq('publish_status', 'live')
+    .eq('published', true)
+    .eq('quality_ok', true)
+    .is('verified_live', null)
+    .not('slug', 'is', null)
+    .order('created_at', { ascending: true })
+    .limit(BATCH_SIZE)
+
+  if (legacySelectError) {
+    log(`Ошибка выборки legacy verify backlog: ${legacySelectError.message}`)
+    process.exit(1)
+  }
+
   // Spot-check already-live articles (oldest verified first) for regressions
   const { data: liveSample } = await supabase
     .from('articles')
@@ -136,15 +160,16 @@ async function publishVerify(): Promise<void> {
     .limit(5)
 
   const newCandidates = (candidates ?? []) as Article[]
+  const legacyCandidates = (legacyBackfill ?? []) as Article[]
   const liveCheck = (liveSample ?? []) as Article[]
-  const toVerify = [...newCandidates, ...liveCheck]
+  const toVerify = [...newCandidates, ...legacyCandidates, ...liveCheck]
 
   if (!toVerify.length) {
     log('Нет статей для проверки')
     return
   }
 
-  log(`Проверяем: ${newCandidates.length} новых + ${liveCheck.length} live-sample`)
+  log(`Проверяем: ${newCandidates.length} новых + ${legacyCandidates.length} legacy + ${liveCheck.length} live-sample`)
 
   // Mark new candidates as verifying
   if (newCandidates.length) {
@@ -166,7 +191,9 @@ async function publishVerify(): Promise<void> {
     const results = await verifyChunk(chunk, siteUrl)
 
     for (const { article, ok, status, error } of results) {
-      const isLiveSample = article.publish_status === 'live'
+      const candidateKind = getVerifyCandidateKind(article)
+      const isLiveSample = candidateKind === 'live_sample'
+      const isNewCandidate = candidateKind === 'new_candidate'
 
       if (ok) {
         if (!isLiveSample) {
@@ -210,24 +237,24 @@ async function publishVerify(): Promise<void> {
         regressions++
         log(`✗ regression: /articles/${article.slug} [${status ?? error}]`)
       } else {
-        // New article failed verify — check attempt history
+        // New article or legacy backfill failed verify — check attempt history
         const prevAttempts = await countVerifyAttempts(supabase, article.id)
         const errorMsg = `HEAD returned ${status ?? error}`
 
         await writeVerifyAttempt(supabase, article.id, 'retryable', errorMsg)
 
         if (prevAttempts + 1 < MAX_VERIFY_ATTEMPTS) {
-          // Not exhausted yet — reset to publish_ready for next run
+          // Not exhausted yet — reset or keep in backlog for next run
           await supabase
             .from('articles')
             .update({
-              publish_status: 'publish_ready',
+              publish_status: isNewCandidate ? 'publish_ready' : 'live',
               live_check_error: `attempt ${prevAttempts + 1}/${MAX_VERIFY_ATTEMPTS}: ${errorMsg}`,
               updated_at: now,
             })
             .eq('id', article.id)
           resetToReady++
-          log(`↻ retry (${prevAttempts + 1}/${MAX_VERIFY_ATTEMPTS}): /articles/${article.slug}`)
+          log(`↻ retry (${prevAttempts + 1}/${MAX_VERIFY_ATTEMPTS}): /articles/${article.slug} [${candidateKind}]`)
         } else {
           // Exhausted — mark permanently failed and alert
           await supabase
