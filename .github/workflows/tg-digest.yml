@@ -12,6 +12,10 @@ on:
         type: choice
         options: ['false', 'true']
 
+concurrency:
+  group: tg-digest-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   send-digest:
     runs-on: ubuntu-latest

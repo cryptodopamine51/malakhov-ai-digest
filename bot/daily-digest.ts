@@ -85,6 +85,25 @@ interface TelegramResponse {
   description?: string
 }
 
+function assertServiceRoleKey(): void {
+  const key = process.env.SUPABASE_SERVICE_KEY
+  if (!key) throw new Error('SUPABASE_SERVICE_KEY не задан')
+
+  const [, payload] = key.split('.')
+  if (!payload) throw new Error('SUPABASE_SERVICE_KEY не похож на JWT')
+
+  let role: unknown
+  try {
+    role = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')).role
+  } catch {
+    throw new Error('Не удалось прочитать role из SUPABASE_SERVICE_KEY')
+  }
+
+  if (role !== 'service_role') {
+    throw new Error(`SUPABASE_SERVICE_KEY имеет role=${String(role)}, нужен service_role`)
+  }
+}
+
 async function sendTelegramMessage(
   botToken: string,
   chatId: string,
@@ -210,9 +229,9 @@ async function logDigestRun(
 ): Promise<void> {
   try {
     const { error } = await supabase.from('digest_runs').insert(payload)
-    if (error) console.error(`[digest_runs insert error] ${error.message}`)
+    if (error) throw error
   } catch (err) {
-    console.error(`[digest_runs] Не удалось записать лог: ${err instanceof Error ? err.message : String(err)}`)
+    throw new Error(`[digest_runs] Не удалось записать лог: ${err instanceof Error ? err.message : String(err)}`)
   }
 }
 
@@ -229,6 +248,13 @@ async function main(): Promise<void> {
   if (!siteUrl)   { logError('Не задан NEXT_PUBLIC_SITE_URL'); process.exit(1) }
 
   log('Запуск дайджеста...')
+
+  try {
+    assertServiceRoleKey()
+  } catch (err) {
+    logError('Supabase service-role preflight не пройден', err)
+    process.exit(1)
+  }
 
   const supabase = getServerClient()
 
@@ -371,11 +397,19 @@ async function main(): Promise<void> {
   // Помечаем как отправленные
   const ids = digest.map((a) => a.id)
   try {
-    const { error } = await supabase.from('articles').update({ tg_sent: true }).in('id', ids)
+    const { data, error } = await supabase
+      .from('articles')
+      .update({ tg_sent: true })
+      .in('id', ids)
+      .select('id')
     if (error) throw error
+    if ((data ?? []).length !== ids.length) {
+      throw new Error(`ожидали обновить ${ids.length} статей, обновлено ${(data ?? []).length}`)
+    }
     log(`tg_sent = true для ${ids.length} статей`)
   } catch (err) {
     logError('Ошибка обновления tg_sent', err)
+    process.exit(1)
   }
 
   await logDigestRun(supabase, {
