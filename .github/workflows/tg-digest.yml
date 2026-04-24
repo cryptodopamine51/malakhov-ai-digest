@@ -33,6 +33,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Compute Moscow date
+        id: mskdate
+        run: echo "date=$(TZ=Europe/Moscow date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
       - name: Send Telegram Digest
         run: npm run tg-digest
         env:
@@ -43,3 +47,4 @@ jobs:
           NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
           TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
           FORCE_DIGEST: ${{ github.event.inputs.force == 'true' && '1' || '' }}
+          FORCE_DIGEST_CONFIRM_DATE: ${{ github.event.inputs.force == 'true' && steps.mskdate.outputs.date || '' }}
