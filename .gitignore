@@ -25,6 +25,7 @@ yarn-debug.log*
 yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
+tmp/
 
 # Локальные env-файлы (никогда не коммитить!)
 .env.local

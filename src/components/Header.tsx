@@ -33,11 +33,11 @@ export default function Header() {
       'sticky top-0 z-50 bg-base/90 backdrop-blur-md border-b transition-colors duration-150',
       scrolled ? 'border-line' : 'border-transparent'
     )}>
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 h-14">
+      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4">
 
         {/* Логотип */}
         <Link href="/" className="flex items-center gap-1.5 flex-shrink-0">
-          <span className="font-serif font-bold text-[17px] text-ink tracking-tight">
+          <span className="font-serif font-bold text-[16px] text-ink tracking-tight lg:text-[17px]">
             Malakhov AI
           </span>
           <span className="text-muted text-[13px] font-sans hidden sm:inline">
@@ -46,13 +46,13 @@ export default function Header() {
         </Link>
 
         {/* Десктопная навигация */}
-        <nav className="hidden lg:flex items-center gap-0.5">
+        <nav className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 lg:flex">
           {NAV_LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
               className={cn(
-                'px-3 py-1.5 text-[11px] font-sans font-medium uppercase tracking-[0.07em] transition-colors rounded',
+                'rounded px-2 py-1.5 text-[10px] font-sans font-medium uppercase tracking-[0.06em] transition-colors xl:px-3 xl:text-[11px]',
                 pathname === link.href
                   ? 'text-ink font-semibold'
                   : 'text-muted hover:text-ink'
@@ -64,7 +64,7 @@ export default function Header() {
         </nav>
 
         {/* Правые иконки */}
-        <div className="flex items-center gap-1">
+        <div className="flex flex-shrink-0 items-center gap-1">
           <ThemeToggle />
 
           {/* Бургер */}
@@ -91,7 +91,7 @@ export default function Header() {
 
       {/* Мобильное меню */}
       {menuOpen && (
-        <nav className="lg:hidden border-t border-line bg-base px-4 py-3">
+        <nav className="border-t border-line bg-base px-4 py-3 lg:hidden">
           <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
             {NAV_LINKS.map((link) => (
               <Link

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { getArticlePath } from '../../../lib/article-slugs'
 import { getLatestArticles } from '../../../lib/articles'
 import type { Article } from '../../../lib/supabase'
 
@@ -7,7 +8,7 @@ export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: 'Векторные обложки без текста',
-  description: '30 SVG-изображений для статей без image API и без текста внутри картинки',
+  description: '40 SVG-изображений для статей без image API и без текста внутри картинки',
   robots: { index: false },
 }
 
@@ -120,6 +121,36 @@ const COVER_STYLES: CoverStyle[] = [
     fit: 'provocative essays, op-eds, conflict stories',
     note: 'Складки и столкновение плоскостей. Для более напряжённых сюжетов.',
   },
+  {
+    id: 'civic-shadow',
+    label: 'Civic Shadow',
+    fit: 'policy, regulation, institutions, governance',
+    note: 'Институциональная масса и длинные тени. Для тем про государство, право и правила игры.',
+  },
+  {
+    id: 'archive-geometry',
+    label: 'Archive Geometry',
+    fit: 'documents, archives, compliance, enterprise process',
+    note: 'Архивные панели и жёсткая геометрия. Для сюжетов про документы, контроль и процедуры.',
+  },
+  {
+    id: 'signal-fold',
+    label: 'Signal Fold',
+    fit: 'platform shifts, model launches, strategic transitions',
+    note: 'Сигнальная складка и направленный импульс. Для материалов про резкий сдвиг в рынке или продукте.',
+  },
+  {
+    id: 'lens-observer',
+    label: 'Lens Observer',
+    fit: 'media, journalism, surveillance, transparency',
+    note: 'Оптика, наблюдение и редакционный фокус без буквального глаза в лоб.',
+  },
+  {
+    id: 'map-fragments',
+    label: 'Map Fragments',
+    fit: 'geopolitics, infrastructure, regional strategy',
+    note: 'Разрезанная картографическая логика и границы. Для геополитики и распределённых инфраструктур.',
+  },
 ]
 
 const SITE_STYLES: CoverStyle[] = [
@@ -213,6 +244,36 @@ const SITE_STYLES: CoverStyle[] = [
     fit: 'жёсткие колонки, opinion, медиакритика',
     note: 'Редакционный halftone и вырезанные массы. Более смелый, но всё ещё в рамках бренда.',
   },
+  {
+    id: 'site-margin-notes',
+    label: 'Margin Notes',
+    fit: 'research, explainers, longreads, editorial analysis',
+    note: 'Ощущение заметок на полях и бумажной редактурной работы. Спокойный интеллектуальный вариант.',
+  },
+  {
+    id: 'site-register-grid',
+    label: 'Register Grid',
+    fit: 'systems, stacks, infra, structured explainers',
+    note: 'Сетка, регистрационные метки и печатная дисциплина. Для архитектур и системных материалов.',
+  },
+  {
+    id: 'site-plate-stack',
+    label: 'Plate Stack',
+    fit: 'multi-layer stories, AI stack, enterprise tooling',
+    note: 'Несколько пластин и глубина без тяжёлого 3D. Для стеков, экосистем и составных тем.',
+  },
+  {
+    id: 'site-ink-window',
+    label: 'Ink Window',
+    fit: 'newsroom, opinion, culture, editorial mood pieces',
+    note: 'Тёмное окно, мягкая печатная заливка и воздух. Хорошо живёт в более медийных сюжетах.',
+  },
+  {
+    id: 'site-crosslight-file',
+    label: 'Crosslight File',
+    fit: 'documents, compliance, audits, enterprise news',
+    note: 'Скользящий свет по документной поверхности. Сдержанный вариант для policy и enterprise.',
+  },
 ]
 
 const FALLBACK_ARTICLES: CoverArticle[] = [
@@ -266,13 +327,13 @@ export default async function VectorCoversPage() {
         <div className="grid gap-6 px-6 py-7 md:grid-cols-[1.25fr_0.75fr] md:px-8 md:py-8">
           <div>
             <div className="mb-3 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.18em] text-muted">
-              <span className="rounded-full border border-line px-3 py-1">30 SVG images</span>
-              <span className="rounded-full border border-line px-3 py-1">15 site-aligned</span>
+              <span className="rounded-full border border-line px-3 py-1">40 SVG images</span>
+              <span className="rounded-full border border-line px-3 py-1">20 site-aligned</span>
               <span className="rounded-full border border-line px-3 py-1">No text in image</span>
               <span className="rounded-full border border-line px-3 py-1">No image API</span>
             </div>
             <h1 className="max-w-3xl font-serif text-4xl font-extrabold leading-tight text-ink md:text-5xl">
-              30 чистых векторных обложек без текста внутри картинки
+              40 чистых векторных обложек без текста внутри картинки
             </h1>
             <p className="mt-4 max-w-3xl text-sm leading-7 text-muted md:text-base">
               Здесь только визуальные стили: ни заголовков, ни подзаголовков, ни букв внутри самих
@@ -364,7 +425,7 @@ function GallerySection({
                 </div>
                 {article.slug ? (
                   <Link
-                    href={`/articles/${article.slug}`}
+                    href={getArticlePath(article.slug)}
                     className="rounded border border-line px-3 py-2 text-sm text-ink transition-colors hover:bg-surface"
                   >
                     Статья
@@ -766,6 +827,119 @@ function renderCover(styleId: string, palette: Palette, index: number) {
         </>
       )
 
+    case 'civic-shadow':
+      return (
+        <>
+          <rect width="1200" height="675" fill={palette.bgAlt} />
+          <rect x="0" y="0" width="1200" height="108" fill={palette.ink} fillOpacity="0.06" />
+          <polygon points="168,544 168,292 328,178 494,178 654,292 654,544" fill={palette.ink} />
+          <polygon points="694,544 694,250 858,138 1030,138 1120,208 1120,544" fill={palette.primary} fillOpacity="0.92" />
+          {Array.from({ length: 6 }).map((_, i) => (
+            <rect
+              key={i}
+              x={208 + i * 68}
+              y="220"
+              width="30"
+              height="324"
+              fill="#ffffff"
+              fillOpacity="0.12"
+            />
+          ))}
+          {Array.from({ length: 4 }).map((_, i) => (
+            <rect
+              key={i}
+              x={744 + i * 84}
+              y="188"
+              width="36"
+              height="356"
+              fill="#ffffff"
+              fillOpacity="0.12"
+            />
+          ))}
+          <polygon points="654,292 920,292 1200,454 1200,675 654,675" fill={palette.accent} fillOpacity="0.16" />
+          <polygon points="0,675 0,472 168,388 168,675" fill={palette.secondary} fillOpacity="0.18" />
+        </>
+      )
+
+    case 'archive-geometry':
+      return (
+        <>
+          <rect width="1200" height="675" fill="#f3eee4" />
+          <rect x="96" y="86" width="1008" height="504" rx="28" fill="#fbf7f0" stroke={palette.ink} strokeOpacity="0.14" />
+          <rect x="142" y="132" width="288" height="372" rx="18" fill={palette.primary} fillOpacity="0.14" />
+          <rect x="470" y="132" width="250" height="176" rx="18" fill={palette.accent} fillOpacity="0.18" />
+          <rect x="754" y="132" width="292" height="124" rx="18" fill={palette.ink} fillOpacity="0.08" />
+          <rect x="470" y="336" width="576" height="168" rx="18" fill={palette.secondary} fillOpacity="0.14" />
+          {Array.from({ length: 5 }).map((_, i) => (
+            <line key={i} x1="786" y1={162 + i * 22} x2="998" y2={162 + i * 22} stroke={palette.ink} strokeOpacity="0.12" />
+          ))}
+          <line x1="430" y1="132" x2="430" y2="504" stroke={palette.ink} strokeOpacity="0.08" strokeDasharray="6 10" />
+          <line x1="720" y1="132" x2="720" y2="504" stroke={palette.ink} strokeOpacity="0.08" strokeDasharray="6 10" />
+        </>
+      )
+
+    case 'signal-fold':
+      return (
+        <>
+          <defs>
+            <linearGradient id={`${uid}-signal`} x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor={palette.primary} />
+              <stop offset="100%" stopColor={palette.secondary} />
+            </linearGradient>
+          </defs>
+          <rect width="1200" height="675" fill={palette.bg} />
+          <polygon points="0,508 326,364 522,406 824,254 1200,124 1200,675 0,675" fill={`url(#${uid}-signal)`} fillOpacity="0.22" />
+          <path d="M 0 522 C 192 466, 356 510, 516 450 S 820 280, 1200 186" fill="none" stroke={palette.accent} strokeWidth="4" strokeOpacity="0.8" />
+          <path d="M 0 562 C 206 516, 386 562, 588 492 S 878 334, 1200 246" fill="none" stroke={palette.secondary} strokeWidth="2" strokeOpacity="0.44" />
+          <polygon points="696,162 924,78 872,238 1078,176 792,418 852,262 652,316" fill={palette.accent} />
+          <circle cx="260" cy="206" r="132" fill={palette.primary} fillOpacity="0.16" />
+          <rect x="112" y="128" width="338" height="236" rx="28" fill="#ffffff" fillOpacity="0.08" />
+        </>
+      )
+
+    case 'lens-observer':
+      return (
+        <>
+          <rect width="1200" height="675" fill={palette.bgAlt} />
+          <circle cx="812" cy="314" r="186" fill={palette.ink} fillOpacity="0.9" />
+          <circle cx="812" cy="314" r="122" fill={palette.primary} fillOpacity="0.22" stroke={palette.accent} strokeOpacity="0.52" strokeWidth="4" />
+          <circle cx="812" cy="314" r="62" fill={palette.accent} fillOpacity="0.74" />
+          <circle cx="862" cy="266" r="18" fill="#ffffff" fillOpacity="0.72" />
+          <rect x="92" y="98" width="358" height="478" rx="34" fill="#fbf8f2" fillOpacity="0.82" />
+          <path d="M 112 498 C 212 428, 298 364, 368 270 S 470 110, 608 70" fill="none" stroke={palette.secondary} strokeOpacity="0.28" strokeWidth="3" />
+          <path d="M 0 610 C 224 548, 396 584, 590 534 S 930 450, 1200 562" fill="none" stroke={palette.secondary} strokeOpacity="0.24" strokeWidth="2" />
+          {Array.from({ length: 7 }).map((_, i) => (
+            <line key={i} x1="156" y1={164 + i * 48} x2="390" y2={164 + i * 48} stroke={palette.ink} strokeOpacity={i === 0 ? '0.16' : '0.1'} />
+          ))}
+        </>
+      )
+
+    case 'map-fragments':
+      return (
+        <>
+          <rect width="1200" height="675" fill={palette.bgAlt} />
+          <polygon points="108,140 314,92 468,180 416,332 206,360 92,246" fill={palette.primary} fillOpacity="0.2" stroke={palette.ink} strokeOpacity="0.16" />
+          <polygon points="516,108 732,88 924,172 884,346 656,382 486,252" fill={palette.secondary} fillOpacity="0.2" stroke={palette.ink} strokeOpacity="0.16" />
+          <polygon points="820,372 1022,336 1124,432 1080,570 878,590 768,486" fill={palette.accent} fillOpacity="0.2" stroke={palette.ink} strokeOpacity="0.16" />
+          <path d="M 160 252 L 284 184 L 382 246 L 324 316 Z" fill={palette.ink} fillOpacity="0.08" />
+          <path d="M 566 234 L 692 164 L 826 236 L 776 320 L 624 328 Z" fill={palette.ink} fillOpacity="0.08" />
+          <path d="M 892 446 L 1010 410 L 1060 484 L 1012 554 L 902 548 Z" fill={palette.ink} fillOpacity="0.08" />
+          {[
+            [232, 198],
+            [336, 278],
+            [610, 186],
+            [744, 292],
+            [930, 412],
+            [1012, 534],
+          ].map(([x, y], i, arr) => (
+            <g key={i}>
+              {i < arr.length - 1 && <line x1={x} y1={y} x2={arr[i + 1][0]} y2={arr[i + 1][1]} stroke={palette.ink} strokeOpacity="0.24" strokeDasharray="10 8" />}
+              <circle cx={x} cy={y} r="9" fill={palette.accent} />
+            </g>
+          ))}
+        </>
+      )
+
     case 'site-paper-frame':
       return (
         <>
@@ -1010,6 +1184,94 @@ function renderCover(styleId: string, palette: Palette, index: number) {
           <polygon points="712,675 504,320 854,234 1200,278 1200,675" fill={`url(#${uid}-dots)`} />
           <circle cx="988" cy="128" r="86" fill="#fff8f0" />
           <rect x="786" y="392" width="248" height="120" fill={palette.secondary} fillOpacity="0.16" />
+        </>
+      )
+
+    case 'site-margin-notes':
+      return (
+        <>
+          <rect width="1200" height="675" fill="#f4efe6" />
+          <rect x="118" y="92" width="964" height="492" rx="24" fill="#fbf8f2" stroke={palette.ink} strokeOpacity="0.14" />
+          <rect x="170" y="132" width="92" height="412" rx="16" fill={palette.ink} fillOpacity="0.06" />
+          <rect x="306" y="150" width="308" height="236" rx="22" fill={palette.primary} fillOpacity="0.12" />
+          <circle cx="850" cy="238" r="112" fill={palette.accent} fillOpacity="0.15" />
+          {Array.from({ length: 8 }).map((_, i) => (
+            <line key={i} x1="684" y1={168 + i * 38} x2="984" y2={168 + i * 38} stroke={palette.ink} strokeOpacity={i === 0 ? '0.16' : '0.11'} />
+          ))}
+          {Array.from({ length: 5 }).map((_, i) => (
+            <circle key={i} cx="216" cy={174 + i * 74} r="8" fill={palette.secondary} fillOpacity="0.5" />
+          ))}
+        </>
+      )
+
+    case 'site-register-grid':
+      return (
+        <>
+          <rect width="1200" height="675" fill={palette.bgAlt} />
+          <rect x="88" y="88" width="1024" height="500" rx="26" fill="#faf7f1" />
+          {Array.from({ length: 14 }).map((_, i) => (
+            <line key={`v-${i}`} x1={132 + i * 66} y1="132" x2={132 + i * 66} y2="544" stroke={palette.ink} strokeOpacity="0.06" />
+          ))}
+          {Array.from({ length: 9 }).map((_, i) => (
+            <line key={`h-${i}`} x1="132" y1={132 + i * 52} x2="1068" y2={132 + i * 52} stroke={palette.ink} strokeOpacity="0.06" />
+          ))}
+          <rect x="204" y="186" width="282" height="212" rx="18" fill={palette.primary} fillOpacity="0.12" />
+          <rect x="574" y="160" width="364" height="264" rx="18" fill={palette.secondary} fillOpacity="0.12" />
+          <circle cx="170" cy="170" r="10" fill={palette.accent} />
+          <circle cx="1032" cy="170" r="10" fill={palette.accent} />
+          <circle cx="170" cy="506" r="10" fill={palette.accent} />
+          <circle cx="1032" cy="506" r="10" fill={palette.accent} />
+        </>
+      )
+
+    case 'site-plate-stack':
+      return (
+        <>
+          <rect width="1200" height="675" fill={palette.bgAlt} />
+          <rect x="188" y="170" width="562" height="312" rx="28" fill={palette.ink} fillOpacity="0.07" />
+          <rect x="154" y="136" width="562" height="312" rx="28" fill="#fbf8f2" stroke={palette.ink} strokeOpacity="0.12" />
+          <rect x="248" y="236" width="562" height="312" rx="28" fill={palette.primary} fillOpacity="0.12" />
+          <rect x="514" y="116" width="438" height="228" rx="26" fill={palette.secondary} fillOpacity="0.14" />
+          <circle cx="884" cy="446" r="96" fill={palette.accent} fillOpacity="0.16" />
+          <line x1="608" y1="178" x2="890" y2="178" stroke={palette.ink} strokeOpacity="0.12" />
+          <line x1="608" y1="216" x2="854" y2="216" stroke={palette.ink} strokeOpacity="0.08" />
+        </>
+      )
+
+    case 'site-ink-window':
+      return (
+        <>
+          <rect width="1200" height="675" fill="#f4efe7" />
+          <rect x="112" y="92" width="976" height="496" rx="28" fill="#fbf8f2" stroke={palette.ink} strokeOpacity="0.12" />
+          <rect x="150" y="132" width="392" height="416" rx="24" fill={palette.ink} fillOpacity="0.92" />
+          <rect x="204" y="186" width="284" height="308" rx="18" fill={palette.primary} fillOpacity="0.12" />
+          <circle cx="342" cy="300" r="92" fill={palette.accent} fillOpacity="0.18" />
+          {Array.from({ length: 8 }).map((_, i) => (
+            <line key={i} x1="626" y1={170 + i * 42} x2="962" y2={170 + i * 42} stroke={palette.ink} strokeOpacity={i === 0 ? '0.16' : '0.1'} />
+          ))}
+          <path d="M 626 472 C 744 430, 842 448, 950 418" fill="none" stroke={palette.secondary} strokeOpacity="0.34" strokeWidth="3" />
+        </>
+      )
+
+    case 'site-crosslight-file':
+      return (
+        <>
+          <defs>
+            <linearGradient id={`${uid}-crosslight`} x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.74" />
+              <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <rect width="1200" height="675" fill={palette.bgAlt} />
+          <rect x="178" y="106" width="724" height="462" rx="24" fill="#faf7f1" stroke={palette.ink} strokeOpacity="0.14" />
+          <polygon points="178,106 902,106 902,190 178,402" fill={`url(#${uid}-crosslight)`} />
+          <rect x="258" y="186" width="236" height="276" rx="18" fill={palette.primary} fillOpacity="0.12" />
+          <rect x="552" y="186" width="268" height="146" rx="18" fill={palette.secondary} fillOpacity="0.12" />
+          <rect x="552" y="360" width="190" height="102" rx="18" fill={palette.accent} fillOpacity="0.16" />
+          {Array.from({ length: 5 }).map((_, i) => (
+            <line key={i} x1="846" y1={206 + i * 34} x2="1022" y2={206 + i * 34} stroke={palette.ink} strokeOpacity="0.12" />
+          ))}
+          <circle cx="958" cy="450" r="82" fill={palette.ink} fillOpacity="0.05" />
         </>
       )
 
