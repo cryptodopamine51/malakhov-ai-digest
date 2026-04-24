@@ -1,7 +1,5 @@
--- LEGACY schema.
--- Этот файл описывает только старую таблицу `articles` для legacy Node/Supabase слоя.
--- Для актуального Python/FastAPI runtime инициализация схемы должна идти через Alembic.
--- Применяется через Supabase Dashboard -> SQL Editor только если вы осознанно работаете со старым `articles`-stack.
+-- Initial schema for the `articles` table used by the Next.js+Supabase stack.
+-- Новые колонки добавляются через migrations/*.sql.
 
 CREATE TABLE articles (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),

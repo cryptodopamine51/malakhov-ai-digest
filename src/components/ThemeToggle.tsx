@@ -1,16 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useState } from 'react'
+
+const useIsomorphicLayoutEffect =
+  typeof window !== 'undefined' ? useLayoutEffect : useEffect
 
 export default function ThemeToggle() {
   const [dark, setDark] = useState(false)
 
-  useEffect(() => {
-    const saved = localStorage.getItem('theme')
-    const isDark =
-      saved === 'dark' ||
-      (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)
-    setDark(isDark)
+  useIsomorphicLayoutEffect(() => {
+    const current = document.documentElement.getAttribute('data-theme')
+    setDark(current === 'dark')
   }, [])
 
   const toggle = () => {

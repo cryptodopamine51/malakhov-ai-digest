@@ -1,0 +1,148 @@
+# Operations
+
+## Базовые требования среды
+
+- Node.js 20+
+- npm 9+
+- `.env.local` для локального запуска
+
+## Основные команды
+
+```bash
+npm run context
+npm run build
+npm run ingest
+npm run enrich
+npm run enrich-submit-batch
+npm run enrich-collect-batch
+npm run retry-failed
+npm run publish-verify
+npm run recover-batch-stuck
+npm run cost:report
+npm run cost:guard
+npm run tg-digest
+npm run docs:check
+```
+
+## Переменные окружения
+
+Обязательный минимум:
+
+```bash
+SUPABASE_URL
+SUPABASE_SERVICE_KEY
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY
+ANTHROPIC_API_KEY
+NEXT_PUBLIC_SITE_URL
+```
+
+Для дополнительных функций:
+
+```bash
+DEEPL_API_KEY
+TELEGRAM_BOT_TOKEN
+TELEGRAM_CHANNEL_ID
+TELEGRAM_ADMIN_CHAT_ID
+PUBLISH_VERIFY_SECRET
+NEXT_PUBLIC_METRIKA_ID
+```
+
+## GitHub Actions
+
+| Workflow | Расписание | Назначение |
+|---|---|---|
+| `rss-parse.yml` | каждые 30 минут | ingest RSS-источников |
+| `enrich.yml` | каждые 30 минут | pre-submit recover + batch submit |
+| `enrich-collect-batch.yml` | каждые 15 минут | collect/apply готовых batch results |
+| `recover-batch-stuck.yml` | каждые 30 минут | recovery для stuck batch poll/apply |
+| `publish-verify.yml` | каждый час, на 20 минуте | проверка live-публикации |
+| `retry-failed.yml` | каждые 4 часа, на 30 минуте | возврат retryable статей |
+| `pipeline-health.yml` | каждые 2 часа, на 45 минуте | source health, backlog, provider guard |
+| `tg-digest.yml` | ежедневно в 06:00 UTC | daily digest в Telegram |
+| `docs-guard.yml` | push/pull request | проверка doc-impact |
+
+## Batch enrich runtime
+
+Текущий enrich работает в две отдельные фазы:
+
+1. `enrich-submit-batch`
+   подбирает статьи, fetch-ит исходник, считает score и создаёт Anthropic batch jobs;
+2. `enrich-collect-batch`
+   poll-ит provider batches, импортирует результаты и делает final apply к статье.
+
+Recovery разделён отдельно:
+
+- `recover-stuck` обслуживает только pre-submit article lease;
+- `recover-batch-stuck` обслуживает stuck polling и apply states уже после batch submit.
+
+Operational правило:
+
+- ожидание результата Anthropic больше не должно зависеть от `articles.lease_expires_at`;
+- если статья уже handed off в batch ownership, источником истины становятся `anthropic_batch_items` и `anthropic_batches`.
+- если код collector уже ожидает `article_videos`, а production DB ещё не получила `007_article_videos.sql`, collector должен оставаться backward-compatible и не ронять apply phase.
+- Claude cost observability не должна зависеть от парсинга stdout: structured usage/cost пишется в `llm_usage_logs`, `enrich_runs.total_*` и `anthropic_batches.total_*`.
+
+## Deploy
+
+- Runtime сайта: Vercel.
+- Production domain: `https://news.malakhovai.ru`.
+- Перед production deploy локально желательно проверить `npm run build`.
+- После значимых изменений article-system или routing обязателен smoke-check живого сайта.
+
+## Post-deploy smoke check
+
+Минимальный smoke-check:
+
+1. Открывается главная.
+2. Открывается хотя бы одна свежая статья.
+3. Canonical URL корректный.
+4. Sitemap собирается.
+5. Если меняли slug logic, legacy URL редиректит на clean URL.
+6. Если меняли media/video logic, на live-странице корректно рендерится media block.
+
+## Recovery и monitoring
+
+Operational scripts и workflows отвечают за:
+
+- stuck article recovery;
+- batch polling/apply recovery;
+- retry после временных ошибок;
+- publish verification;
+- source health check;
+- backlog monitoring;
+- provider guard и alerting.
+- Claude cost report и budget guard.
+
+## Claude Cost Observability
+
+- `npm run cost:report` печатает сводку по расходу Claude за окно, по умолчанию за последние 2 дня.
+- `npm run cost:guard` проверяет расход Claude за текущий день по Москве и поднимает alert, если превышен бюджет.
+- Порог budget guard задаётся через `CLAUDE_DAILY_BUDGET_USD`; по умолчанию это `$1`.
+- Источник истины после миграции:
+  - `llm_usage_logs` для per-call/per-item расхода;
+  - `enrich_runs.total_*` и `estimated_cost_usd` для run-level totals;
+  - `anthropic_batches.total_*` и `estimated_cost_usd` для batch-level totals.
+- До полного cutover `cost:report` умеет падать обратно на legacy `enrich_runs.error_summary`, если structured logs ещё не накопились.
+
+Любое изменение этих процессов требует обновления этого файла.
+
+## Database security
+
+- Production `public` tables работают с включённым RLS.
+- Публичное чтение разрешено только для live-статей через policy на `public.articles`.
+- Runtime и pipeline операции по служебным таблицам должны идти через `SUPABASE_SERVICE_KEY`, а не через anon client.
+
+## Documentation Guard
+
+Для контроля актуальности документации есть два механизма:
+
+```bash
+npm run context
+npm run docs:check
+```
+
+- `context` печатает `CLAUDE.md` и `docs/INDEX.md` для старта сессии.
+- `docs:check` смотрит изменённые файлы и требует обновить соответствующие канонические docs.
+
+В CI этот же guard запускается workflow `docs-guard.yml`.

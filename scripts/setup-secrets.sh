@@ -24,8 +24,6 @@ echo "✓ SUPABASE_SERVICE_KEY"
 gh secret set ANTHROPIC_API_KEY     --body "$ANTHROPIC_API_KEY"
 echo "✓ ANTHROPIC_API_KEY"
 
-gh secret set DEEPL_API_KEY         --body "$DEEPL_API_KEY"
-echo "✓ DEEPL_API_KEY"
 
 gh secret set TELEGRAM_BOT_TOKEN    --body "$TELEGRAM_BOT_TOKEN"
 echo "✓ TELEGRAM_BOT_TOKEN"

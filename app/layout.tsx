@@ -1,9 +1,9 @@
 import type { Metadata } from 'next'
 import { Onest, Golos_Text, IBM_Plex_Mono } from 'next/font/google'
-import Script from 'next/script'
 import './globals.css'
 import Header from '../src/components/Header'
 import Footer from '../src/components/Footer'
+import MetrikaGate from '../src/components/MetrikaGate'
 
 const onest = Onest({
   subsets: ['latin', 'cyrillic'],
@@ -26,25 +26,36 @@ const ibmMono = IBM_Plex_Mono({
 })
 
 const SITE_URL = 'https://news.malakhovai.ru'
+const SITE_NAME = 'Malakhov AI Дайджест'
+const SITE_DESCRIPTION = 'Русскоязычный редакционный дайджест об искусственном интеллекте: релизы, исследования, продукты, инвестиции и AI-рынок.'
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: 'Malakhov AI Дайджест',
-    template: '%s | Malakhov AI Дайджест',
+    default: SITE_NAME,
+    template: `%s | ${SITE_NAME}`,
   },
-  description: 'Лучшие новости об искусственном интеллекте на русском языке',
+  description: SITE_DESCRIPTION,
   verification: {
     yandex: '6b43a6ebf41ca61b',
   },
   alternates: {
     canonical: SITE_URL,
+    types: {
+      'application/rss+xml': `${SITE_URL}/rss.xml`,
+    },
   },
   openGraph: {
-    siteName: 'Malakhov AI Дайджест',
+    siteName: SITE_NAME,
+    title: SITE_NAME,
+    description: SITE_DESCRIPTION,
     locale: 'ru_RU',
     type: 'website',
     images: ['/og-default.png'],
+  },
+  robots: {
+    index: true,
+    follow: true,
   },
 }
 
@@ -66,6 +77,29 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const jsonLd = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Organization',
+      name: SITE_NAME,
+      url: SITE_URL,
+      logo: `${SITE_URL}/og-default.png`,
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      name: SITE_NAME,
+      url: SITE_URL,
+      inLanguage: 'ru-RU',
+      description: SITE_DESCRIPTION,
+      publisher: {
+        '@type': 'Organization',
+        name: SITE_NAME,
+        url: SITE_URL,
+      },
+    },
+  ]
+
   return (
     <html
       lang="ru"
@@ -74,16 +108,16 @@ export default function RootLayout({
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
       </head>
       <body className="font-sans flex min-h-screen flex-col bg-base text-ink">
         <Header />
         <main className="flex-1">{children}</main>
         <Footer />
-        {METRIKA_ID && (
-          <Script id="yandex-metrika" strategy="afterInteractive">
-            {`(function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};m[i].l=1*new Date();for(var j=0;j<document.scripts.length;j++){if(document.scripts[j].src===r){return;}}k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})(window,document,'script','https://mc.yandex.ru/metrika/tag.js','ym');ym(${METRIKA_ID},'init',{clickmap:true,trackLinks:true,accurateTrackBounce:true,webvisor:true});`}
-          </Script>
-        )}
+        {METRIKA_ID && <MetrikaGate id={METRIKA_ID} />}
       </body>
     </html>
   )
