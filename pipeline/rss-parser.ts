@@ -1,5 +1,6 @@
 import { createHash } from 'crypto'
 import RSSParser from 'rss-parser'
+import { decodeHTML } from 'entities'
 import { FEEDS, type FeedConfig } from './feeds.config'
 
 // ── Типы ─────────────────────────────────────────────────────────────────────
@@ -66,21 +67,6 @@ export function hasDateInUrl(url: string): boolean {
   return /\/\d{4}\/\d{2}\//.test(url) ||
     /\/\d{8}\//.test(url) ||
     /\/\d{4}-\d{2}-\d{2}\//.test(url)
-}
-
-/**
- * Декодирует HTML-entities в текстовых полях из RSS.
- */
-export function decodeHtmlEntities(text: string): string {
-  return text
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#039;/g, "'")
-    .replace(/&#(\d+);/g, (_, code: string) =>
-      String.fromCharCode(parseInt(code, 10))
-    )
 }
 
 /**
@@ -199,8 +185,24 @@ async function parseFeed(
   }
 
   try {
-    const feedData = await parser.parseURL(feed.url)
+    const response = await fetch(feed.url, {
+      headers: {
+        'User-Agent': 'MalakhovAIDigestBot/1.0 (+https://news.malakhovai.ru)',
+      },
+      signal: AbortSignal.timeout(20_000),
+    })
+
+    sourceResult.httpStatus = response.status
     sourceResult.responseTimeMs = Date.now() - startedAt
+
+    if (!response.ok) {
+      sourceResult.errorMessage = `HTTP ${response.status}`
+      console.error(`[${ts()}] Ошибка фида "${feed.name}": HTTP ${response.status}`)
+      return { items: [], sourceResult }
+    }
+
+    const xml = await response.text()
+    const feedData = await parser.parseString(xml)
 
     const items = feedData.items.slice(0, 20)
     sourceResult.itemsSeen = items.length
@@ -235,8 +237,8 @@ async function parseFeed(
       const rawTitle = item.title ?? 'Без заголовка'
       const rawSnippet = item.contentSnippet ?? item.content ?? item.summary ?? ''
 
-      const originalTitle = decodeHtmlEntities(rawTitle)
-      const snippet = decodeHtmlEntities(rawSnippet).slice(0, 300)
+      const originalTitle = decodeHTML(rawTitle)
+      const snippet = decodeHTML(rawSnippet).slice(0, 300)
       const canonicalUrl = canonicalizeUrl(url)
       const dedupHash = buildDedupHash(originalTitle, canonicalUrl)
 

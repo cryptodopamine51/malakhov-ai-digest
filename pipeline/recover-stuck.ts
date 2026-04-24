@@ -30,8 +30,9 @@ async function recoverStuck(): Promise<void> {
   // Find articles where lease has expired but status is still processing
   const { data: stuck, error: selectError } = await supabase
     .from('articles')
-    .select('id, attempt_count, processing_by, claim_token, lease_expires_at, original_title')
+    .select('id, attempt_count, processing_by, claim_token, lease_expires_at, original_title, current_batch_item_id')
     .eq('enrich_status', 'processing')
+    .is('current_batch_item_id', null)
     .lte('lease_expires_at', now)
     .limit(100)
 
@@ -58,33 +59,22 @@ async function recoverStuck(): Promise<void> {
     // Articles that have already exhausted retries get failed, not recycled.
     const targetStatus = attemptCount >= RETRY_POLICY.maxAttempts ? 'failed' : 'retry_wait'
 
-    const { error: stuckError } = await supabase
-      .from('articles')
-      .update({
-        enrich_status: 'stuck',
-        processing_finished_at: now,
-        last_error: `lease expired (was held by ${article.processing_by ?? 'unknown'})`,
-        last_error_code: 'lease_expired',
-        updated_at: now,
-      })
-      .eq('id', article.id)
-      .eq('enrich_status', 'processing')
-      .eq('claim_token', article.claim_token ?? '')
-
-    if (stuckError) continue
-
     const { error } = await supabase
       .from('articles')
       .update({
         enrich_status: targetStatus,
         next_retry_at: targetStatus === 'retry_wait' ? retryAt : null,
+        processing_finished_at: now,
+        last_error: `lease expired (was held by ${article.processing_by ?? 'unknown'})`,
+        last_error_code: 'lease_expired',
         claim_token: null,
         processing_by: null,
         lease_expires_at: null,
         updated_at: now,
       })
       .eq('id', article.id)
-      .eq('enrich_status', 'stuck')
+      .eq('enrich_status', 'processing')
+      .eq('claim_token', article.claim_token ?? '')
 
     if (!error) {
       recovered++

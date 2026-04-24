@@ -4,15 +4,16 @@ import { getTopTodayArticles, getArticlesFeed } from '../lib/articles'
 import { getMoscowDateKey, shiftMoscowDateKey, pluralize } from '../lib/utils'
 import ArticleCard from '../src/components/ArticleCard'
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 300
 
 const PER_PAGE = 12
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: { page?: string }
+  searchParams: Promise<{ page?: string }>
 }) {
-  const page = Math.max(1, parseInt(searchParams.page ?? '1', 10) || 1)
+  const resolvedSearchParams = await searchParams
+  const page = Math.max(1, parseInt(resolvedSearchParams.page ?? '1', 10) || 1)
 
   const [topToday, { articles: feed, total }] = await Promise.all([
     page === 1 ? getTopTodayArticles(7) : Promise.resolve([]),
@@ -31,11 +32,13 @@ export default async function HomePage({
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 md:py-10">
+    <div className="mx-auto max-w-6xl px-4 py-8 md:py-10 lg:py-12">
       {page === 1 && (
-        <section className="mb-10 rounded border border-line bg-base px-6 py-8 md:px-8 md:py-10">
-          <h1 className="font-serif text-5xl font-bold text-ink">Malakhov AI Дайджест</h1>
-          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-ink opacity-70 md:text-base">
+        <section className="mb-12 rounded border border-line bg-base px-6 py-9 md:px-8 md:py-11 lg:px-10 lg:py-12">
+          <h1 className="font-serif text-4xl font-bold leading-none text-ink sm:text-5xl md:text-6xl">
+            Malakhov AI Дайджест
+          </h1>
+          <p className="mt-4 max-w-3xl text-sm leading-relaxed text-ink opacity-70 md:text-base lg:text-[17px]">
             Ежедневная редакционная лента об ИИ: ключевые релизы, исследования, продукты и
             индустриальные сдвиги без визуального шума.
           </p>
@@ -43,20 +46,20 @@ export default async function HomePage({
       )}
 
       {page === 1 && topToday.length > 0 && (
-        <section className="mb-10">
-          <div className="mb-4 flex items-baseline gap-3">
+        <section className="mb-12">
+          <div className="mb-5 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-3">
             <h2 className="font-serif text-3xl font-bold text-ink">Топ за сегодня</h2>
             <span className="text-sm text-muted">{today}</span>
           </div>
 
           {topToday[0] && (
-            <div className="mb-4">
+            <div className="mb-5">
               <ArticleCard article={topToday[0]} variant="featured" />
             </div>
           )}
 
           {topToday.length > 1 && (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {topToday.slice(1).map((article) => (
                 <ArticleCard key={article.id} article={article} variant="default" />
               ))}
@@ -67,7 +70,7 @@ export default async function HomePage({
 
       {/* Все новости */}
       <section>
-        <div className="mb-4 flex items-baseline gap-3">
+        <div className="mb-5 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-3">
           <h2 className="font-serif text-3xl font-bold text-ink">
             {page === 1 ? 'Все новости' : `Все новости — страница ${page}`}
           </h2>
@@ -83,14 +86,14 @@ export default async function HomePage({
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {feed.map((article) => (
                 <ArticleCard key={article.id} article={article} variant="default" />
               ))}
             </div>
 
             {totalPages > 1 && (
-              <div className="mt-8 flex items-center justify-center gap-2">
+              <div className="mt-10 flex flex-wrap items-center justify-center gap-2">
                 {page > 1 && (
                   <Link
                     href={page === 2 ? '/' : `/?page=${page - 1}`}
@@ -118,7 +121,7 @@ export default async function HomePage({
         )}
       </section>
 
-      <div className="mt-10 flex gap-4 text-sm text-muted">
+      <div className="mt-10 flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted">
         <Link href={`/archive/${getYesterdayDate()}`} className="transition-colors hover:text-ink">
           ← Вчера
         </Link>

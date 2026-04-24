@@ -1,4 +1,5 @@
 import type { MetadataRoute } from 'next'
+import { getArticleUrl } from '../lib/article-slugs'
 import { getAllArticlesForSitemap } from '../lib/articles'
 
 const BASE_URL = 'https://news.malakhovai.ru'
@@ -20,7 +21,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ]
 
   const articleRoutes: MetadataRoute.Sitemap = articles.map(({ slug, updated_at }) => ({
-    url: `${BASE_URL}/articles/${slug}`,
+    url: getArticleUrl(BASE_URL, slug),
     lastModified: new Date(updated_at),
     changeFrequency: 'weekly',
     priority: 0.6,

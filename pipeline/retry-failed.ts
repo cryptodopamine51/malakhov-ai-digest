@@ -28,7 +28,7 @@ async function retryFailed(): Promise<void> {
   // Articles in retry_wait whose timer has expired and haven't exceeded max attempts
   const { data: ready, error: selectError } = await supabase
     .from('articles')
-    .select('id, attempt_count, original_title')
+    .select('id, attempt_count, original_title, current_batch_item_id')
     .eq('enrich_status', 'retry_wait')
     .lte('next_retry_at', now)
     .lt('attempt_count', RETRY_POLICY.maxAttempts)
@@ -45,9 +45,36 @@ async function retryFailed(): Promise<void> {
     return
   }
 
-  log(`Готово к retry: ${ready.length}`)
+  const batchItemIds = (ready ?? [])
+    .map((a) => a.current_batch_item_id)
+    .filter((id): id is string => Boolean(id))
 
-  const ids = ready.map((a) => a.id)
+  const batchStatusById = new Map<string, string>()
+  if (batchItemIds.length) {
+    const { data: batchItems } = await supabase
+      .from('anthropic_batch_items')
+      .select('id, status')
+      .in('id', batchItemIds)
+
+    for (const item of batchItems ?? []) {
+      batchStatusById.set(String(item.id), String(item.status))
+    }
+  }
+
+  const readyToReset = (ready ?? []).filter((article) => {
+    if (!article.current_batch_item_id) return true
+    const batchStatus = batchStatusById.get(article.current_batch_item_id)
+    return !batchStatus || ['batch_failed', 'apply_failed_retriable', 'apply_failed_terminal', 'applied'].includes(batchStatus)
+  })
+
+  if (!readyToReset.length) {
+    log('Нет статей для retry после проверки batch item status')
+    return
+  }
+
+  log(`Готово к retry: ${readyToReset.length}`)
+
+  const ids = readyToReset.map((a) => a.id)
 
   const { error: updateError, count } = await supabase
     .from('articles')
@@ -57,6 +84,7 @@ async function retryFailed(): Promise<void> {
       processing_by: null,
       lease_expires_at: null,
       next_retry_at: null,
+      current_batch_item_id: null,
       updated_at: now,
     })
     .in('id', ids)
@@ -72,7 +100,7 @@ async function retryFailed(): Promise<void> {
   // Articles that have exhausted all retries → mark as failed
   const { data: exhausted, error: exhaustedSelectError } = await supabase
     .from('articles')
-    .select('id, attempt_count, original_title')
+    .select('id, attempt_count, original_title, current_batch_item_id')
     .eq('enrich_status', 'retry_wait')
     .lte('next_retry_at', now)
     .gte('attempt_count', RETRY_POLICY.maxAttempts)
@@ -92,6 +120,7 @@ async function retryFailed(): Promise<void> {
         claim_token: null,
         processing_by: null,
         lease_expires_at: null,
+        current_batch_item_id: null,
         updated_at: now,
       })
       .in('id', exhaustedIds)

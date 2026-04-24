@@ -14,9 +14,10 @@ export async function generateStaticParams() {
 export async function generateMetadata({
   params,
 }: {
-  params: { source: string }
+  params: Promise<{ source: string }>
 }): Promise<Metadata> {
-  const name = await getSourceNameBySlug(params.source)
+  const { source } = await params
+  const name = await getSourceNameBySlug(source)
   if (!name) return {}
   return {
     title: `${name} — источник`,
@@ -27,9 +28,10 @@ export async function generateMetadata({
 export default async function SourcePage({
   params,
 }: {
-  params: { source: string }
+  params: Promise<{ source: string }>
 }) {
-  const sourceName = await getSourceNameBySlug(params.source)
+  const { source } = await params
+  const sourceName = await getSourceNameBySlug(source)
   if (!sourceName) notFound()
 
   const articles = await getArticlesBySource(sourceName, 24)

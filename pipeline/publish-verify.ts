@@ -15,7 +15,7 @@ import { resolve } from 'path'
 config({ path: resolve(process.cwd(), '.env.local') })
 
 import { getServerClient, type Article } from '../lib/supabase'
-import { fireAlert } from './alerts'
+import { fireAlert, resolveAlert } from './alerts'
 import { buildVerifyUrl, getVerifyCandidateKind } from './publish-verify-utils'
 
 const BATCH_SIZE = 30
@@ -33,7 +33,7 @@ async function checkLive(
   slug: string,
   candidateKind: ReturnType<typeof getVerifyCandidateKind>,
 ): Promise<{ ok: boolean; status: number | null; error: string | null }> {
-  const url = buildVerifyUrl(siteUrl, slug, candidateKind)
+  const url = `${buildVerifyUrl(siteUrl, slug, candidateKind)}?v=${Date.now()}`
   try {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), VERIFY_TIMEOUT_MS)
@@ -71,31 +71,28 @@ async function verifyChunk(articles: Article[], siteUrl: string): Promise<CheckR
 async function countVerifyAttempts(
   supabase: ReturnType<typeof getServerClient>,
   articleId: string,
+  stage: 'verify' | 'verify_sample' = 'verify',
 ): Promise<number> {
   const { count } = await supabase
     .from('article_attempts')
     .select('*', { count: 'exact', head: true })
     .eq('article_id', articleId)
-    .eq('stage', 'verify')
+    .eq('stage', stage)
   return count ?? 0
 }
 
 async function writeVerifyAttempt(
   supabase: ReturnType<typeof getServerClient>,
   articleId: string,
+  attemptNo: number,
   resultStatus: 'ok' | 'retryable' | 'failed',
   errorMessage?: string,
+  stage: 'verify' | 'verify_sample' = 'verify',
 ): Promise<void> {
-  const { count: attemptNo } = await supabase
-    .from('article_attempts')
-    .select('*', { count: 'exact', head: true })
-    .eq('article_id', articleId)
-    .eq('stage', 'verify')
-
   await supabase.from('article_attempts').insert({
     article_id: articleId,
-    stage: 'verify',
-    attempt_no: (attemptNo ?? 0) + 1,
+    stage,
+    attempt_no: attemptNo,
     started_at: new Date().toISOString(),
     finished_at: new Date().toISOString(),
     result_status: resultStatus,
@@ -207,19 +204,46 @@ async function publishVerify(): Promise<void> {
               updated_at: now,
             })
             .in('id', [article.id])
-          await writeVerifyAttempt(supabase, article.id, 'ok')
+          const prevAttempts = await countVerifyAttempts(supabase, article.id)
+          await writeVerifyAttempt(supabase, article.id, prevAttempts + 1, 'ok')
+          await resolveAlert(supabase, 'publish_verify_failed', article.slug ?? article.id)
           verifiedLive++
           log(`✓ live: /articles/${article.slug}`)
+        } else {
+          await resolveAlert(supabase, 'publish_verify_failed', article.slug ?? article.id)
         }
-        // live sample passed — nothing to update
       } else if (isLiveSample) {
-        // Previously-live article is now unreachable — regression
+        const prevSampleFails = await countVerifyAttempts(supabase, article.id, 'verify_sample')
+        const errorMsg = `HEAD returned ${status ?? error}`
+
+        if (prevSampleFails + 1 < MAX_VERIFY_ATTEMPTS) {
+          await writeVerifyAttempt(
+            supabase,
+            article.id,
+            prevSampleFails + 1,
+            'retryable',
+            errorMsg,
+            'verify_sample',
+          )
+          log(`↻ live-sample retry (${prevSampleFails + 1}/${MAX_VERIFY_ATTEMPTS}): /articles/${article.slug}`)
+          continue
+        }
+
+        // Previously-live article is unreachable after repeated samples — regression
+        await writeVerifyAttempt(
+          supabase,
+          article.id,
+          prevSampleFails + 1,
+          'failed',
+          errorMsg,
+          'verify_sample',
+        )
         await supabase
           .from('articles')
           .update({
             publish_status: 'verification_failed',
             verified_live: false,
-            live_check_error: `regression: ${status ?? error}`,
+            live_check_error: `regression after ${MAX_VERIFY_ATTEMPTS} samples: ${status ?? error}`,
             updated_at: now,
           })
           .eq('id', article.id)
@@ -240,10 +264,16 @@ async function publishVerify(): Promise<void> {
         // New article or legacy backfill failed verify — check attempt history
         const prevAttempts = await countVerifyAttempts(supabase, article.id)
         const errorMsg = `HEAD returned ${status ?? error}`
+        const exhausted = prevAttempts + 1 >= MAX_VERIFY_ATTEMPTS
+        await writeVerifyAttempt(
+          supabase,
+          article.id,
+          prevAttempts + 1,
+          exhausted ? 'failed' : 'retryable',
+          errorMsg,
+        )
 
-        await writeVerifyAttempt(supabase, article.id, 'retryable', errorMsg)
-
-        if (prevAttempts + 1 < MAX_VERIFY_ATTEMPTS) {
+        if (!exhausted) {
           // Not exhausted yet — reset or keep in backlog for next run
           await supabase
             .from('articles')

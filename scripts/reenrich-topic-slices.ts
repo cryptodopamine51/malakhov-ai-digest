@@ -6,7 +6,7 @@ import { getServerClient, type Article } from '../lib/supabase'
 import { scoreArticle } from '../pipeline/scorer'
 import { fetchArticleContent } from '../pipeline/fetcher'
 import { generateEditorial } from '../pipeline/claude'
-import { generateSlug } from '../pipeline/slug'
+import { ensureUniqueSlug } from '../pipeline/slug'
 
 const DEFAULT_TOPICS = ['ai-labs', 'ai-investments', 'ai-startups'] as const
 const TARGET_TOPICS = (process.env.REENRICH_TOPICS?.split(',').map((topic) => topic.trim()).filter(Boolean) ??
@@ -78,9 +78,17 @@ async function main() {
         article.source_name,
         article.source_lang,
         article.topics ?? [],
+        {
+          operation: 'reenrich_topic_slices',
+          articleId: article.id,
+          metadata: {
+            script: 'reenrich-topic-slices',
+            targetTopics: TARGET_TOPICS,
+          },
+        },
       )
 
-      const slug = generateSlug(editorial?.ru_title || article.original_title, article.id)
+      const slug = await ensureUniqueSlug(supabase, editorial?.ru_title || article.original_title, article.id)
 
       if (!editorial) {
         await supabase

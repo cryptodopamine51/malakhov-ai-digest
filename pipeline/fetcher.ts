@@ -1,15 +1,16 @@
 /**
  * pipeline/fetcher.ts
  *
- * Загружает полный текст статьи, og:image, таблицы и inline-картинки. Не бросает исключения.
+ * Загружает полный текст статьи, og:image, таблицы, inline-картинки и embed-видео.
+ * Не бросает исключения.
  */
 
-import { parse as parseHtml } from 'node-html-parser'
 import { JSDOM, VirtualConsole } from 'jsdom'
 import { Readability } from '@mozilla/readability'
 
 const FETCH_TIMEOUT_MS = 15_000
 const MAX_TEXT_LENGTH = 8_000
+const MAX_HTML_BYTES = 2_000_000
 
 const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ' +
@@ -25,24 +26,35 @@ export interface ExtractedImage {
   alt: string
 }
 
+export interface ExtractedVideo {
+  provider: 'youtube' | 'vimeo' | 'rutube' | 'vk' | 'direct'
+  embedUrl: string
+  sourceUrl: string
+  title: string | null
+  poster: string | null
+}
+
 export interface FetchedContent {
   text: string
   imageUrl: string | null
   tables: ExtractedTable[]
   inlineImages: ExtractedImage[]
+  inlineVideos: ExtractedVideo[]
   errorCode?: 'fetch_failed' | 'fetch_timeout'
   errorMessage?: string
+}
+
+interface FetchArticleOptions {
+  includeText?: boolean
 }
 
 function ts(): string {
   return new Date().toTimeString().slice(0, 8)
 }
 
-function extractOgImage(html: string): string | null {
+function extractOgImage(document: Document): string | null {
   try {
-    const root = parseHtml(html)
-    const meta = root.querySelector('meta[property="og:image"]')
-    return meta?.getAttribute('content')?.trim() || null
+    return document.querySelector('meta[property="og:image"]')?.getAttribute('content')?.trim() || null
   } catch {
     return null
   }
@@ -67,6 +79,18 @@ function cleanText(raw: string): string {
     .join('\n')
     .replace(/\s{3,}/g, '  ')
     .trim()
+}
+
+function absolutizeUrl(rawUrl: string, baseUrl: string): string | null {
+  const value = rawUrl.trim()
+  if (!value || value.startsWith('data:') || value.startsWith('javascript:')) return null
+
+  try {
+    if (value.startsWith('//')) return `https:${value}`
+    return new URL(value, baseUrl).toString()
+  } catch {
+    return null
+  }
 }
 
 function extractTables(document: Document): ExtractedTable[] {
@@ -107,38 +131,130 @@ function extractInlineImages(document: Document, baseUrl: string): ExtractedImag
       if (!src || seen.has(src)) return
       if (src.startsWith('data:')) return
 
-      // Фильтруем пиксели слежки и иконки
       const w = parseInt(img.getAttribute('width') ?? '0', 10)
       const h = parseInt(img.getAttribute('height') ?? '0', 10)
       if ((w > 0 && w < 50) || (h > 0 && h < 50)) return
       if (/pixel|tracking|beacon|logo|icon|avatar|badge/i.test(src)) return
 
-      // Приводим относительные URL к абсолютным
-      let absoluteSrc = src
-      if (src.startsWith('//')) {
-        absoluteSrc = 'https:' + src
-      } else if (src.startsWith('/')) {
-        try {
-          const base = new URL(baseUrl)
-          absoluteSrc = base.origin + src
-        } catch { return }
-      } else if (!src.startsWith('https://')) {
-        return
-      }
+      const absoluteSrc = absolutizeUrl(src, baseUrl)
+      if (!absoluteSrc) return
 
       seen.add(src)
       images.push({ src: absoluteSrc, alt })
     })
   } catch { /* некритично */ }
-  return images.slice(0, 5) // не более 5 картинок
+  return images.slice(0, 5)
 }
 
-function extractReadableText(html: string, url: string): string {
+function normalizeVideo(rawUrl: string, baseUrl: string): Omit<ExtractedVideo, 'title' | 'poster'> | null {
+  const absoluteUrl = absolutizeUrl(rawUrl, baseUrl)
+  if (!absoluteUrl) return null
+
+  const url = absoluteUrl.toLowerCase()
+
+  if (url.includes('youtube.com/embed/') || url.includes('youtube-nocookie.com/embed/')) {
+    return { provider: 'youtube', embedUrl: absoluteUrl, sourceUrl: absoluteUrl }
+  }
+
+  const youtubeId = absoluteUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^?&/]+)/i)?.[1]
+  if (youtubeId) {
+    return {
+      provider: 'youtube',
+      embedUrl: `https://www.youtube.com/embed/${youtubeId}`,
+      sourceUrl: absoluteUrl,
+    }
+  }
+
+  if (url.includes('player.vimeo.com/video/')) {
+    return { provider: 'vimeo', embedUrl: absoluteUrl, sourceUrl: absoluteUrl }
+  }
+
+  const vimeoId = absoluteUrl.match(/vimeo\.com\/(\d+)/i)?.[1]
+  if (vimeoId) {
+    return {
+      provider: 'vimeo',
+      embedUrl: `https://player.vimeo.com/video/${vimeoId}`,
+      sourceUrl: absoluteUrl,
+    }
+  }
+
+  if (url.includes('rutube.ru/play/embed/')) {
+    return { provider: 'rutube', embedUrl: absoluteUrl, sourceUrl: absoluteUrl }
+  }
+
+  const rutubeId = absoluteUrl.match(/rutube\.ru\/video\/([a-z0-9]+)/i)?.[1]
+  if (rutubeId) {
+    return {
+      provider: 'rutube',
+      embedUrl: `https://rutube.ru/play/embed/${rutubeId}`,
+      sourceUrl: absoluteUrl,
+    }
+  }
+
+  if (
+    url.includes('vk.com/video_ext.php') ||
+    url.includes('player.vk.com/video_ext.php') ||
+    url.includes('vkvideo.ru/video_ext.php')
+  ) {
+    return { provider: 'vk', embedUrl: absoluteUrl, sourceUrl: absoluteUrl }
+  }
+
+  if (/\.(mp4|webm|ogg)(?:[?#].*)?$/i.test(absoluteUrl)) {
+    return { provider: 'direct', embedUrl: absoluteUrl, sourceUrl: absoluteUrl }
+  }
+
+  return null
+}
+
+function extractInlineVideos(document: Document, baseUrl: string): ExtractedVideo[] {
+  const videos: ExtractedVideo[] = []
+  const seen = new Set<string>()
+
   try {
-    const virtualConsole = new VirtualConsole()
-    virtualConsole.on('jsdomError', () => undefined)
-    const dom = new JSDOM(html, { url, virtualConsole })
-    const reader = new Readability(dom.window.document)
+    const iframeSelector = 'article iframe, .content iframe, .post iframe, main iframe, [class*="article"] iframe, [class*="content"] iframe'
+    document.querySelectorAll(iframeSelector).forEach((iframe) => {
+      const rawSrc =
+        iframe.getAttribute('src') ??
+        iframe.getAttribute('data-src') ??
+        iframe.getAttribute('data-lazy-src') ??
+        ''
+
+      const normalized = normalizeVideo(rawSrc, baseUrl)
+      if (!normalized || seen.has(normalized.embedUrl)) return
+
+      seen.add(normalized.embedUrl)
+      videos.push({
+        ...normalized,
+        title: iframe.getAttribute('title')?.trim() || null,
+        poster: null,
+      })
+    })
+
+    const videoSelector = 'article video, .content video, .post video, main video, [class*="article"] video, [class*="content"] video'
+    document.querySelectorAll(videoSelector).forEach((video) => {
+      const directSrc =
+        video.getAttribute('src') ??
+        video.querySelector('source')?.getAttribute('src') ??
+        ''
+
+      const normalized = normalizeVideo(directSrc, baseUrl)
+      if (!normalized || seen.has(normalized.embedUrl)) return
+
+      seen.add(normalized.embedUrl)
+      videos.push({
+        ...normalized,
+        title: video.getAttribute('title')?.trim() || null,
+        poster: video.getAttribute('poster')?.trim() || null,
+      })
+    })
+  } catch { /* некритично */ }
+
+  return videos.slice(0, 2)
+}
+
+function extractReadableTextFromDocument(document: Document): string {
+  try {
+    const reader = new Readability(document.cloneNode(true) as Document)
     const article = reader.parse()
     const raw = (article?.textContent ?? '').replace(/\s+/g, ' ').trim()
     const cleaned = cleanText(raw)
@@ -148,7 +264,11 @@ function extractReadableText(html: string, url: string): string {
   }
 }
 
-export async function fetchArticleContent(url: string): Promise<FetchedContent> {
+export async function fetchArticleContent(
+  url: string,
+  options: FetchArticleOptions = {},
+): Promise<FetchedContent> {
+  const { includeText = true } = options
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
@@ -172,32 +292,60 @@ export async function fetchArticleContent(url: string): Promise<FetchedContent> 
         imageUrl: null,
         tables: [],
         inlineImages: [],
+        inlineVideos: [],
+        errorCode: 'fetch_failed',
+        errorMessage: message,
+      }
+    }
+
+    const contentLength = Number(response.headers.get('content-length') ?? 0)
+    if (contentLength > MAX_HTML_BYTES) {
+      const message = `html too large: ${contentLength}`
+      console.log(`[${ts()}] fetchArticleContent: ${message} [${url.slice(0, 60)}]`)
+      return {
+        text: '',
+        imageUrl: null,
+        tables: [],
+        inlineImages: [],
+        inlineVideos: [],
+        errorCode: 'fetch_failed',
+        errorMessage: message,
+      }
+    }
+
+    const contentType = response.headers.get('content-type') ?? ''
+    if (!contentType.includes('html') && !contentType.includes('xml')) {
+      const message = `not html: ${contentType || 'missing content-type'}`
+      console.log(`[${ts()}] fetchArticleContent: ${message} [${url.slice(0, 60)}]`)
+      return {
+        text: '',
+        imageUrl: null,
+        tables: [],
+        inlineImages: [],
+        inlineVideos: [],
         errorCode: 'fetch_failed',
         errorMessage: message,
       }
     }
 
     const html = await response.text()
-    const imageUrl = extractOgImage(html)
-    const text = extractReadableText(html, url)
+    const virtualConsole = new VirtualConsole()
+    virtualConsole.on('jsdomError', () => undefined)
+    const dom = new JSDOM(html, { url, virtualConsole })
+    const document = dom.window.document
 
-    // Таблицы и картинки извлекаем из отдельного DOM (без Readability, который их стрипает)
-    let tables: ExtractedTable[] = []
-    let inlineImages: ExtractedImage[] = []
-    try {
-      const virtualConsole = new VirtualConsole()
-      virtualConsole.on('jsdomError', () => undefined)
-      const dom = new JSDOM(html, { url, virtualConsole })
-      tables = extractTables(dom.window.document)
-      inlineImages = extractInlineImages(dom.window.document, url)
-    } catch { /* некритично */ }
+    const imageUrl = extractOgImage(document)
+    const text = includeText ? extractReadableTextFromDocument(document) : ''
+    const tables = extractTables(document)
+    const inlineImages = extractInlineImages(document, url)
+    const inlineVideos = extractInlineVideos(document, url)
 
     console.log(
       `[${ts()}] fetchArticleContent: text=${text.length}ч, image=${imageUrl ? 'есть' : 'нет'}` +
-      ` tables=${tables.length} imgs=${inlineImages.length} [${url.slice(0, 60)}]`
+      ` tables=${tables.length} imgs=${inlineImages.length} videos=${inlineVideos.length} [${url.slice(0, 60)}]`
     )
 
-    return { text, imageUrl, tables, inlineImages }
+    return { text, imageUrl, tables, inlineImages, inlineVideos }
   } catch (error) {
     clearTimeout(timeoutId)
     const message = error instanceof Error ? error.message : String(error)
@@ -207,6 +355,7 @@ export async function fetchArticleContent(url: string): Promise<FetchedContent> 
       imageUrl: null,
       tables: [],
       inlineImages: [],
+      inlineVideos: [],
       errorCode: message.toLowerCase().includes('abort') ? 'fetch_timeout' : 'fetch_failed',
       errorMessage: message,
     }

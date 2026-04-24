@@ -5,18 +5,11 @@
  * Все публичные выборки фильтруют quality_ok=true.
  */
 
-import { getBrowserClient, getServerClient, type Article } from './supabase'
+import { getPublicReadClient, type Article } from './supabase'
+import { toPublicArticleSlug } from './article-slugs'
 
 function client() {
-  if (typeof window === 'undefined') {
-    try {
-      return getServerClient()
-    } catch {
-      // Keep server rendering alive even if Vercel env is missing the service key.
-    }
-  }
-
-  return getBrowserClient()
+  return getPublicReadClient()
 }
 
 const MOSCOW_TZ = 'Europe/Moscow'
@@ -57,14 +50,16 @@ export async function getLatestArticles(limit = 20): Promise<Article[]> {
 }
 
 export async function getArticleBySlug(slug: string): Promise<Article | null> {
-  const { data, error } = await client()
+  const liveArticleQuery = () => client()
     .from('articles')
     .select('*')
-    .eq('slug', slug)
     .eq('published', true)
     .eq('quality_ok', true)
     .eq('verified_live', true)
     .eq('publish_status', 'live')
+
+  const { data, error } = await liveArticleQuery()
+    .eq('slug', slug)
     .maybeSingle()
 
   if (error) {
@@ -72,7 +67,36 @@ export async function getArticleBySlug(slug: string): Promise<Article | null> {
     return null
   }
 
-  return (data as Article | null)
+  if (data) return data as Article
+
+  const publicSlug = toPublicArticleSlug(slug)
+  if (publicSlug !== slug) {
+    const { data: strippedMatch, error: strippedError } = await liveArticleQuery()
+      .eq('slug', publicSlug)
+      .maybeSingle()
+
+    if (strippedError) {
+      console.error('getArticleBySlug stripped error:', strippedError.message)
+      return null
+    }
+
+    if (strippedMatch) return strippedMatch as Article
+  }
+
+  const { data: prefixed, error: prefixError } = await liveArticleQuery()
+    .like('slug', `${publicSlug}%`)
+    .limit(12)
+
+  if (prefixError) {
+    console.error('getArticleBySlug prefix error:', prefixError.message)
+    return null
+  }
+
+  const matches = ((prefixed ?? []) as Article[]).filter((article) =>
+    article.slug ? toPublicArticleSlug(article.slug) === publicSlug : false
+  )
+
+  return matches.length === 1 ? matches[0] : null
 }
 
 export async function getArticlesByTopic(topic: string, limit = 20): Promise<Article[]> {
@@ -119,6 +143,8 @@ export async function getAllSlugs(): Promise<string[]> {
   return (data ?? [])
     .map((row: { slug: string | null }) => row.slug)
     .filter((s): s is string => s !== null)
+    .map((slug) => toPublicArticleSlug(slug))
+    .filter((slug, index, arr) => arr.indexOf(slug) === index)
 }
 
 export async function getTopTodayArticles(limit = 7): Promise<Article[]> {
@@ -146,42 +172,38 @@ export async function getTopTodayArticles(limit = 7): Promise<Article[]> {
   return (data ?? []) as Article[]
 }
 
-function freshnessMultiplier(createdAt: string): number {
-  const ageHours = (Date.now() - new Date(createdAt).getTime()) / 3_600_000
-  if (ageHours < 24) return 1.0
-  if (ageHours < 48) return 0.8
-  if (ageHours < 72) return 0.6
-  return 0.4
-}
-
 export async function getArticlesFeed(page = 1, perPage = 12): Promise<{ articles: Article[]; total: number }> {
-  const { data, error, count } = await client()
-    .from('articles')
-    .select('*', { count: 'exact' })
-    .eq('published', true)
-    .eq('quality_ok', true)
-    .eq('verified_live', true)
-    .eq('publish_status', 'live')
-    .order('score', { ascending: false })
-    .order('created_at', { ascending: false })
+  const supabase = client()
+  const offset = (page - 1) * perPage
+
+  const [{ count: total }, { data, error }] = await Promise.all([
+    supabase
+      .from('articles')
+      .select('*', { count: 'exact', head: true })
+      .eq('published', true)
+      .eq('quality_ok', true)
+      .eq('verified_live', true)
+      .eq('publish_status', 'live'),
+    supabase
+      .from('articles')
+      .select('*')
+      .eq('published', true)
+      .eq('quality_ok', true)
+      .eq('verified_live', true)
+      .eq('publish_status', 'live')
+      .order('score', { ascending: false })
+      .order('created_at', { ascending: false })
+      .range(offset, offset + perPage - 1),
+  ])
 
   if (error) {
     console.error('getArticlesFeed error:', error.message)
     return { articles: [], total: 0 }
   }
 
-  const pool = (data ?? []) as Article[]
-
-  const sorted = [...pool].sort(
-    (a, b) =>
-      b.score * freshnessMultiplier(b.created_at) -
-      a.score * freshnessMultiplier(a.created_at)
-  )
-
-  const offset = (page - 1) * perPage
   return {
-    articles: sorted.slice(offset, offset + perPage),
-    total: count ?? pool.length,
+    articles: (data ?? []) as Article[],
+    total: total ?? 0,
   }
 }
 
@@ -331,7 +353,7 @@ export async function resolveAnchorLinks(
     .filter(({ data }) => data && data.length > 0 && data[0].slug)
     .map(({ anchor, data }) => ({
       anchor,
-      slug: data![0].slug as string,
+      slug: toPublicArticleSlug(data![0].slug as string),
       title: (data![0].ru_title ?? data![0].original_title ?? '') as string,
     }))
 }
@@ -371,8 +393,15 @@ export async function getAllArticlesForSitemap(): Promise<{ slug: string; update
     return []
   }
 
-  return (data ?? []).filter(
-    (row): row is { slug: string; updated_at: string } =>
-      row.slug !== null
-  )
+  const unique = new Map<string, string>()
+
+  for (const row of data ?? []) {
+    if (!row.slug) continue
+    const publicSlug = toPublicArticleSlug(row.slug)
+    if (!unique.has(publicSlug)) {
+      unique.set(publicSlug, row.updated_at)
+    }
+  }
+
+  return Array.from(unique.entries()).map(([slug, updated_at]) => ({ slug, updated_at }))
 }

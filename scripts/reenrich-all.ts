@@ -15,7 +15,7 @@ import { getServerClient } from '../lib/supabase'
 import { scoreArticle } from '../pipeline/scorer'
 import { fetchArticleContent } from '../pipeline/fetcher'
 import { generateEditorial } from '../pipeline/claude'
-import { generateSlug } from '../pipeline/slug'
+import { ensureUniqueSlug } from '../pipeline/slug'
 import type { Article } from '../lib/supabase'
 
 const BATCH_SIZE = 10
@@ -110,8 +110,15 @@ async function main() {
           article.source_name,
           article.source_lang,
           article.topics ?? [],
+          {
+            operation: 'reenrich_all',
+            articleId: article.id,
+            metadata: {
+              script: 'reenrich-all',
+            },
+          },
         )
-        const slug = generateSlug(editorial?.ru_title || article.original_title, article.id)
+        const slug = await ensureUniqueSlug(supabase, editorial?.ru_title || article.original_title, article.id)
 
         if (!editorial) {
           await supabase

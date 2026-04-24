@@ -1,8 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk'
+import type { Message, MessageCreateParamsNonStreaming } from '@anthropic-ai/sdk/resources/messages/messages'
+import { writeLlmUsageLog } from './llm-usage'
 
-const MODEL = 'claude-sonnet-4-6'
-const MAX_TOKENS = 3000
-const TEMPERATURE = 0.4
+export const MODEL = 'claude-sonnet-4-6'
+export const MAX_TOKENS = 4000
+export const TEMPERATURE = 0.4
 
 export interface GlossaryEntry {
   term: string
@@ -104,11 +106,94 @@ const SYSTEM_PROMPT = `Ты — выпускающий редактор русс
 
 ВЫВОД. Только валидный JSON. Никаких пояснений до или после.`
 
+export interface EditorialRequest {
+  originalTitle: string
+  originalText: string
+  sourceName: string
+  sourceLang: 'en' | 'ru'
+  topics: string[]
+  usageContext?: EditorialUsageContext
+}
+
+export interface EditorialUsageContext {
+  operation?: string
+  runKind?: string | null
+  enrichRunId?: string | null
+  articleId?: string | null
+  batchItemId?: string | null
+  startedAt?: Date | string | null
+  metadata?: Record<string, unknown>
+}
+
+export interface TokenUsage {
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheCreateTokens: number
+  estimatedCostUsd: number
+}
+
+export interface EditorialGenerationResult {
+  output: EditorialOutput | null
+  usage: TokenUsage
+  errorCode?: 'claude_api_error' | 'claude_rate_limit' | 'claude_truncated' | 'claude_parse_failed'
+  errorMessage?: string
+}
+
+export const ZERO_USAGE: TokenUsage = {
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  cacheCreateTokens: 0,
+  estimatedCostUsd: 0,
+}
+
 function ts(): string {
   return new Date().toTimeString().slice(0, 8)
 }
 
-function parseEditorialJson(raw: string): EditorialOutput | null {
+export function buildEditorialSystemPrompt(): string {
+  return SYSTEM_PROMPT
+}
+
+export function buildEditorialUserMessage({
+  originalTitle,
+  originalText,
+  sourceName,
+  sourceLang,
+  topics,
+}: EditorialRequest): string {
+  return (
+    `Источник: ${sourceName}\n` +
+    `Язык источника: ${sourceLang}\n` +
+    `Темы: ${topics.join(', ')}\n\n` +
+    `Оригинальный заголовок:\n${originalTitle}\n\n` +
+    `Оригинальный текст:\n${originalText}`
+  )
+}
+
+export function buildEditorialMessageParams(request: EditorialRequest): MessageCreateParamsNonStreaming {
+  return {
+    model: MODEL,
+    max_tokens: MAX_TOKENS,
+    temperature: TEMPERATURE,
+    system: [
+      {
+        type: 'text',
+        text: buildEditorialSystemPrompt(),
+        cache_control: { type: 'ephemeral' },
+      },
+    ],
+    messages: [
+      {
+        role: 'user',
+        content: buildEditorialUserMessage(request),
+      },
+    ],
+  }
+}
+
+export function parseEditorialJson(raw: string): EditorialOutput | null {
   let text = raw.trim()
   text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
 
@@ -125,7 +210,7 @@ function parseEditorialJson(raw: string): EditorialOutput | null {
   }
 }
 
-function validateEditorial(out: EditorialOutput): string | null {
+export function validateEditorial(out: EditorialOutput): string | null {
   if (!out || typeof out !== 'object') return 'не объект'
   if (out.ru_title.length < 20 || out.ru_title.length > 90) return `ru_title длина ${out.ru_title.length}`
   if (out.lead.length < 100 || out.lead.length > 400) return `lead длина ${out.lead.length}`
@@ -136,38 +221,68 @@ function validateEditorial(out: EditorialOutput): string | null {
   if (out.editorial_body.length < 1200) return `editorial_body слишком короткий: ${out.editorial_body.length}`
   if (out.editorial_body.split('\n\n').length < 3) return 'editorial_body меньше 3 абзацев'
   if (!Array.isArray(out.glossary)) return 'glossary не массив'
+  if (!Array.isArray(out.link_anchors)) return 'link_anchors не массив'
   if (typeof out.quality_ok !== 'boolean') return 'quality_ok не boolean'
   return null
 }
 
-export interface TokenUsage {
-  inputTokens: number
-  outputTokens: number
-  cacheReadTokens: number
-  cacheCreateTokens: number
-  estimatedCostUsd: number
+export function usageFromMessage(message: Pick<Message, 'usage'>): TokenUsage {
+  const rawUsage = message.usage as unknown as Record<string, number>
+  const inputTokens = rawUsage.input_tokens ?? 0
+  const outputTokens = rawUsage.output_tokens ?? 0
+  const cacheReadTokens = rawUsage.cache_read_input_tokens ?? 0
+  const cacheCreateTokens = rawUsage.cache_creation_input_tokens ?? 0
+
+  // Sonnet 4.6 rates: input $3/M, output $15/M, cache_read $0.30/M, cache_create $3.75/M
+  const estimatedCostUsd =
+    (inputTokens * 3 + cacheCreateTokens * 3.75 + cacheReadTokens * 0.3) / 1_000_000 +
+    (outputTokens * 15) / 1_000_000
+
+  return { inputTokens, outputTokens, cacheReadTokens, cacheCreateTokens, estimatedCostUsd }
 }
 
-export async function generateEditorial(
-  originalTitle: string,
-  originalText: string,
-  sourceName: string,
-  sourceLang: 'en' | 'ru',
-  topics: string[],
-): Promise<{
-  output: EditorialOutput | null
-  usage: TokenUsage
-  errorCode?: 'claude_api_error' | 'claude_rate_limit' | 'claude_parse_failed'
-  errorMessage?: string
-}> {
-  const ZERO_USAGE: TokenUsage = {
-    inputTokens: 0,
-    outputTokens: 0,
-    cacheReadTokens: 0,
-    cacheCreateTokens: 0,
-    estimatedCostUsd: 0,
-  }
+export function extractEditorialText(message: Pick<Message, 'content'>): string | null {
+  const parts = message.content
+    .filter((block) => block.type === 'text')
+    .map((block) => (block as { text: string }).text)
+  return parts.length > 0 ? parts.join('\n') : null
+}
 
+async function logUsage(
+  resultStatus: string,
+  usage: TokenUsage,
+  usageContext: EditorialUsageContext | null,
+  request: EditorialRequest,
+  extraMetadata?: Record<string, unknown>,
+): Promise<void> {
+  const createdAt = usageContext?.startedAt instanceof Date
+    ? usageContext.startedAt.toISOString()
+    : typeof usageContext?.startedAt === 'string'
+      ? usageContext.startedAt
+      : undefined
+
+  await writeLlmUsageLog({
+    provider: 'anthropic',
+    model: MODEL,
+    operation: usageContext?.operation ?? 'editorial_sync',
+    runKind: usageContext?.runKind ?? 'sync',
+    enrichRunId: usageContext?.enrichRunId,
+    articleId: usageContext?.articleId,
+    batchItemId: usageContext?.batchItemId,
+    sourceName: request.sourceName,
+    sourceLang: request.sourceLang,
+    originalTitle: request.originalTitle,
+    resultStatus,
+    metadata: {
+      ...(usageContext?.metadata ?? {}),
+      ...(extraMetadata ?? {}),
+    },
+    createdAt,
+    usage,
+  })
+}
+
+export async function generateEditorialSync(request: EditorialRequest): Promise<EditorialGenerationResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     const errorMessage = 'ANTHROPIC_API_KEY не задан'
@@ -176,59 +291,38 @@ export async function generateEditorial(
   }
 
   const client = new Anthropic({ apiKey })
-
-  const userMessage =
-    `Источник: ${sourceName}\n` +
-    `Язык источника: ${sourceLang}\n` +
-    `Темы: ${topics.join(', ')}\n\n` +
-    `Оригинальный заголовок:\n${originalTitle}\n\n` +
-    `Оригинальный текст:\n${originalText}`
+  const usageContext = request.usageContext ?? null
 
   try {
-    const message = await client.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      temperature: TEMPERATURE,
-      system: [
-        {
-          type: 'text',
-          text: SYSTEM_PROMPT,
-          cache_control: { type: 'ephemeral' },
-        },
-      ],
-      messages: [{ role: 'user', content: userMessage }],
-    })
-
-    const rawUsage = message.usage as unknown as Record<string, number>
-    const inputTokens = rawUsage.input_tokens ?? 0
-    const outputTokens = rawUsage.output_tokens ?? 0
-    const cacheReadTokens = rawUsage.cache_read_input_tokens ?? 0
-    const cacheCreateTokens = rawUsage.cache_creation_input_tokens ?? 0
-
-    // Sonnet 4.6 rates: input $3/M, output $15/M, cache_read $0.30/M, cache_create $3.75/M
-    const estimatedCostUsd =
-      (inputTokens * 3 + cacheCreateTokens * 3.75 + cacheReadTokens * 0.3) / 1_000_000 +
-      (outputTokens * 15) / 1_000_000
-
-    const usage: TokenUsage = { inputTokens, outputTokens, cacheReadTokens, cacheCreateTokens, estimatedCostUsd }
+    const message = await client.messages.create(buildEditorialMessageParams(request))
+    const usage = usageFromMessage(message)
 
     console.log(
-      `[${ts()}] Claude usage: input=${inputTokens} output=${outputTokens}` +
-      (cacheCreateTokens > 0 ? ` cache_create=${cacheCreateTokens}` : '') +
-      (cacheReadTokens > 0 ? ` cache_read=${cacheReadTokens}` : '') +
-      ` cost=$${estimatedCostUsd.toFixed(4)}`
+      `[${ts()}] Claude usage: input=${usage.inputTokens} output=${usage.outputTokens}` +
+      (usage.cacheCreateTokens > 0 ? ` cache_create=${usage.cacheCreateTokens}` : '') +
+      (usage.cacheReadTokens > 0 ? ` cache_read=${usage.cacheReadTokens}` : '') +
+      ` cost=$${usage.estimatedCostUsd.toFixed(4)}`
     )
 
-    const block = message.content[0]
-    if (block.type !== 'text') {
-      console.warn(`[${ts()}] Claude: неожиданный тип ответа`)
-      return { output: null, usage }
+    if (message.stop_reason === 'max_tokens') {
+      const errorMessage = 'Claude response hit max_tokens, output truncated'
+      console.warn(`[${ts()}] Claude: ${errorMessage}`)
+      await logUsage('claude_truncated', usage, usageContext, request)
+      return { output: null, usage, errorCode: 'claude_truncated', errorMessage }
     }
 
-    const parsed = parseEditorialJson(block.text)
+    const rawText = extractEditorialText(message)
+    if (!rawText) {
+      console.warn(`[${ts()}] Claude: неожиданный тип ответа`)
+      await logUsage('claude_parse_failed', usage, usageContext, request)
+      return { output: null, usage, errorCode: 'claude_parse_failed', errorMessage: 'unexpected response block type' }
+    }
+
+    const parsed = parseEditorialJson(rawText)
     if (!parsed) {
-      const errorMessage = `не удалось распарсить JSON для "${originalTitle.slice(0, 60)}"`
+      const errorMessage = `не удалось распарсить JSON для "${request.originalTitle.slice(0, 60)}"`
       console.warn(`[${ts()}] Claude: ${errorMessage}`)
+      await logUsage('claude_parse_failed', usage, usageContext, request)
       return { output: null, usage, errorCode: 'claude_parse_failed', errorMessage }
     }
 
@@ -237,8 +331,9 @@ export async function generateEditorial(
 
     const validationError = validateEditorial(parsed)
     if (validationError) {
-      const errorMessage = `валидация провалена (${validationError}) для "${originalTitle.slice(0, 60)}"`
+      const errorMessage = `валидация провалена (${validationError}) для "${request.originalTitle.slice(0, 60)}"`
       console.warn(`[${ts()}] Claude: ${errorMessage}`)
+      await logUsage('claude_parse_failed', usage, usageContext, request)
       return { output: null, usage, errorCode: 'claude_parse_failed', errorMessage }
     }
 
@@ -246,8 +341,10 @@ export async function generateEditorial(
       `[${ts()}] Claude: quality_ok=${parsed.quality_ok}` +
       (parsed.quality_reason ? ` reason="${parsed.quality_reason}"` : '') +
       ` glossary=${parsed.glossary.length} терминов` +
-      ` — "${originalTitle.slice(0, 60)}"`
+      ` — "${request.originalTitle.slice(0, 60)}"`
     )
+
+    await logUsage(parsed.quality_ok ? 'ok' : 'rejected', usage, usageContext, request)
 
     return { output: parsed, usage }
   } catch (error) {
@@ -256,11 +353,31 @@ export async function generateEditorial(
     const status = typeof error === 'object' && error !== null && 'status' in error
       ? Number((error as { status?: unknown }).status)
       : null
+    const errorCode = status === 429 ? 'claude_rate_limit' : 'claude_api_error'
+    await logUsage(errorCode, ZERO_USAGE, usageContext, request, { error_message: msg })
     return {
       output: null,
       usage: ZERO_USAGE,
-      errorCode: status === 429 ? 'claude_rate_limit' : 'claude_api_error',
+      errorCode,
       errorMessage: msg,
     }
   }
+}
+
+export async function generateEditorial(
+  originalTitle: string,
+  originalText: string,
+  sourceName: string,
+  sourceLang: 'en' | 'ru',
+  topics: string[],
+  usageContext?: EditorialUsageContext,
+): Promise<EditorialGenerationResult> {
+  return generateEditorialSync({
+    originalTitle,
+    originalText,
+    sourceName,
+    sourceLang,
+    topics,
+    usageContext,
+  })
 }

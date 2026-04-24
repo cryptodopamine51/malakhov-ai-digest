@@ -117,3 +117,47 @@ export async function releaseClaim(
 
   return true
 }
+
+/**
+ * Transfers article ownership from the short-lived article lease to a persisted
+ * batch item linkage. The article stays in `processing`, but the lease is cleared.
+ */
+export async function handoffClaimToBatch(
+  supabase: SupabaseClient,
+  articleId: string,
+  expectedClaimToken: string | null,
+  updates: Record<string, unknown>,
+): Promise<boolean> {
+  if (!expectedClaimToken) {
+    console.error(`[claims] handoffClaimToBatch skipped for ${articleId}: missing claim token`)
+    return false
+  }
+
+  const { data: handedOff, error } = await supabase
+    .from('articles')
+    .update({
+      ...updates,
+      enrich_status: 'processing',
+      claim_token: null,
+      processing_by: null,
+      lease_expires_at: null,
+      processing_finished_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', articleId)
+    .eq('claim_token', expectedClaimToken)
+    .select('id')
+    .maybeSingle()
+
+  if (error) {
+    console.error(`[claims] handoffClaimToBatch failed for ${articleId}: ${error.message}`)
+    return false
+  }
+
+  if (!handedOff) {
+    console.warn(`[claims] stale claim detected for ${articleId}; batch handoff skipped`)
+    return false
+  }
+
+  return true
+}

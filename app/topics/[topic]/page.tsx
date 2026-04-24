@@ -213,14 +213,15 @@ export function generateStaticParams() {
 export async function generateMetadata({
   params,
 }: {
-  params: { topic: string }
+  params: Promise<{ topic: string }>
 }): Promise<Metadata> {
-  const meta = TOPICS[params.topic]
+  const { topic } = await params
+  const meta = TOPICS[topic]
   if (!meta) return {}
   return {
     title: meta.seoTitle,
     description: meta.seoDescription,
-    alternates: { canonical: `/topics/${params.topic}` },
+    alternates: { canonical: `/topics/${topic}` },
     openGraph: { title: meta.seoTitle, description: meta.seoDescription, type: 'website' },
   }
 }
@@ -228,12 +229,13 @@ export async function generateMetadata({
 export default async function TopicPage({
   params,
 }: {
-  params: { topic: string }
+  params: Promise<{ topic: string }>
 }) {
-  const meta = TOPICS[params.topic]
+  const { topic } = await params
+  const meta = TOPICS[topic]
   if (!meta) notFound()
 
-  const articles = await getArticlesByTopic(params.topic, 24)
+  const articles = await getArticlesByTopic(topic, 24)
 
   const SITE_URL = 'https://news.malakhovai.ru'
   const jsonLd = {
@@ -241,7 +243,7 @@ export default async function TopicPage({
     '@type': 'CollectionPage',
     name: meta.seoTitle,
     description: meta.seoDescription,
-    url: `${SITE_URL}/topics/${params.topic}`,
+    url: `${SITE_URL}/topics/${topic}`,
     publisher: { '@type': 'Organization', name: 'Malakhov AI Дайджест', url: SITE_URL },
   }
 
@@ -255,12 +257,12 @@ export default async function TopicPage({
 
         {/* Hero с wireframe-иллюстрацией */}
         <div className="relative mb-8 overflow-hidden rounded border border-line bg-surface" style={{ minHeight: 200 }}>
-          <TopicIllustration topic={params.topic} />
+          <TopicIllustration topic={topic} />
           {/* Градиент: левые 55% непрозрачны (текст), правые — иллюстрация */}
           <div className="absolute inset-0 z-[5]" style={{
             background: 'linear-gradient(to right, var(--surface) 45%, color-mix(in srgb, var(--surface) 60%, transparent) 65%, transparent 100%)'
           }} />
-          <div className="relative z-10 px-8 py-10">
+          <div className="relative z-10 px-6 py-9 md:px-8 md:py-10">
             <p className="mb-2 font-serif text-[10px] font-semibold uppercase tracking-[0.22em] text-accent">
               Раздел
             </p>
@@ -283,7 +285,7 @@ export default async function TopicPage({
               <ArticleCard article={articles[0]} variant="featured" />
             </div>
             {articles.length > 1 && (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {articles.slice(1).map((article) => (
                   <ArticleCard key={article.id} article={article} variant="default" />
                 ))}

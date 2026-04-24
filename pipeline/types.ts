@@ -14,6 +14,10 @@ export type ErrorCode =
   | 'fetch_timeout'
   | 'claude_api_error'
   | 'claude_rate_limit'
+  | 'claude_truncated'
+  | 'batch_expired'
+  | 'batch_canceled'
+  | 'batch_apply_failed'
   | 'claude_parse_failed'
   | 'editorial_parse_failed'
   | 'quality_reject'
@@ -25,6 +29,10 @@ export const RETRYABLE_ERRORS: ErrorCode[] = [
   'fetch_timeout',
   'claude_api_error',
   'claude_rate_limit',
+  'claude_truncated',
+  'batch_expired',
+  'batch_canceled',
+  'batch_apply_failed',
   'lease_expired',
 ]
 

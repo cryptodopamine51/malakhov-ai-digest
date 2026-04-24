@@ -12,6 +12,12 @@ const COOLDOWN_HOURS: Record<string, number> = {
   backlog_high: 2,
   provider_rate_limit: 1,
   enrich_failed_spike: 2,
+  batch_submit_failed: 1,
+  batch_collect_failed: 1,
+  batch_poll_stuck: 2,
+  batch_apply_stuck: 2,
+  batch_partial_failure_spike: 2,
+  claude_daily_budget_exceeded: 6,
   publish_verify_failed: 6,
   digest_low_articles: 12,
 }

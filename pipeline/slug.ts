@@ -2,10 +2,10 @@
  * pipeline/slug.ts
  *
  * Генерация URL-slug из русского заголовка.
- * Пример: "Яндекс выпустил новую модель" + "abc123def456" → "yandeks-vypustil-novuyu-model-def456"
+ * По умолчанию генерирует чистый slug без технического хвоста.
  */
 
-// ── Таблица транслитерации ────────────────────────────────────────────────────
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 const TRANSLIT_MAP: Record<string, string> = {
   а: 'a',  б: 'b',  в: 'v',  г: 'g',  д: 'd',
@@ -17,23 +17,9 @@ const TRANSLIT_MAP: Record<string, string> = {
   э: 'e',  ю: 'yu', я: 'ya',
 }
 
-// ── Основная функция ──────────────────────────────────────────────────────────
+const MAX_SLUG_LENGTH = 60
 
-/**
- * Генерирует URL-slug из русского заголовка и UUID статьи.
- *
- * Алгоритм:
- * 1. Транслитерация кириллицы → латиница
- * 2. Lowercase
- * 3. Не-буквенно-цифровые символы → '-'
- * 4. Удаление повторяющихся дефисов
- * 5. Удаление дефисов по краям
- * 6. Обрезка до 60 символов
- * 7. Добавление '-' + последние 6 символов id
- */
-export function generateSlug(ruTitle: string, id: string): string {
-  const suffix = id.slice(-6)
-
+export function generateSlug(ruTitle: string): string {
   const transliterated = ruTitle
     .toLowerCase()
     .split('')
@@ -41,10 +27,60 @@ export function generateSlug(ruTitle: string, id: string): string {
     .join('')
 
   const base = transliterated
-    .replace(/[^a-z0-9]+/g, '-') // не-латинские символы → дефис
-    .replace(/-{2,}/g, '-')      // двойные дефисы → одиночный
-    .replace(/^-+|-+$/g, '')     // дефисы по краям
-    .slice(0, 60)                // максимум 60 символов
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, MAX_SLUG_LENGTH)
+    .replace(/^-+|-+$/g, '')
 
-  return `${base}-${suffix}`
+  return base || 'article'
+}
+
+function withNumericSuffix(baseSlug: string, ordinal: number): string {
+  const suffix = `-${ordinal}`
+  const trimmedBase = baseSlug
+    .slice(0, Math.max(1, MAX_SLUG_LENGTH - suffix.length))
+    .replace(/-+$/g, '')
+
+  return `${trimmedBase}${suffix}`
+}
+
+async function isSlugTaken(
+  supabase: Pick<SupabaseClient, 'from'>,
+  slug: string,
+  articleId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('articles')
+    .select('id')
+    .eq('slug', slug)
+    .neq('id', articleId)
+    .limit(1)
+
+  if (error) {
+    throw new Error(`Slug uniqueness check failed: ${error.message}`)
+  }
+
+  return (data ?? []).length > 0
+}
+
+export async function ensureUniqueSlug(
+  supabase: Pick<SupabaseClient, 'from'>,
+  ruTitle: string,
+  articleId: string,
+): Promise<string> {
+  const baseSlug = generateSlug(ruTitle)
+
+  if (!(await isSlugTaken(supabase, baseSlug, articleId))) {
+    return baseSlug
+  }
+
+  for (let ordinal = 2; ordinal <= 99; ordinal++) {
+    const candidate = withNumericSuffix(baseSlug, ordinal)
+    if (!(await isSlugTaken(supabase, candidate, articleId))) {
+      return candidate
+    }
+  }
+
+  return withNumericSuffix(baseSlug, Math.max(100, Number.parseInt(articleId.slice(-2), 16) || 100))
 }

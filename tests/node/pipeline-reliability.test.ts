@@ -4,7 +4,9 @@ import assert from 'node:assert/strict'
 import { releaseClaim } from '../../pipeline/claims'
 import { generateEditorial } from '../../pipeline/claude'
 import { fetchArticleContent } from '../../pipeline/fetcher'
+import { toPublicArticleSlug } from '../../lib/article-slugs'
 import { buildVerifyUrl, getVerifyCandidateKind } from '../../pipeline/publish-verify-utils'
+import { ensureUniqueSlug, generateSlug } from '../../pipeline/slug'
 import { nextRetryAt, retryDelayMs } from '../../pipeline/types'
 
 test('retry policy starts with the first backoff step', () => {
@@ -106,6 +108,32 @@ test('fetchArticleContent returns fetch_timeout on aborted request', async () =>
   }
 })
 
+test('fetchArticleContent extracts embedded videos from article html', async () => {
+  const originalFetch = global.fetch
+  global.fetch = (async () =>
+    new Response(`
+      <html>
+        <body>
+          <article>
+            <iframe
+              title="Humanoid robots outrun humans in Beijing half-marathon"
+              src="https://www.youtube.com/embed/5JlmM05IitY?feature=oembed"
+            ></iframe>
+          </article>
+        </body>
+      </html>
+    `, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } })) as typeof fetch
+
+  try {
+    const result = await fetchArticleContent('https://example.com/story', { includeText: false })
+    assert.equal(result.inlineVideos.length, 1)
+    assert.equal(result.inlineVideos[0]?.provider, 'youtube')
+    assert.match(result.inlineVideos[0]?.embedUrl ?? '', /youtube\.com\/embed\/5JlmM05IitY/)
+  } finally {
+    global.fetch = originalFetch
+  }
+})
+
 test('generateEditorial reports missing api key as operational error', async () => {
   const previousKey = process.env.ANTHROPIC_API_KEY
   delete process.env.ANTHROPIC_API_KEY
@@ -150,5 +178,50 @@ test('publish verify uses internal preview URL for pre-live candidates', () => {
   assert.equal(
     buildVerifyUrl('https://news.malakhovai.ru', 'example-slug', 'live_sample'),
     'https://news.malakhovai.ru/articles/example-slug',
+  )
+})
+
+test('generateSlug keeps clean urls without uuid tails', () => {
+  assert.equal(
+    generateSlug('Робот Honor пробежал полумарафон в Пекине быстрее мирового рекорда человека'),
+    'robot-honor-probezhal-polumarafon-v-pekine-bystree-mirovogo',
+  )
+})
+
+test('ensureUniqueSlug falls back to numeric suffix on collision', async () => {
+  let currentSlug = ''
+  const builder = {
+    select() {
+      return this
+    },
+    eq(column: string, value: unknown) {
+      if (column === 'slug') currentSlug = String(value)
+      return this
+    },
+    neq() {
+      return this
+    },
+    async limit() {
+      return {
+        data: currentSlug === 'robot-honor-probezhal-polumarafon' ? [{ id: 'taken' }] : [],
+        error: null,
+      }
+    },
+  }
+
+  const supabase = {
+    from() {
+      return builder
+    },
+  }
+
+  const slug = await ensureUniqueSlug(supabase as never, 'Робот Honor пробежал полумарафон', 'article-1')
+  assert.equal(slug, 'robot-honor-probezhal-polumarafon-2')
+})
+
+test('toPublicArticleSlug strips legacy hex suffixes', () => {
+  assert.equal(
+    toPublicArticleSlug('robot-honor-probezhal-polumarafon-v-pekine-bystree-mirovogo--c49630'),
+    'robot-honor-probezhal-polumarafon-v-pekine-bystree-mirovogo',
   )
 })

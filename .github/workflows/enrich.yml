@@ -2,8 +2,8 @@ name: Enrich Articles
 
 on:
   schedule:
-    # Каждые 2 часа — обогащаем статьи, которые накопились после ingest
-    - cron: '0 */2 * * *'
+    # Каждые 30 минут — submit новых статей в Anthropic Batch API
+    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -30,10 +30,9 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
 
-      - name: Run enricher
-        run: npm run enrich
+      - name: Run batch submit
+        run: npm run enrich-submit-batch
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          DEEPL_API_KEY: ${{ secrets.DEEPL_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

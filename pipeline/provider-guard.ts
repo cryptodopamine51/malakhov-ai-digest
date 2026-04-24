@@ -41,17 +41,50 @@ async function checkProviderHealth(): Promise<void> {
   }
 
   if (!attempts?.length) {
-    log('Нет данных о попытках за последние 2 часа')
+    log('Нет enrich attempts за последние 2 часа')
+  }
+
+  const { data: batchItems, error: batchError } = await supabase
+    .from('anthropic_batch_items')
+    .select('status, error_code, result_type')
+    .gte('updated_at', since)
+
+  if (batchError) {
+    log(`Ошибка выборки anthropic_batch_items: ${batchError.message}`)
     return
   }
 
-  const total = attempts.length
-  const rateLimitHits = attempts.filter((a) => a.error_code === 'claude_rate_limit').length
-  const apiErrors = attempts.filter((a) => a.error_code === 'claude_api_error').length
-  const failed = attempts.filter((a) => a.result_status === 'failed' || a.result_status === 'retryable').length
+  const totalAttempts = attempts?.length ?? 0
+  const totalBatchItems = batchItems?.length ?? 0
+  const total = totalAttempts + totalBatchItems
+  if (!total) {
+    log('Нет provider activity за последние 2 часа')
+    return
+  }
+
+  const rateLimitHits =
+    (attempts?.filter((a) => a.error_code === 'claude_rate_limit').length ?? 0) +
+    (batchItems?.filter((item) => String(item.error_code ?? '').includes('rate_limit')).length ?? 0)
+  const apiErrors =
+    (attempts?.filter((a) => a.error_code === 'claude_api_error').length ?? 0) +
+    (batchItems?.filter((item) => item.result_type === 'errored').length ?? 0)
+  const batchApplyFailures = batchItems?.filter((item) =>
+    item.status === 'apply_failed_retriable' || item.status === 'apply_failed_terminal'
+  ).length ?? 0
+  const failed =
+    (attempts?.filter((a) => a.result_status === 'failed' || a.result_status === 'retryable').length ?? 0) +
+    (batchItems?.filter((item) =>
+      item.status === 'batch_failed' ||
+      item.status === 'apply_failed_retriable' ||
+      item.status === 'apply_failed_terminal'
+    ).length ?? 0)
   const errorRate = failed / total
 
-  log(`Попыток за ${WINDOW_HOURS}h: ${total}, rate_limit: ${rateLimitHits}, api_errors: ${apiErrors}, error_rate: ${(errorRate * 100).toFixed(1)}%`)
+  log(
+    `Provider activity за ${WINDOW_HOURS}h: attempts=${totalAttempts}, batch_items=${totalBatchItems}, ` +
+    `rate_limit=${rateLimitHits}, api_errors=${apiErrors}, apply_failures=${batchApplyFailures}, ` +
+    `error_rate=${(errorRate * 100).toFixed(1)}%`,
+  )
 
   if (rateLimitHits >= RATE_LIMIT_ALERT_COUNT) {
     await fireAlert({
@@ -60,7 +93,7 @@ async function checkProviderHealth(): Promise<void> {
       severity: 'warning',
       entityKey: 'claude',
       message: `Claude rate limit hit ${rateLimitHits} times in last ${WINDOW_HOURS}h. Enrichment may be degraded.`,
-      payload: { rateLimitHits, apiErrors, total, errorRate },
+      payload: { rateLimitHits, apiErrors, total, totalAttempts, totalBatchItems, errorRate },
       botToken,
       adminChatId,
     })
@@ -70,8 +103,8 @@ async function checkProviderHealth(): Promise<void> {
       supabase,
       alertType: 'enrich_failed_spike',
       severity: 'warning',
-      message: `Enrich error rate ${(errorRate * 100).toFixed(1)}% (${failed}/${total}) in last ${WINDOW_HOURS}h.`,
-      payload: { errorRate, failed, total, rateLimitHits, apiErrors },
+      message: `Enrich/batch error rate ${(errorRate * 100).toFixed(1)}% (${failed}/${total}) in last ${WINDOW_HOURS}h.`,
+      payload: { errorRate, failed, total, totalAttempts, totalBatchItems, rateLimitHits, apiErrors, batchApplyFailures },
       botToken,
       adminChatId,
     })

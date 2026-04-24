@@ -10,11 +10,12 @@ export const revalidate = 3600
 export async function generateMetadata({
   params,
 }: {
-  params: { date: string }
+  params: Promise<{ date: string }>
 }): Promise<Metadata> {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(params.date)) return {}
+  const { date } = await params
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return {}
 
-  const formatted = formatMoscowDate(params.date, {
+  const formatted = formatMoscowDate(date, {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -29,21 +30,22 @@ export async function generateMetadata({
 export default async function ArchivePage({
   params,
 }: {
-  params: { date: string }
+  params: Promise<{ date: string }>
 }) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(params.date)) notFound()
+  const { date } = await params
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) notFound()
 
-  const articles = await getArticlesByDate(params.date)
+  const articles = await getArticlesByDate(date)
 
-  const formatted = formatMoscowDate(params.date, {
+  const formatted = formatMoscowDate(date, {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
   })
 
-  const prev = offsetDate(params.date, -1)
-  const next = offsetDate(params.date, +1)
+  const prev = offsetDate(date, -1)
+  const next = offsetDate(date, +1)
   const todayStr = getMoscowTodayDate()
 
   return (

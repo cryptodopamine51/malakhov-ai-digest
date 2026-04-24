@@ -32,13 +32,14 @@ async function resolveArticle(slug: string) {
 
 export async function GET(
   request: NextRequest,
-  context: { params: { slug: string } },
+  context: { params: Promise<{ slug: string }> },
 ) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
 
-  const article = await resolveArticle(context.params.slug)
+  const { slug } = await context.params
+  const article = await resolveArticle(slug)
   if (!article) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 })
   }
@@ -54,13 +55,14 @@ export async function GET(
 
 export async function HEAD(
   request: NextRequest,
-  context: { params: { slug: string } },
+  context: { params: Promise<{ slug: string }> },
 ) {
   if (!isAuthorized(request)) {
     return new Response(null, { status: 401 })
   }
 
-  const article = await resolveArticle(context.params.slug)
+  const { slug } = await context.params
+  const article = await resolveArticle(slug)
   if (!article) {
     return new Response(null, { status: 404 })
   }
