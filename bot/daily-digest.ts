@@ -10,10 +10,14 @@
 
 import { config } from 'dotenv'
 import { resolve } from 'path'
+import { createHash } from 'crypto'
+import { pathToFileURL } from 'url'
 config({ path: resolve(process.cwd(), '.env.local') })
 
 import { getServerClient } from '../lib/supabase'
 import type { Article } from '../lib/supabase'
+import { getArticleUrl } from '../lib/article-slugs'
+import { getMoscowDateKey } from '../lib/utils'
 import { fireAlert } from '../pipeline/alerts'
 
 // ── Утилиты ───────────────────────────────────────────────────────────────────
@@ -83,9 +87,12 @@ function extractHashtags(articles: Article[]): string {
 interface TelegramResponse {
   ok: boolean
   description?: string
+  result?: {
+    message_id?: number
+  }
 }
 
-function assertServiceRoleKey(): void {
+export function assertServiceRoleKey(): void {
   const key = process.env.SUPABASE_SERVICE_KEY
   if (!key) throw new Error('SUPABASE_SERVICE_KEY не задан')
 
@@ -109,7 +116,7 @@ async function sendTelegramMessage(
   chatId: string,
   text: string,
   disablePreview = false,
-): Promise<void> {
+): Promise<{ result: { message_id: number } }> {
   const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -123,13 +130,20 @@ async function sendTelegramMessage(
 
   const data = (await res.json()) as TelegramResponse
   if (!data.ok) throw new Error(data.description ?? 'Telegram API вернул ok: false')
+  if (typeof data.result?.message_id !== 'number') {
+    throw new Error('Telegram API не вернул result.message_id')
+  }
+  return { result: { message_id: data.result.message_id } }
 }
 
 // ── Проверка доступности ──────────────────────────────────────────────────────
 
 async function isArticleLive(siteUrl: string, slug: string): Promise<boolean> {
   try {
-    const res = await fetch(`${siteUrl}/articles/${slug}`, { method: 'HEAD' })
+    const res = await fetch(getArticleUrl(siteUrl, slug), {
+      method: 'HEAD',
+      signal: AbortSignal.timeout(5_000),
+    })
     return res.ok
   } catch {
     return false
@@ -151,7 +165,7 @@ async function filterLiveArticles(articles: Article[], siteUrl: string): Promise
 // ── UTM-ссылки ────────────────────────────────────────────────────────────────
 
 function articleUrl(siteUrl: string, slug: string, position: number, date: string): string {
-  return `${siteUrl}/articles/${slug}?utm_source=tg&utm_medium=digest&utm_campaign=daily_${date}&utm_content=${position}`
+  return `${getArticleUrl(siteUrl, slug)}?utm_source=tg&utm_medium=digest&utm_campaign=daily_${date}&utm_content=${position}`
 }
 
 // ── Формирование текста дайджеста ─────────────────────────────────────────────
@@ -235,6 +249,136 @@ async function logDigestRun(
   }
 }
 
+type DigestSupabase = ReturnType<typeof getServerClient>
+
+export async function claimDigestSlot(
+  supabase: DigestSupabase,
+  digestDate: string,
+  channelId: string,
+): Promise<{ claimed: true; runId: string } | { claimed: false; reason: string }> {
+  const { data, error } = await supabase
+    .from('digest_runs')
+    .insert({
+      digest_date: digestDate,
+      channel_id: channelId,
+      status: 'running',
+      claimed_at: new Date().toISOString(),
+    })
+    .select('id')
+    .single()
+
+  if (error) {
+    if ('code' in error && error.code === '23505') {
+      return { claimed: false, reason: 'already_claimed' }
+    }
+    throw new Error(`digest claim failed: ${error.message}`)
+  }
+
+  return { claimed: true, runId: String(data.id) }
+}
+
+export async function finalizeDigestSuccess(
+  supabase: DigestSupabase,
+  runId: string,
+  telegramMessageId: number,
+  articleIds: string[],
+  messageText: string,
+  siteUrl?: string,
+): Promise<void> {
+  const messageHash = createHash('sha256').update(messageText).digest('hex').slice(0, 32)
+  const { error } = await supabase
+    .from('digest_runs')
+    .update({
+      status: 'success',
+      articles_count: articleIds.length,
+      article_ids: articleIds,
+      message_text: messageText,
+      message_hash: messageHash,
+      telegram_message_id: telegramMessageId,
+      sent_at: new Date().toISOString(),
+      site_url: siteUrl,
+    })
+    .eq('id', runId)
+
+  if (error) throw new Error(`digest success finalize failed: ${error.message}`)
+}
+
+export async function finalizeDigestFailure(
+  supabase: DigestSupabase,
+  runId: string,
+  err: unknown,
+): Promise<void> {
+  const { error } = await supabase
+    .from('digest_runs')
+    .update({
+      status: 'failed',
+      failed_at: new Date().toISOString(),
+      error_message: err instanceof Error ? err.message : String(err),
+    })
+    .eq('id', runId)
+
+  if (error) throw new Error(`digest failure finalize failed: ${error.message}`)
+}
+
+async function finalizeDigestNonDelivery(
+  supabase: DigestSupabase,
+  runId: string,
+  status: 'skipped' | 'low_articles',
+  payload: Omit<DigestRunPayload, 'status'>,
+): Promise<void> {
+  const { error } = await supabase
+    .from('digest_runs')
+    .update({ ...payload, status })
+    .eq('id', runId)
+
+  if (error) throw new Error(`digest ${status} finalize failed: ${error.message}`)
+}
+
+export async function markArticlesSent(
+  supabase: DigestSupabase,
+  articleIds: string[],
+): Promise<void> {
+  const { data, error } = await supabase
+    .from('articles')
+    .update({ tg_sent: true })
+    .in('id', articleIds)
+    .select('id')
+
+  if (error) throw new Error(`tg_sent update failed: ${error.message}`)
+  if ((data?.length ?? 0) !== articleIds.length) {
+    throw new Error(`tg_sent обновил ${data?.length ?? 0}/${articleIds.length} строк — вероятно RLS`)
+  }
+}
+
+export async function deliverClaimedDigest(
+  supabase: DigestSupabase,
+  runId: string,
+  botToken: string,
+  channelId: string,
+  messageText: string,
+  articleIds: string[],
+  siteUrl: string,
+  sendMessage = sendTelegramMessage,
+): Promise<void> {
+  try {
+    const telegramResponse = await sendMessage(botToken, channelId, messageText, false)
+    await markArticlesSent(supabase, articleIds)
+    await finalizeDigestSuccess(
+      supabase,
+      runId,
+      telegramResponse.result.message_id,
+      articleIds,
+      messageText,
+      siteUrl,
+    )
+  } catch (err) {
+    await finalizeDigestFailure(supabase, runId, err).catch((finalizeErr) => {
+      logError('Не удалось записать failed digest_run', finalizeErr)
+    })
+    throw err
+  }
+}
+
 // ── Основная логика ───────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -257,9 +401,23 @@ async function main(): Promise<void> {
   }
 
   const supabase = getServerClient()
+  const digestDate = getMoscowDateKey()
 
-  // Защита от двойной отправки
   const force = process.env.FORCE_DIGEST === '1'
+  const forceConfirmDate = process.env.FORCE_DIGEST_CONFIRM_DATE
+  if (force && forceConfirmDate !== digestDate) {
+    logError(`FORCE_DIGEST=1 требует FORCE_DIGEST_CONFIRM_DATE=${digestDate}`)
+    process.exit(1)
+  }
+
+  const claim = await claimDigestSlot(supabase, digestDate, channelId)
+  if (!claim.claimed) {
+    log(`Slot (${digestDate}, ${channelId}) уже занят: ${claim.reason} — выходим без отправки`)
+    process.exit(0)
+  }
+  const runId = claim.runId
+
+  // Сохраняем старый tg_sent guard как fallback, но atomic claim теперь основной lock.
   if (!force) {
     const eightHoursAgo = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString()
     const { count: recentlySent } = await supabase
@@ -270,11 +428,11 @@ async function main(): Promise<void> {
 
     if ((recentlySent ?? 0) > 0) {
       log(`Дайджест за сегодня уже отправлен (${recentlySent} статей) — пропускаем`)
-      await logDigestRun(supabase, { status: 'skipped', site_url: siteUrl })
+      await finalizeDigestNonDelivery(supabase, runId, 'skipped', { site_url: siteUrl })
       process.exit(0)
     }
   } else {
-    log('FORCE_DIGEST=1 — защита от дублей отключена')
+    log('FORCE_DIGEST=1 подтверждён — продолжаем с atomic claim')
   }
 
   // Окно выборки: вчерашний день по МСК
@@ -319,13 +477,16 @@ async function main(): Promise<void> {
     if (error) throw error
     articles = (data ?? []) as Article[]
   } catch (err) {
+    await finalizeDigestFailure(supabase, runId, err).catch((finalizeErr) => {
+      logError('Не удалось записать failed digest_run', finalizeErr)
+    })
     logError('Ошибка запроса к Supabase', err)
     process.exit(1)
   }
 
   if (articles.length === 0) {
     log('Нет новых статей для дайджеста')
-    await logDigestRun(supabase, { status: 'skipped', articles_count: 0, site_url: siteUrl })
+    await finalizeDigestNonDelivery(supabase, runId, 'skipped', { articles_count: 0, site_url: siteUrl })
     process.exit(0)
   }
 
@@ -340,8 +501,7 @@ async function main(): Promise<void> {
   // Если меньше 3 — health-отчёт и не шлём в канал
   if (digest.length < 3) {
     log(`Слишком мало статей (${digest.length}) — дайджест не отправлен`)
-    await logDigestRun(supabase, {
-      status: 'low_articles',
+    await finalizeDigestNonDelivery(supabase, runId, 'low_articles', {
       articles_count: digest.length,
       article_ids: digest.map((a) => a.id),
       site_url: siteUrl,
@@ -378,49 +538,21 @@ async function main(): Promise<void> {
   console.log(messageText)
   console.log('─'.repeat(60))
 
-  // Отправляем — первая ссылка даёт превью (disable_web_page_preview=false)
-  try {
-    await sendTelegramMessage(botToken, channelId, messageText, false)
-  } catch (err) {
-    logError('Ошибка отправки в Telegram', err)
-    await logDigestRun(supabase, {
-      status: 'error',
-      articles_count: digest.length,
-      article_ids: digest.map((a) => a.id),
-      message_text: messageText,
-      error_message: err instanceof Error ? err.message : String(err),
-      site_url: siteUrl,
-    })
-    process.exit(1)
-  }
-
-  // Помечаем как отправленные
   const ids = digest.map((a) => a.id)
   try {
-    const { data, error } = await supabase
-      .from('articles')
-      .update({ tg_sent: true })
-      .in('id', ids)
-      .select('id')
-    if (error) throw error
-    if ((data ?? []).length !== ids.length) {
-      throw new Error(`ожидали обновить ${ids.length} статей, обновлено ${(data ?? []).length}`)
-    }
+    await deliverClaimedDigest(supabase, runId, botToken, channelId, messageText, ids, siteUrl)
     log(`tg_sent = true для ${ids.length} статей`)
   } catch (err) {
-    logError('Ошибка обновления tg_sent', err)
+    logError('Ошибка отправки дайджеста', err)
     process.exit(1)
   }
-
-  await logDigestRun(supabase, {
-    status: 'success',
-    articles_count: digest.length,
-    article_ids: digest.map((a) => a.id),
-    message_text: messageText,
-    site_url: siteUrl,
-  })
 
   log(`Дайджест отправлен: ${digest.length} статей`)
 }
 
-main()
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    logError('Unhandled error in main', err)
+    process.exit(1)
+  })
+}
