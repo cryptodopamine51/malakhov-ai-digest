@@ -1,0 +1,39 @@
+services:
+  comfyui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        COMFYUI_REF: ${COMFYUI_REF}
+        PYTORCH_CUDA_INDEX_URL: ${PYTORCH_CUDA_INDEX_URL}
+    image: malakhov-ai/comfyui:${COMFYUI_REF}
+    container_name: malakhov_ai_comfyui
+    restart: unless-stopped
+    init: true
+    gpus: all
+    shm_size: 8gb
+    environment:
+      COMFYUI_ARGS: ${COMFYUI_ARGS}
+      HF_HOME: ${HF_HOME}
+      HF_TOKEN: ${HF_TOKEN}
+      CIVITAI_TOKEN: ${CIVITAI_TOKEN}
+      PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+    ports:
+      - "127.0.0.1:${COMFYUI_HOST_PORT}:${COMFYUI_PORT}"
+    volumes:
+      - ${COMFYUI_CHECKPOINTS_DIR}:/opt/ComfyUI/models/checkpoints
+      - ${COMFYUI_LORAS_DIR}:/opt/ComfyUI/models/loras
+      - ${COMFYUI_CONTROLNET_DIR}:/opt/ComfyUI/models/controlnet
+      - ${COMFYUI_VAE_DIR}:/opt/ComfyUI/models/vae
+      - ${COMFYUI_UPSCALE_MODELS_DIR}:/opt/ComfyUI/models/upscale_models
+      - ${COMFYUI_INPUT_DIR}:/opt/ComfyUI/input
+      - ${COMFYUI_OUTPUT_DIR}:/opt/ComfyUI/output
+      - ${COMFYUI_WORKFLOWS_DIR}:/opt/ComfyUI/user/default/workflows
+      - ${COMFYUI_CACHE_DIR}:/root/.cache
+      - ./prompts:/srv/bootstrap/prompts:ro
+      - ./workflows:/srv/bootstrap/workflows:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8188/system_stats >/dev/null || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10

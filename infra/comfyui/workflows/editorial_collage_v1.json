@@ -1,0 +1,166 @@
+{
+  "4": {
+    "inputs": {
+      "ckpt_name": "editorial_sdxl_base.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple"
+  },
+  "5": {
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "clip": [
+        "4",
+        1
+      ],
+      "lora_name": "editorial_magazine_01.safetensors",
+      "strength_model": 0.75,
+      "strength_clip": 0.75
+    },
+    "class_type": "LoraLoader"
+  },
+  "6": {
+    "inputs": {
+      "model": [
+        "5",
+        0
+      ],
+      "clip": [
+        "5",
+        1
+      ],
+      "lora_name": "paper_collage_01.safetensors",
+      "strength_model": 0.55,
+      "strength_clip": 0.55
+    },
+    "class_type": "LoraLoader"
+  },
+  "7": {
+    "inputs": {
+      "model": [
+        "6",
+        0
+      ],
+      "clip": [
+        "6",
+        1
+      ],
+      "lora_name": "print_grain_matte_01.safetensors",
+      "strength_model": 0.35,
+      "strength_clip": 0.35
+    },
+    "class_type": "LoraLoader"
+  },
+  "8": {
+    "inputs": {
+      "text": "Create an original editorial conceptual photomontage for a premium AI news digest cover image, 16:9. Topic: AI regulation and legal oversight. Core editorial angle: institutions are building legal structure around powerful AI systems. Visual metaphor: public architecture framing intelligence inside a legal boundary. Include a monumental civic building, legal documents, structural framing elements, and a restrained technological layer embedded into the scene. Strong editorial photomontage, layered paper collage logic, matte paper texture, soft print grain, muted coral, mustard, teal, dusty blue, graphite, off-white, asymmetrical editorial balance, one clear focal point, thoughtful negative space.",
+      "clip": [
+        "7",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "9": {
+    "inputs": {
+      "text": "glowing orb, glowing neural sphere, floating dashboard tiles, centered business hero, browser-window stack, world map plus chip cliche, literal AI text, readable typography, watermark, logo, signature, extra fingers, broken hands, deformed anatomy, duplicate people, melted face, over-detailed background clutter, generic sci-fi HUD, cheap neon cyberpunk, oversaturated colors, glossy 3d render, stock-photo smile, symmetric layout, low contrast focal hierarchy, bad perspective, malformed architecture",
+      "clip": [
+        "7",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "10": {
+    "inputs": {
+      "width": 1344,
+      "height": 768,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage"
+  },
+  "11": {
+    "inputs": {
+      "model": [
+        "7",
+        0
+      ],
+      "seed": 41021,
+      "steps": 28,
+      "cfg": 6.5,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "positive": [
+        "8",
+        0
+      ],
+      "negative": [
+        "9",
+        0
+      ],
+      "latent_image": [
+        "10",
+        0
+      ],
+      "denoise": 1.0
+    },
+    "class_type": "KSampler"
+  },
+  "12": {
+    "inputs": {
+      "samples": [
+        "11",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ]
+    },
+    "class_type": "VAEDecode"
+  },
+  "13": {
+    "inputs": {
+      "model_name": "4x-UltraSharp.pth"
+    },
+    "class_type": "UpscaleModelLoader"
+  },
+  "14": {
+    "inputs": {
+      "upscale_model": [
+        "13",
+        0
+      ],
+      "image": [
+        "12",
+        0
+      ]
+    },
+    "class_type": "ImageUpscaleWithModel"
+  },
+  "15": {
+    "inputs": {
+      "image": [
+        "14",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 1920,
+      "height": 1080,
+      "crop": "center"
+    },
+    "class_type": "ImageScale"
+  },
+  "16": {
+    "inputs": {
+      "images": [
+        "15",
+        0
+      ],
+      "filename_prefix": "editorial_collage/v1_standard"
+    },
+    "class_type": "SaveImage"
+  }
+}

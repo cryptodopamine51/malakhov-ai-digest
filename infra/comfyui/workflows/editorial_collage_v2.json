@@ -1,0 +1,166 @@
+{
+  "4": {
+    "inputs": {
+      "ckpt_name": "editorial_sdxl_collage.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple"
+  },
+  "5": {
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "clip": [
+        "4",
+        1
+      ],
+      "lora_name": "editorial_magazine_01.safetensors",
+      "strength_model": 0.8,
+      "strength_clip": 0.8
+    },
+    "class_type": "LoraLoader"
+  },
+  "6": {
+    "inputs": {
+      "model": [
+        "5",
+        0
+      ],
+      "clip": [
+        "5",
+        1
+      ],
+      "lora_name": "paper_collage_01.safetensors",
+      "strength_model": 0.6,
+      "strength_clip": 0.6
+    },
+    "class_type": "LoraLoader"
+  },
+  "7": {
+    "inputs": {
+      "text": "Create an original editorial conceptual photomontage for a premium AI news digest cover image, 16:9. Topic: media and journalism in the AI era. Core editorial angle: newsroom work is becoming a layered negotiation between documents, screens, and editorial judgment. Visual metaphor: a newsroom built from paper fragments and illuminated monitors. Keep one clear focal point, asymmetrical editorial balance, and strong magazine-cover tension. Preserve the major shapes from the reference layout while re-rendering the masked area.",
+      "clip": [
+        "6",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "8": {
+    "inputs": {
+      "text": "glowing orb, glowing neural sphere, floating dashboard tiles, centered business hero, browser-window stack, world map plus chip cliche, literal AI text, readable typography, watermark, logo, signature, deformed anatomy, broken perspective, glossy 3d render, symmetric layout, cheap neon cyberpunk",
+      "clip": [
+        "6",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "9": {
+    "inputs": {
+      "image": "layout_reference_rgba.png"
+    },
+    "class_type": "LoadImage"
+  },
+  "10": {
+    "inputs": {
+      "pixels": [
+        "9",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ],
+      "mask": [
+        "9",
+        1
+      ],
+      "grow_mask_by": 12
+    },
+    "class_type": "VAEEncodeForInpaint"
+  },
+  "11": {
+    "inputs": {
+      "model": [
+        "6",
+        0
+      ],
+      "seed": 41025,
+      "steps": 30,
+      "cfg": 6.0,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "positive": [
+        "7",
+        0
+      ],
+      "negative": [
+        "8",
+        0
+      ],
+      "latent_image": [
+        "10",
+        0
+      ],
+      "denoise": 0.65
+    },
+    "class_type": "KSampler"
+  },
+  "12": {
+    "inputs": {
+      "samples": [
+        "11",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ]
+    },
+    "class_type": "VAEDecode"
+  },
+  "13": {
+    "inputs": {
+      "model_name": "4x-UltraSharp.pth"
+    },
+    "class_type": "UpscaleModelLoader"
+  },
+  "14": {
+    "inputs": {
+      "upscale_model": [
+        "13",
+        0
+      ],
+      "image": [
+        "12",
+        0
+      ]
+    },
+    "class_type": "ImageUpscaleWithModel"
+  },
+  "15": {
+    "inputs": {
+      "image": [
+        "14",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 1920,
+      "height": 1080,
+      "crop": "center"
+    },
+    "class_type": "ImageScale"
+  },
+  "16": {
+    "inputs": {
+      "images": [
+        "15",
+        0
+      ],
+      "filename_prefix": "editorial_collage/v2_layout_control"
+    },
+    "class_type": "SaveImage"
+  }
+}
