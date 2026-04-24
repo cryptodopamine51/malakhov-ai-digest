@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react'
-import { notFound } from 'next/navigation'
+import { notFound, permanentRedirect } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 import type { Metadata } from 'next'
-import { getArticleBySlug, getAllSlugs, getRelatedArticles, resolveAnchorLinks } from '../../../lib/articles'
+import { getArticleBySlug, getRelatedArticles, resolveAnchorLinks } from '../../../lib/articles'
+import { getArticlePath, toPublicArticleSlug } from '../../../lib/article-slugs'
 import { formatRelativeTime } from '../../../lib/utils'
 import TopicBadge from '../../../src/components/TopicBadge'
 import ArticleCard from '../../../src/components/ArticleCard'
@@ -17,7 +18,7 @@ import {
   EditorialTimeline,
   EditorialPullQuote,
 } from '../../../src/components/EditorialBlocks'
-import type { Article } from '../../../lib/supabase'
+import { getPublicReadClient, type Article } from '../../../lib/supabase'
 
 export const revalidate = 3600
 
@@ -25,6 +26,7 @@ type AnchorLink = { anchor: string; slug: string; title: string }
 type InlineImage = { src: string; alt: string }
 type InlineTable = { headers: string[]; rows: string[][] }
 type InlineInsertions = Record<number, ReactNode[]>
+type ExtractedVideo = NonNullable<Article['article_videos']>[number]
 
 const SHOWCASE_SLUG = 'sequoia-sobrala-7-mlrd-na-novyy-fond-pochti-vdvoe-bolshe-pre-0dd089'
 
@@ -53,7 +55,7 @@ function renderBodyWithAnchors(body: string, anchors: AnchorLink[]): ReactNode[]
     return (
       <p key={i} className="mb-5">
         {before}
-        <Link href={`/articles/${assigned.slug}`} className="text-accent underline decoration-accent/40 hover:decoration-accent transition-colors">
+        <Link href={getArticlePath(assigned.slug)} className="text-accent underline decoration-accent/40 hover:decoration-accent transition-colors">
           {assigned.anchor}
         </Link>
         {after}
@@ -119,6 +121,47 @@ function renderInlineImage(image: InlineImage, sourceName: string, fallbackAlt: 
       />
       <figcaption className="px-4 py-2 text-xs text-muted">
         {image.alt} · <span className="opacity-60">Источник: {sourceName}</span>
+      </figcaption>
+    </figure>
+  )
+}
+
+function renderInlineVideo(video: ExtractedVideo, sourceName: string, key: string): ReactNode {
+  const title = video.title || 'Видео по теме'
+
+  if (video.provider === 'direct') {
+    return (
+      <figure key={key} className="mb-8 overflow-hidden rounded border border-line">
+        <video
+          className="w-full"
+          controls
+          preload="metadata"
+          poster={video.poster ?? undefined}
+        >
+          <source src={video.embedUrl} />
+        </video>
+        <figcaption className="px-4 py-2 text-xs text-muted">
+          {title} · <span className="opacity-60">Источник: {sourceName}</span>
+        </figcaption>
+      </figure>
+    )
+  }
+
+  return (
+    <figure key={key} className="mb-8">
+      <div className="relative aspect-video overflow-hidden rounded border border-line bg-surface">
+        <iframe
+          src={video.embedUrl}
+          title={title}
+          className="absolute inset-0 h-full w-full"
+          loading="lazy"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          referrerPolicy="strict-origin-when-cross-origin"
+          allowFullScreen
+        />
+      </div>
+      <figcaption className="px-1 pt-2 text-xs text-muted">
+        {title} · <span className="opacity-60">Источник: {sourceName}</span>
       </figcaption>
     </figure>
   )
@@ -278,25 +321,46 @@ function getEditorialShowcase(slug: string): {
 }
 
 export async function generateStaticParams() {
-  const slugs = await getAllSlugs()
-  return slugs.map((slug) => ({ slug }))
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+  const supabase = getPublicReadClient()
+  const { data, error } = await supabase
+    .from('articles')
+    .select('slug')
+    .eq('publish_status', 'live')
+    .eq('verified_live', true)
+    .not('slug', 'is', null)
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(300)
+
+  if (error) {
+    console.error('generateStaticParams articles error:', error.message)
+    return []
+  }
+
+  return (data ?? [])
+    .map((row: { slug: string | null }) => row.slug ? toPublicArticleSlug(row.slug) : null)
+    .filter((slug): slug is string => slug !== null)
+    .map((slug) => ({ slug }))
 }
 
 export async function generateMetadata({
   params,
 }: {
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }): Promise<Metadata> {
-  const article = await getArticleBySlug(params.slug)
+  const { slug } = await params
+  const article = await getArticleBySlug(slug)
   if (!article) return {}
 
   const title = article.ru_title ?? article.original_title
   const description = article.card_teaser ?? article.lead ?? undefined
+  const publicSlug = article.slug ? toPublicArticleSlug(article.slug) : slug
 
   return {
     title,
     description,
-    alternates: { canonical: `/articles/${params.slug}` },
+    alternates: { canonical: `/articles/${publicSlug}` },
     openGraph: {
       title,
       description,
@@ -311,10 +375,18 @@ export async function generateMetadata({
 export default async function ArticlePage({
   params,
 }: {
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }) {
-  const article = await getArticleBySlug(params.slug)
+  const { slug } = await params
+  const article = await getArticleBySlug(slug)
   if (!article || article.quality_ok !== true) notFound()
+  const publicSlug = article.slug ? toPublicArticleSlug(article.slug) : slug
+
+  if (slug !== publicSlug) {
+    permanentRedirect(`/articles/${publicSlug}`)
+  }
+
+  const inlineVideos = article.article_videos ?? []
 
   const [related, anchorLinks] = await Promise.all([
     getRelatedArticles(article.topics ?? [], article.id, 3),
@@ -329,6 +401,7 @@ export default async function ArticlePage({
   )
   const inlineTables = selectInlineTables(article.article_tables)
   const inlineImages = selectInlineImages(article.article_images)
+  const primaryVideo = inlineVideos[0] ?? null
   const showcase = getEditorialShowcase(article.slug ?? '')
   const autoPullQuote = getAutoPullQuote(article)
   const bodyContent = interleaveBodyMedia(
@@ -354,8 +427,15 @@ export default async function ArticlePage({
     datePublished: article.pub_date ?? article.created_at,
     dateModified: article.updated_at ?? article.pub_date ?? article.created_at,
     inLanguage: 'ru',
-    url: `${SITE_URL}/articles/${article.slug}`,
+    url: `${SITE_URL}/articles/${publicSlug}`,
     image: article.cover_image_url ?? `${SITE_URL}/og-default.png`,
+    video: primaryVideo ? {
+      '@type': 'VideoObject',
+      name: primaryVideo.title || title,
+      embedUrl: primaryVideo.embedUrl,
+      contentUrl: primaryVideo.sourceUrl,
+      thumbnailUrl: primaryVideo.poster ?? article.cover_image_url ?? undefined,
+    } : undefined,
     author: { '@type': 'Organization', name: 'Malakhov AI Дайджест', url: SITE_URL },
     publisher: {
       '@type': 'Organization',
@@ -374,10 +454,10 @@ export default async function ArticlePage({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
-      <article className="mx-auto max-w-4xl px-4 py-8 md:py-10">
+      <article className="mx-auto max-w-5xl px-4 py-8 md:py-10 lg:py-12">
 
         {/* Breadcrumb */}
-        <nav className="mb-6 flex items-center gap-2 text-sm text-muted">
+        <nav className="mb-6 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
           <Link href="/" className="transition-colors hover:text-ink">Главная</Link>
           <span>→</span>
           <span>{article.source_name}</span>
@@ -385,25 +465,25 @@ export default async function ArticlePage({
 
         {/* Cover image — полная ширина, вне сетки; источники с текстом в обложке пропускаем */}
         {article.cover_image_url && !SOURCES_WITH_TEXT_COVERS.has(article.source_name) && (
-          <div className="relative mb-8 w-full overflow-hidden rounded border border-line" style={{ maxHeight: 420 }}>
+          <div className="relative mb-10 w-full overflow-hidden rounded border border-line" style={{ maxHeight: 460 }}>
             <Image
               src={article.cover_image_url}
               alt={title}
               width={1200}
-              height={420}
+              height={460}
               className="w-full object-cover"
-              style={{ maxHeight: 420 }}
+              style={{ maxHeight: 460 }}
               priority
             />
           </div>
         )}
 
         {/* Двухколоночная сетка: sidebar + main */}
-        <div className="md:grid md:grid-cols-[200px_1fr] md:gap-12">
+        <div className="lg:grid lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-14">
 
           {/* Sidebar — только на десктопе */}
-          <aside className="hidden md:block">
-            <div className="sticky top-[88px] space-y-6 border-r border-line pr-8 pt-1">
+          <aside className="hidden lg:block">
+            <div className="sticky top-[88px] space-y-7 border-r border-line pr-8 pt-1">
 
               <div>
                 <p className="mb-1.5 font-serif text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
@@ -465,7 +545,7 @@ export default async function ArticlePage({
             </h1>
 
             {/* Мета — только на мобайле */}
-            <div className="mb-5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted md:hidden">
+            <div className="mb-6 flex flex-wrap items-center gap-x-2 gap-y-2 text-[13px] text-muted lg:hidden">
               <span>{article.source_name}</span>
               <span>·</span>
               <span>{time}</span>
@@ -477,13 +557,13 @@ export default async function ArticlePage({
             </div>
 
             {article.lead && (
-              <p className="mb-6 text-[18px] font-semibold leading-relaxed text-ink">
+              <p className="mb-8 max-w-3xl text-[18px] font-semibold leading-relaxed text-ink md:text-[19px]">
                 {article.lead}
               </p>
             )}
 
             {article.summary && article.summary.length > 0 && (
-              <section className="mb-4 rounded border border-line bg-surface p-5">
+              <section className="mb-8 max-w-3xl rounded border border-line bg-surface p-5 md:p-6">
                 <h3 className="mb-3 font-serif text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
                   Кратко
                 </h3>
@@ -498,8 +578,17 @@ export default async function ArticlePage({
               </section>
             )}
 
+            {primaryVideo && (
+              <section className="mb-8 max-w-3xl">
+                <div className="mb-3 font-serif text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
+                  Видео по теме
+                </div>
+                {renderInlineVideo(primaryVideo, article.source_name, 'primary-video')}
+              </section>
+            )}
+
             {article.glossary && article.glossary.length > 0 && (
-              <details className="group mb-8 rounded border border-line bg-surface">
+              <details className="group mb-10 max-w-3xl rounded border border-line bg-surface">
                 <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-sm font-semibold text-ink select-none [&::-webkit-details-marker]:hidden">
                   <span>
                     Глоссарий · {article.glossary.length}{' '}
@@ -522,7 +611,7 @@ export default async function ArticlePage({
 
             {showcase.preBody}
 
-            <div className="article-body mb-8">
+            <div className="article-body mb-10">
               {bodyContent}
             </div>
 
@@ -533,12 +622,12 @@ export default async function ArticlePage({
 
         {/* Related — вне сетки, полная ширина */}
         {related.length > 0 && (
-          <section className="mt-10 border-t border-line pt-8">
+          <section className="mt-14 border-t border-line pt-10">
             <p className="mb-1 font-serif text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
               По теме
             </p>
             <h3 className="mb-5 font-serif text-xl font-bold text-ink">Читать также</h3>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {related.map((rel) => (
                 <ArticleCard key={rel.id} article={rel} variant="related" />
               ))}

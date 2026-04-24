@@ -1,3 +1,21 @@
 {
-  "extends": ["next/core-web-vitals", "next/typescript"]
+  "extends": ["next/core-web-vitals", "next/typescript"],
+  "overrides": [
+    {
+      "files": ["app/**/*.ts", "app/**/*.tsx"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/pipeline/*", "../**/pipeline/*", "pipeline/*"],
+                "message": "app/** не может импортировать pipeline/*. Читать контент только из БД."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }
