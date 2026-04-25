@@ -227,7 +227,16 @@
 
 **Doc impact:** `ARTICLE_SYSTEM.md` (раздел Slug policy → URL policy), `OPERATIONS.md` (smoke-check).
 
-## 2.3. Пагинация в разделах
+## 2.3. Пагинация в разделах — DONE
+
+> Реализовано в ветке `codex/wave2-category-pagination` поверх PR #10.
+> Канонические доки обновлены: `docs/ARTICLE_SYSTEM.md` (рендер category pages),
+> `docs/DESIGN.md` (UI category list), `docs/OPERATIONS.md` (post-deploy smoke check).
+>
+> `getArticlesByCategoryPage` использует Supabase `.range()` и `count: exact`.
+> `/categories/[category]` и `/russia` принимают `?page=N`, показывают счётчик диапазона и
+> используют клиентскую кнопку «Показать ещё», которая догружает
+> `/api/categories/<category>/articles?page=N`, дописывает карточки и обновляет URL.
 
 **Диагностика — сделать в первую очередь:**
 1. Открыть `lib/articles.ts` и `app/topics/[slug]/page.tsx` (или его аналог после волны 2.2).

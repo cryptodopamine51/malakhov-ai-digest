@@ -1,10 +1,11 @@
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
-import { getArticlesByCategory } from '../../../lib/articles'
+import { CATEGORY_PAGE_SIZE, getArticlesByCategoryPage } from '../../../lib/articles'
 import { getCategoryMeta } from '../../../lib/category-meta'
 import { CATEGORY_SLUGS } from '../../../lib/categories'
-import ArticleCard from '../../../src/components/ArticleCard'
+import { getPaginationMeta, normalizePositivePage } from '../../../lib/pagination'
+import CategoryArticleList from '../../../src/components/CategoryArticleList'
 import TopicTabs from '../../../src/components/TopicTabs'
 
 export const revalidate = 300
@@ -175,14 +176,25 @@ export async function generateMetadata({
 
 export default async function CategoryPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ category: string }>
+  searchParams: Promise<{ page?: string }>
 }) {
   const { category } = await params
+  const resolvedSearchParams = await searchParams
+  const page = normalizePositivePage(resolvedSearchParams.page)
   const meta = getCategoryMeta(category)
   if (!meta) notFound()
 
-  const articles = await getArticlesByCategory(category, 24)
+  const { articles, total } = await getArticlesByCategoryPage(category, page, CATEGORY_PAGE_SIZE)
+  const pagination = getPaginationMeta(total, page, CATEGORY_PAGE_SIZE)
+
+  if (pagination.totalPages > 0 && page > pagination.totalPages) {
+    redirect(pagination.totalPages === 1
+      ? `/categories/${category}`
+      : `/categories/${category}?page=${pagination.totalPages}`)
+  }
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -223,24 +235,14 @@ export default async function CategoryPage({
 
         <TopicTabs activeHref={tabsActiveHref} className="mb-8" />
 
-        {articles.length === 0 ? (
-          <div className="py-20 text-center text-muted">
-            Статьи появятся совсем скоро
-          </div>
-        ) : (
-          <>
-            <div className="mb-4">
-              <ArticleCard article={articles[0]} variant="featured" />
-            </div>
-            {articles.length > 1 && (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {articles.slice(1).map((article) => (
-                  <ArticleCard key={article.id} article={article} variant="default" />
-                ))}
-              </div>
-            )}
-          </>
-        )}
+        <CategoryArticleList
+          category={category}
+          basePath={`/categories/${category}`}
+          initialArticles={articles}
+          total={total}
+          initialPage={page}
+          perPage={CATEGORY_PAGE_SIZE}
+        />
       </div>
     </>
   )

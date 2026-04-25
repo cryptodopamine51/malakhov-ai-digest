@@ -7,12 +7,14 @@
 
 import { getPublicReadClient, type Article } from './supabase'
 import { toPublicArticleSlug } from './article-slugs'
+import { normalizePositivePage } from './pagination'
 
 function client() {
   return getPublicReadClient()
 }
 
 const MOSCOW_TZ = 'Europe/Moscow'
+export const CATEGORY_PAGE_SIZE = 20
 
 function getMoscowDateKey(date = new Date()): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -131,9 +133,22 @@ export async function getArticlesByCategory(
   categorySlug: string,
   limit = 24
 ): Promise<Article[]> {
-  const { data, error } = await client()
+  const { articles } = await getArticlesByCategoryPage(categorySlug, 1, limit)
+  return articles
+}
+
+export async function getArticlesByCategoryPage(
+  categorySlug: string,
+  page = 1,
+  perPage = CATEGORY_PAGE_SIZE
+): Promise<{ articles: Article[]; total: number }> {
+  const safePage = normalizePositivePage(page)
+  const safePerPage = Math.max(1, Math.floor(perPage))
+  const offset = (safePage - 1) * safePerPage
+
+  const { data, error, count } = await client()
     .from('articles')
-    .select('*')
+    .select('*', { count: 'exact' })
     .eq('published', true)
     .eq('quality_ok', true)
     .eq('verified_live', true)
@@ -141,14 +156,17 @@ export async function getArticlesByCategory(
     .or(`primary_category.eq.${categorySlug},secondary_categories.cs.{${categorySlug}}`)
     .order('score', { ascending: false })
     .order('created_at', { ascending: false })
-    .limit(limit)
+    .range(offset, offset + safePerPage - 1)
 
   if (error) {
-    console.error('getArticlesByCategory error:', error.message)
-    return []
+    console.error('getArticlesByCategoryPage error:', error.message)
+    return { articles: [], total: 0 }
   }
 
-  return (data ?? []) as Article[]
+  return {
+    articles: (data ?? []) as Article[],
+    total: count ?? 0,
+  }
 }
 
 export async function getRussiaArticles(limit = 20): Promise<Article[]> {
