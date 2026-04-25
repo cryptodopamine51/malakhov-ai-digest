@@ -40,16 +40,12 @@ NEXT_PUBLIC_SITE_URL
 Для дополнительных функций:
 
 ```bash
+DEEPL_API_KEY
 TELEGRAM_BOT_TOKEN
 TELEGRAM_CHANNEL_ID
 TELEGRAM_ADMIN_CHAT_ID
 PUBLISH_VERIFY_SECRET
-HEALTH_TOKEN
 NEXT_PUBLIC_METRIKA_ID
-ANTHROPIC_BATCH_MAX_REQUESTS
-ANTHROPIC_BATCH_POLL_LIMIT
-ANTHROPIC_BATCH_APPLY_LIMIT
-OPENAI_API_KEY        # только для ручной DALL-E генерации cover images
 ```
 
 ## GitHub Actions
@@ -84,8 +80,7 @@ Operational правило:
 
 - ожидание результата Anthropic больше не должно зависеть от `articles.lease_expires_at`;
 - если статья уже handed off в batch ownership, источником истины становятся `anthropic_batch_items` и `anthropic_batches`.
-- provider `custom_id` для Anthropic batch должен оставаться не длиннее 64 символов; он кодирует только компактный `batch_item_id`, а полный article context хранится в `request_payload`.
-- collector ожидает production DB с RPC-сигнатурой после `007_article_videos.sql` и `012_fix_apply_duration_ms.sql`.
+- если код collector уже ожидает `article_videos`, а production DB ещё не получила `007_article_videos.sql`, collector должен оставаться backward-compatible и не ронять apply phase.
 - Claude cost observability не должна зависеть от парсинга stdout: structured usage/cost пишется в `llm_usage_logs`, `enrich_runs.total_*` и `anthropic_batches.total_*`.
 
 ## Deploy
@@ -151,12 +146,6 @@ Operational scripts и workflows отвечают за:
 - Production `public` tables работают с включённым RLS.
 - Публичное чтение разрешено только для live-статей через policy на `public.articles`.
 - Runtime и pipeline операции по служебным таблицам должны идти через `SUPABASE_SERVICE_KEY`, а не через anon client.
-
-## Health endpoint
-
-- `GET /api/health?token=<HEALTH_TOKEN>` отдаёт read-only operational snapshot.
-- Без `HEALTH_TOKEN` endpoint отвечает `401`.
-- Не использовать публично: маршрут читает operational tables через service role.
 
 ## Documentation Guard
 
