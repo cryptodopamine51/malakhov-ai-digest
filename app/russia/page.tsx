@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
-import { getRussiaArticles } from '../../lib/articles'
-import ArticleCard from '../../src/components/ArticleCard'
+import { redirect } from 'next/navigation'
+import { CATEGORY_PAGE_SIZE, getArticlesByCategoryPage } from '../../lib/articles'
+import { getPaginationMeta, normalizePositivePage } from '../../lib/pagination'
+import CategoryArticleList from '../../src/components/CategoryArticleList'
 import TopicTabs from '../../src/components/TopicTabs'
 
 export const revalidate = 300
@@ -27,8 +29,19 @@ const jsonLd = {
   publisher: { '@type': 'Organization', name: 'Malakhov AI Дайджест', url: SITE_URL },
 }
 
-export default async function RussiaPage() {
-  const articles = await getRussiaArticles(30)
+export default async function RussiaPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>
+}) {
+  const resolvedSearchParams = await searchParams
+  const page = normalizePositivePage(resolvedSearchParams.page)
+  const { articles, total } = await getArticlesByCategoryPage('ai-russia', page, CATEGORY_PAGE_SIZE)
+  const pagination = getPaginationMeta(total, page, CATEGORY_PAGE_SIZE)
+
+  if (pagination.totalPages > 0 && page > pagination.totalPages) {
+    redirect(pagination.totalPages === 1 ? '/russia' : `/russia?page=${pagination.totalPages}`)
+  }
 
   return (
     <>
@@ -75,24 +88,14 @@ export default async function RussiaPage() {
 
         <TopicTabs activeHref="/russia" className="mb-8" />
 
-        {articles.length === 0 ? (
-          <div className="py-20 text-center text-muted">
-            Статьи появятся совсем скоро
-          </div>
-        ) : (
-          <>
-            <div className="mb-4">
-              <ArticleCard article={articles[0]} variant="featured" />
-            </div>
-            {articles.length > 1 && (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                {articles.slice(1).map((article) => (
-                  <ArticleCard key={article.id} article={article} variant="default" />
-                ))}
-              </div>
-            )}
-          </>
-        )}
+        <CategoryArticleList
+          category="ai-russia"
+          basePath="/russia"
+          initialArticles={articles}
+          total={total}
+          initialPage={page}
+          perPage={CATEGORY_PAGE_SIZE}
+        />
 
       </div>
     </>
