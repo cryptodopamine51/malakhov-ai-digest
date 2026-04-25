@@ -19,7 +19,7 @@ export async function GET() {
   const client = getServerClient()
   const { data, error } = await client
     .from('articles')
-    .select('slug, ru_title, original_title, lead, card_teaser, source_name, topics, pub_date, created_at, updated_at')
+    .select('slug, ru_title, original_title, lead, card_teaser, source_name, topics, primary_category, pub_date, created_at, updated_at')
     .eq('published', true)
     .eq('quality_ok', true)
     .eq('verified_live', true)
@@ -35,7 +35,7 @@ export async function GET() {
 
   const items = (data ?? []).map((article) => {
     const title = article.ru_title ?? article.original_title ?? 'Без названия'
-    const articleUrl = getArticleUrl(SITE_URL, article.slug as string)
+    const articleUrl = getArticleUrl(SITE_URL, article.slug as string, article.primary_category as string | null)
     const pubDate = new Date(article.pub_date ?? article.created_at).toUTCString()
     const teaser = article.card_teaser ?? article.lead ?? ''
     const source = article.source_name ? `Источник: ${article.source_name}. ` : ''

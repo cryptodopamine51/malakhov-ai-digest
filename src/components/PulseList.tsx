@@ -21,7 +21,7 @@ export default function PulseList({ articles }: PulseListProps) {
 }
 
 function PulseListItem({ article }: { article: Article }) {
-  const href = article.slug ? getArticlePath(article.slug) : '#'
+  const href = article.slug ? getArticlePath(article.slug, article.primary_category) : '#'
   const title = article.ru_title ?? article.original_title
   const topic = (article.topics ?? [])[0]
   const date = article.pub_date ?? article.created_at

@@ -16,6 +16,7 @@ config({ path: resolve(process.cwd(), '.env.local') })
 import { createClient } from '@supabase/supabase-js'
 import { generateImagePrompt } from './image-director'
 import { generateAndStoreImage } from './image-generator'
+import { getArticleUrl } from '../lib/article-slugs'
 
 // Лимит по умолчанию — 3 статьи для теста
 const DEFAULT_LIMIT = 3
@@ -27,6 +28,7 @@ interface ArticleRow {
   ru_text: string | null
   editorial_body: string | null
   topics: string[] | null
+  primary_category: string | null
   cover_image_url: string | null
 }
 
@@ -48,7 +50,7 @@ async function main() {
   // без картинки или с habr.com/share/ (битые sharing-ссылки)
   const { data: articles, error } = await supabase
     .from('articles')
-    .select('id, slug, ru_title, ru_text, editorial_body, topics, cover_image_url')
+    .select('id, slug, ru_title, ru_text, editorial_body, topics, primary_category, cover_image_url')
     .eq('published', true)
     .eq('quality_ok', true)
     .not('slug', 'is', null)
@@ -95,7 +97,7 @@ async function main() {
 
       if (updateError) throw updateError
 
-      const articleUrl = `${SITE_URL}/articles/${article.slug}`
+      const articleUrl = getArticleUrl(SITE_URL, article.slug, article.primary_category)
       results.push({ title: article.ru_title, url: articleUrl, imageUrl: publicUrl })
       console.log(`   ✓ Done: ${articleUrl}\n`)
 

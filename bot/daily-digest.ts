@@ -138,9 +138,13 @@ async function sendTelegramMessage(
 
 // ── Проверка доступности ──────────────────────────────────────────────────────
 
-async function isArticleLive(siteUrl: string, slug: string): Promise<boolean> {
+async function isArticleLive(
+  siteUrl: string,
+  slug: string,
+  primaryCategory: string | null,
+): Promise<boolean> {
   try {
-    const res = await fetch(getArticleUrl(siteUrl, slug), {
+    const res = await fetch(getArticleUrl(siteUrl, slug, primaryCategory), {
       method: 'HEAD',
       signal: AbortSignal.timeout(5_000),
     })
@@ -154,7 +158,7 @@ async function filterLiveArticles(articles: Article[], siteUrl: string): Promise
   const results = await Promise.all(
     articles.map(async (article) => {
       if (!article.slug) return null
-      const live = await isArticleLive(siteUrl, article.slug)
+      const live = await isArticleLive(siteUrl, article.slug, article.primary_category)
       if (!live) log(`⚠ Страница недоступна, пропускаем: ${article.slug}`)
       return live ? article : null
     })
@@ -164,8 +168,14 @@ async function filterLiveArticles(articles: Article[], siteUrl: string): Promise
 
 // ── UTM-ссылки ────────────────────────────────────────────────────────────────
 
-function articleUrl(siteUrl: string, slug: string, position: number, date: string): string {
-  return `${getArticleUrl(siteUrl, slug)}?utm_source=tg&utm_medium=digest&utm_campaign=daily_${date}&utm_content=${position}`
+function articleUrl(
+  siteUrl: string,
+  slug: string,
+  primaryCategory: string | null,
+  position: number,
+  date: string,
+): string {
+  return `${getArticleUrl(siteUrl, slug, primaryCategory)}?utm_source=tg&utm_medium=digest&utm_campaign=daily_${date}&utm_content=${position}`
 }
 
 // ── Формирование текста дайджеста ─────────────────────────────────────────────
@@ -188,7 +198,7 @@ function buildDigestText(
     const pos = idx + 1
     const title = escapeHtml(article.ru_title ?? article.original_title)
     const teaser = escapeHtml(article.tg_teaser ?? '')
-    const url = articleUrl(siteUrl, article.slug!, pos, dateUtm)
+    const url = articleUrl(siteUrl, article.slug!, article.primary_category, pos, dateUtm)
 
     lines.push(`<b>${pos}. ${title}</b>`)
     if (teaser) lines.push(teaser)

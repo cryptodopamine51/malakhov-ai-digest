@@ -191,7 +191,15 @@
 
 **Doc impact:** `ARTICLE_SYSTEM.md` (раздел Editorial fields), `ARCHITECTURE.md` (data contracts), `DECISIONS.md` (новый ADR — переход на primary + secondary).
 
-## 2.2. Новые URL и редиректы
+## 2.2. Новые URL и редиректы — DONE
+
+> Реализовано в ветке `wave2-urls-redirects` поверх 2.1.
+> Канонические доки обновлены: `docs/ARTICLE_SYSTEM.md` (раздел URL policy + Связанные поверхности),
+> `docs/OPERATIONS.md` (Post-deploy smoke check), `docs/DECISIONS.md` (ADR-007).
+>
+> Новые маршруты: `app/categories/[category]/page.tsx` и `app/categories/[category]/[slug]/page.tsx`.
+> Legacy `app/articles/[slug]/page.tsx` и `app/topics/[topic]/page.tsx` превращены в 308-редиректы.
+> Centralized URL builder — `lib/article-slugs.ts::getArticlePath(slug, primaryCategory)`.
 
 **Новая URL-структура:**
 - `/categories/[category-slug]` — лента категории.
