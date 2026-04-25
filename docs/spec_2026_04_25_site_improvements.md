@@ -266,7 +266,16 @@
 
 **Doc impact:** `ARTICLE_SYSTEM.md` (раздел про рендер списков), `OPERATIONS.md` (smoke-check).
 
-## 2.4. SEO-разделение malakhovai.ru и news.malakhovai.ru
+## 2.4. SEO-разделение malakhovai.ru и news.malakhovai.ru — DONE
+
+> Реализовано в ветке `codex/wave2-news-domain-seo` поверх PR #11.
+> Канонические доки обновлены: `docs/PROJECT.md` (домены и SEO-границы),
+> `docs/OPERATIONS.md` (deploy + smoke-check).
+>
+> `lib/site.ts` фиксирует production news-домен. `robots.txt` запрещает `/demo/`,
+> `/internal/`, `/api/`, `/_next/` и указывает sitemap/Host на `news.malakhovai.ru`.
+> Sitemap, RSS и `llms.txt` больше не зависят от `NEXT_PUBLIC_SITE_URL`.
+> Публичные страницы получили явные canonical / `og:url` / `twitter:url` на news-домене.
 
 **Контекст:** на главном домене лендинг про Ивана/проекты, на news — поддомен новостей. Дубликатов контента нет, но настроек, явно разделяющих SEO, скорее всего тоже нет.
 

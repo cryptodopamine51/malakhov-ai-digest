@@ -1,4 +1,4 @@
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://news.malakhovai.ru').replace(/\/$/, '')
+import { SITE_URL } from '../../lib/site'
 
 export async function GET() {
   const content = [

@@ -3,6 +3,7 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import { getArticlesByDate } from '../../../lib/articles'
 import { formatMoscowDate, getMoscowDateKey, shiftMoscowDateKey, pluralize } from '../../../lib/utils'
+import { absoluteUrl } from '../../../lib/site'
 import ArticleCard from '../../../src/components/ArticleCard'
 
 export const revalidate = 3600
@@ -24,6 +25,16 @@ export async function generateMetadata({
   return {
     title: `AI новости за ${formatted}`,
     description: `Все материалы об искусственном интеллекте за ${formatted} на Malakhov AI Дайджест.`,
+    alternates: { canonical: `/archive/${date}` },
+    openGraph: {
+      title: `AI новости за ${formatted}`,
+      description: `Все материалы об искусственном интеллекте за ${formatted} на Malakhov AI Дайджест.`,
+      type: 'website',
+      url: absoluteUrl(`/archive/${date}`),
+    },
+    other: {
+      'twitter:url': absoluteUrl(`/archive/${date}`),
+    },
   }
 }
 

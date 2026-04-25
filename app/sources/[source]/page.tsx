@@ -3,6 +3,7 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import { getSourceNameBySlug, getAllSourceSlugs, getArticlesBySource } from '../../../lib/articles'
 import { pluralize } from '../../../lib/utils'
+import { absoluteUrl } from '../../../lib/site'
 import ArticleCard from '../../../src/components/ArticleCard'
 
 export const revalidate = 3600
@@ -22,6 +23,16 @@ export async function generateMetadata({
   return {
     title: `${name} — источник`,
     description: `Все материалы из источника ${name} на Malakhov AI Дайджест.`,
+    alternates: { canonical: `/sources/${source}` },
+    openGraph: {
+      title: `${name} — источник`,
+      description: `Все материалы из источника ${name} на Malakhov AI Дайджест.`,
+      type: 'website',
+      url: absoluteUrl(`/sources/${source}`),
+    },
+    other: {
+      'twitter:url': absoluteUrl(`/sources/${source}`),
+    },
   }
 }
 

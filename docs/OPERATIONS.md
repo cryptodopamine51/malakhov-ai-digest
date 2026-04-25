@@ -87,6 +87,12 @@ Operational правило:
 
 - Runtime сайта: Vercel.
 - Production domain: `https://news.malakhovai.ru`.
+- News-домен должен быть отдельным property в Яндекс.Вебмастере и Google Search Console.
+- Sitemap для индексации: `https://news.malakhovai.ru/sitemap.xml`.
+- `robots.txt` news-сайта разрешает публичные страницы и запрещает `/demo/`, `/internal/`,
+  `/api/`, `/_next/`. `Host` и `Sitemap` указывают только на `news.malakhovai.ru`.
+- Yandex Metrika / Google Analytics для news должны быть отдельными счётчиками от лендинга
+  `malakhovai.ru`.
 - Перед production deploy локально желательно проверить `npm run build`.
 - После значимых изменений article-system или routing обязателен smoke-check живого сайта.
 
@@ -105,7 +111,11 @@ Operational правило:
    кнопка скрывается.
 8. Если меняли media/video logic, на live-странице корректно рендерится media block.
 9. RSS (`/rss.xml`) и `llms.txt` отдают новые URL.
-10. Cookie-баннер показывается в инкогнито. Выбор «Только необходимые» — Яндекс Метрика
+10. `robots.txt` содержит `Host: news.malakhovai.ru`, sitemap на news-домене и запреты
+    `/internal/`, `/api/`, `/_next/`.
+11. Canonical и `og:url` на главной, категории, статье, источниках и архиве начинаются с
+    `https://news.malakhovai.ru`.
+12. Cookie-баннер показывается в инкогнито. Выбор «Только необходимые» — Яндекс Метрика
    не появляется в Network. Выбор «Принять все» — `mc.yandex.ru/metrika/tag.js` грузится.
 
 ## Аналитика (Яндекс Метрика) и согласие

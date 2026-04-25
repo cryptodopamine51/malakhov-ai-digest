@@ -1,11 +1,22 @@
 import type { Metadata } from 'next'
 import RevokeConsentButton from '../../src/components/RevokeConsentButton'
+import { absoluteUrl } from '../../lib/site'
 
 export const metadata: Metadata = {
   title: 'Отзыв согласия на обработку cookies и персональных данных',
   description:
     'Как отозвать согласие на использование cookies и обработку персональных данных на news.malakhovai.ru.',
   alternates: { canonical: '/consent' },
+  openGraph: {
+    title: 'Отзыв согласия на обработку cookies и персональных данных',
+    description:
+      'Как отозвать согласие на использование cookies и обработку персональных данных на news.malakhovai.ru.',
+    type: 'website',
+    url: absoluteUrl('/consent'),
+  },
+  other: {
+    'twitter:url': absoluteUrl('/consent'),
+  },
   robots: { index: true, follow: true },
 }
 

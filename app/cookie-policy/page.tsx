@@ -1,10 +1,21 @@
 import type { Metadata } from 'next'
+import { absoluteUrl } from '../../lib/site'
 
 export const metadata: Metadata = {
   title: 'Политика использования cookies',
   description:
     'Какие категории cookies использует news.malakhovai.ru, как они помогают сайту работать и как ими управлять.',
   alternates: { canonical: '/cookie-policy' },
+  openGraph: {
+    title: 'Политика использования cookies',
+    description:
+      'Какие категории cookies использует news.malakhovai.ru, как они помогают сайту работать и как ими управлять.',
+    type: 'website',
+    url: absoluteUrl('/cookie-policy'),
+  },
+  other: {
+    'twitter:url': absoluteUrl('/cookie-policy'),
+  },
   robots: { index: true, follow: true },
 }
 
