@@ -5,6 +5,12 @@ const NAV_MAIN = [
   { href: '/sources', label: 'Источники' },
 ]
 
+const NAV_LEGAL = [
+  { href: '/privacy-policy', label: 'Политика персональных данных' },
+  { href: '/cookie-policy',  label: 'Политика cookies' },
+  { href: '/consent',        label: 'Отзыв согласия' },
+]
+
 const NAV_TOPICS = [
   { href: '/topics/ai-industry',    label: 'Индустрия' },
   { href: '/topics/ai-research',    label: 'Исследования' },
@@ -75,7 +81,20 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="mt-10 border-t border-white/10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-white/30">
+        <nav className="mt-10 border-t border-white/10 pt-6">
+          <p className="text-white/40 text-[10px] uppercase tracking-[0.1em] mb-3">Документы</p>
+          <ul className="flex flex-wrap gap-x-5 gap-y-2 text-xs">
+            {NAV_LEGAL.map((l) => (
+              <li key={l.href}>
+                <Link href={l.href} className="text-white/60 hover:text-white transition-colors">
+                  {l.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        <div className="mt-6 border-t border-white/10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-white/30">
           <span>© 2024–2026 news.malakhovai.ru</span>
           <span>Все материалы переработаны редакцией</span>
         </div>
