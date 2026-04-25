@@ -3,7 +3,8 @@ import { Onest, Golos_Text, IBM_Plex_Mono } from 'next/font/google'
 import './globals.css'
 import Header from '../src/components/Header'
 import Footer from '../src/components/Footer'
-import MetrikaGate from '../src/components/MetrikaGate'
+import Analytics from '../src/components/Analytics'
+import ConsentManager from '../src/components/ConsentManager'
 
 const onest = Onest({
   subsets: ['latin', 'cyrillic'],
@@ -117,7 +118,8 @@ export default function RootLayout({
         <Header />
         <main className="flex-1">{children}</main>
         <Footer />
-        {METRIKA_ID && <MetrikaGate id={METRIKA_ID} />}
+        <ConsentManager />
+        {METRIKA_ID && <Analytics metrikaId={METRIKA_ID} />}
       </body>
     </html>
   )

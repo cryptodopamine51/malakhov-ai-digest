@@ -28,6 +28,7 @@ Malakhov AI Digest — русскоязычное AI-медиа, которое 
 | Topic pages `/topics/[topic]` | тематические ленты и SEO-кластеры |
 | Источники `/sources` и `/sources/[source]` | доверие, навигация по origins |
 | Архив `/archive/[date]` | доступ к историческим подборкам |
+| `/privacy-policy`, `/cookie-policy`, `/consent` | юридический контур по 152-ФЗ: политика ПД, политика cookies, отзыв согласия |
 | Telegram digest | возврат аудитории и daily delivery |
 
 ## Что обязательно для продукта

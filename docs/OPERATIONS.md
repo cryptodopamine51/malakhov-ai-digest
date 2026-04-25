@@ -40,12 +40,16 @@ NEXT_PUBLIC_SITE_URL
 Для дополнительных функций:
 
 ```bash
-DEEPL_API_KEY
 TELEGRAM_BOT_TOKEN
 TELEGRAM_CHANNEL_ID
 TELEGRAM_ADMIN_CHAT_ID
 PUBLISH_VERIFY_SECRET
+HEALTH_TOKEN
 NEXT_PUBLIC_METRIKA_ID
+ANTHROPIC_BATCH_MAX_REQUESTS
+ANTHROPIC_BATCH_POLL_LIMIT
+ANTHROPIC_BATCH_APPLY_LIMIT
+OPENAI_API_KEY        # только для ручной DALL-E генерации cover images
 ```
 
 ## GitHub Actions
@@ -80,7 +84,8 @@ Operational правило:
 
 - ожидание результата Anthropic больше не должно зависеть от `articles.lease_expires_at`;
 - если статья уже handed off в batch ownership, источником истины становятся `anthropic_batch_items` и `anthropic_batches`.
-- если код collector уже ожидает `article_videos`, а production DB ещё не получила `007_article_videos.sql`, collector должен оставаться backward-compatible и не ронять apply phase.
+- provider `custom_id` для Anthropic batch должен оставаться не длиннее 64 символов; он кодирует только компактный `batch_item_id`, а полный article context хранится в `request_payload`.
+- collector ожидает production DB с RPC-сигнатурой после `007_article_videos.sql` и `012_fix_apply_duration_ms.sql`.
 - Claude cost observability не должна зависеть от парсинга stdout: structured usage/cost пишется в `llm_usage_logs`, `enrich_runs.total_*` и `anthropic_batches.total_*`.
 
 ## Deploy
@@ -100,6 +105,20 @@ Operational правило:
 4. Sitemap собирается.
 5. Если меняли slug logic, legacy URL редиректит на clean URL.
 6. Если меняли media/video logic, на live-странице корректно рендерится media block.
+7. Cookie-баннер показывается в инкогнито. Выбор «Только необходимые» — Яндекс Метрика
+   не появляется в Network. Выбор «Принять все» — `mc.yandex.ru/metrika/tag.js` грузится.
+
+## Аналитика (Яндекс Метрика) и согласие
+
+Метрика загружается только после явного согласия пользователя на аналитические cookies.
+
+- Решение хранится в `localStorage.consent_v1` (см. `lib/consent.ts`).
+- Скрипт инжектится `src/components/Analytics.tsx` через `next/script` `strategy="lazyOnload"`,
+  только если в согласии `categories.analytics === true`.
+- ID счётчика берётся из `NEXT_PUBLIC_METRIKA_ID`; без переменной аналитика выключена даже
+  при наличии согласия (deploy без секрета не должен внезапно начать слать события).
+- При смене политики безопасно бамкать ключ: `consent_v1` → `consent_v2`. Старое решение
+  будет проигнорировано, баннер появится у всех заново.
 
 ## Recovery и monitoring
 
@@ -132,6 +151,12 @@ Operational scripts и workflows отвечают за:
 - Production `public` tables работают с включённым RLS.
 - Публичное чтение разрешено только для live-статей через policy на `public.articles`.
 - Runtime и pipeline операции по служебным таблицам должны идти через `SUPABASE_SERVICE_KEY`, а не через anon client.
+
+## Health endpoint
+
+- `GET /api/health?token=<HEALTH_TOKEN>` отдаёт read-only operational snapshot.
+- Без `HEALTH_TOKEN` endpoint отвечает `401`.
+- Не использовать публично: маршрут читает operational tables через service role.
 
 ## Documentation Guard
 
