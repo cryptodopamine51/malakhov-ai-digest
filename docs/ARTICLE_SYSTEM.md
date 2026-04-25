@@ -87,6 +87,11 @@ Batch-specific lifecycle не хранится в `articles.enrich_status`.
 
 Cover image берётся из исходника, если доступна.
 
+Для выбора production fallback-стратегии существует неиндексируемая лаборатория `/demo/image-lab`.
+Она сравнивает пять направлений обложек для статей без хорошей картинки: source image, stock editorial treatment,
+local SVG/editorial template, cover bank и AI budget cover. Это визуальный тест, а не production pipeline:
+страницы статей и карточки по-прежнему читают `cover_image_url` из `articles`.
+
 ### Inline images and tables
 
 Fetcher вытаскивает релевантные inline images и таблицы из оригинального HTML и сохраняет их в structured fields статьи.
