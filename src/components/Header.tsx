@@ -7,14 +7,14 @@ import { cn } from '../../lib/utils'
 import ThemeToggle from './ThemeToggle'
 
 const NAV_LINKS = [
-  { href: '/',                      label: 'Главная' },
-  { href: '/topics/ai-industry',    label: 'Индустрия' },
-  { href: '/topics/ai-research',    label: 'Исследования' },
-  { href: '/topics/ai-labs',        label: 'Лаборатории' },
-  { href: '/topics/ai-investments', label: 'Инвестиции' },
-  { href: '/topics/ai-startups',    label: 'Стартапы' },
-  { href: '/russia',                label: 'Россия' },
-  { href: '/topics/coding',         label: 'Код' },
+  { href: '/',                          label: 'Главная' },
+  { href: '/categories/ai-industry',    label: 'Индустрия' },
+  { href: '/categories/ai-research',    label: 'Исследования' },
+  { href: '/categories/ai-labs',        label: 'Лаборатории' },
+  { href: '/categories/ai-investments', label: 'Инвестиции' },
+  { href: '/categories/ai-startups',    label: 'Стартапы' },
+  { href: '/russia',                    label: 'Россия' },
+  { href: '/categories/coding',         label: 'Код' },
 ]
 
 export default function Header() {

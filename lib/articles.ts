@@ -120,8 +120,39 @@ export async function getArticlesByTopic(topic: string, limit = 20): Promise<Art
   return (data ?? []) as Article[]
 }
 
+/**
+ * Лента раздела по новой модели категорий (волна 2.1).
+ * Включает статьи, у которых раздел указан как primary_category ИЛИ как один из
+ * элементов secondary_categories — спека волны 2.1 говорит, что secondary
+ * нужны именно для попадания в смежные ленты, при этом canonical всё равно
+ * строится по primary.
+ */
+export async function getArticlesByCategory(
+  categorySlug: string,
+  limit = 24
+): Promise<Article[]> {
+  const { data, error } = await client()
+    .from('articles')
+    .select('*')
+    .eq('published', true)
+    .eq('quality_ok', true)
+    .eq('verified_live', true)
+    .eq('publish_status', 'live')
+    .or(`primary_category.eq.${categorySlug},secondary_categories.cs.{${categorySlug}}`)
+    .order('score', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (error) {
+    console.error('getArticlesByCategory error:', error.message)
+    return []
+  }
+
+  return (data ?? []) as Article[]
+}
+
 export async function getRussiaArticles(limit = 20): Promise<Article[]> {
-  return getArticlesByTopic('ai-russia', limit)
+  return getArticlesByCategory('ai-russia', limit)
 }
 
 export async function getAllSlugs(): Promise<string[]> {
@@ -298,11 +329,11 @@ export async function getArticlesFeed(page = 1, perPage = 12): Promise<{ article
 }
 
 export async function getRelatedArticles(
-  topics: string[],
+  primaryCategory: string,
   excludeId: string,
   limit = 3
 ): Promise<Article[]> {
-  if (!topics.length) return []
+  if (!primaryCategory) return []
 
   const { data, error } = await client()
     .from('articles')
@@ -311,7 +342,7 @@ export async function getRelatedArticles(
     .eq('quality_ok', true)
     .eq('verified_live', true)
     .eq('publish_status', 'live')
-    .contains('topics', [topics[0]])
+    .eq('primary_category', primaryCategory)
     .neq('id', excludeId)
     .order('score', { ascending: false })
     .limit(limit)
@@ -419,14 +450,14 @@ export async function getArticlesByDate(date: string): Promise<Article[]> {
 export async function resolveAnchorLinks(
   anchors: string[],
   excludeId: string
-): Promise<{ anchor: string; slug: string; title: string }[]> {
+): Promise<{ anchor: string; slug: string; primaryCategory: string; title: string }[]> {
   if (!anchors.length) return []
 
   const queries = anchors.slice(0, 3).map((anchor) => {
     const searchTerm = anchor.toLowerCase().split(/\s+/).slice(0, 4).join(' ')
     return client()
       .from('articles')
-      .select('slug, ru_title, original_title')
+      .select('slug, primary_category, ru_title, original_title')
       .eq('published', true)
       .eq('quality_ok', true)
       .eq('verified_live', true)
@@ -444,6 +475,7 @@ export async function resolveAnchorLinks(
     .map(({ anchor, data }) => ({
       anchor,
       slug: toPublicArticleSlug(data![0].slug as string),
+      primaryCategory: (data![0].primary_category as string | null) ?? '',
       title: (data![0].ru_title ?? data![0].original_title ?? '') as string,
     }))
 }
@@ -467,10 +499,12 @@ export async function getSourceNameBySlug(slug: string): Promise<string | null> 
   return match?.source_name ?? null
 }
 
-export async function getAllArticlesForSitemap(): Promise<{ slug: string; updated_at: string }[]> {
+export async function getAllArticlesForSitemap(): Promise<
+  { slug: string; primaryCategory: string; updated_at: string }[]
+> {
   const { data, error } = await client()
     .from('articles')
-    .select('slug, updated_at')
+    .select('slug, primary_category, updated_at')
     .eq('published', true)
     .eq('quality_ok', true)
     .eq('verified_live', true)
@@ -483,15 +517,22 @@ export async function getAllArticlesForSitemap(): Promise<{ slug: string; update
     return []
   }
 
-  const unique = new Map<string, string>()
+  const unique = new Map<string, { primaryCategory: string; updated_at: string }>()
 
   for (const row of data ?? []) {
     if (!row.slug) continue
     const publicSlug = toPublicArticleSlug(row.slug)
     if (!unique.has(publicSlug)) {
-      unique.set(publicSlug, row.updated_at)
+      unique.set(publicSlug, {
+        primaryCategory: (row.primary_category as string | null) ?? '',
+        updated_at: row.updated_at as string,
+      })
     }
   }
 
-  return Array.from(unique.entries()).map(([slug, updated_at]) => ({ slug, updated_at }))
+  return Array.from(unique.entries()).map(([slug, info]) => ({
+    slug,
+    primaryCategory: info.primaryCategory,
+    updated_at: info.updated_at,
+  }))
 }

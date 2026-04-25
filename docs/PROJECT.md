@@ -24,8 +24,9 @@ Malakhov AI Digest — русскоязычное AI-медиа, которое 
 | Поверхность | Роль |
 |---|---|
 | Главная `/` | первое касание, «пульс дня» (свежие заголовки + горячая статья) и общая лента |
-| Страница статьи `/articles/[slug]` | основная SEO и editorial surface |
-| Topic pages `/topics/[topic]` | тематические ленты и SEO-кластеры |
+| Страница статьи `/categories/[category]/[slug]` | основная SEO и editorial surface |
+| Category pages `/categories/[category]` и `/russia` | тематические ленты и SEO-кластеры |
+| Legacy `/articles/[slug]` и `/topics/[topic]` | только 308-редирект на канонический URL (волна 2.2) |
 | Источники `/sources` и `/sources/[source]` | доверие, навигация по origins |
 | Архив `/archive/[date]` | доступ к историческим подборкам |
 | `/privacy-policy`, `/cookie-policy`, `/consent` | юридический контур по 152-ФЗ: политика ПД, политика cookies, отзыв согласия |

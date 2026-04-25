@@ -31,9 +31,10 @@ function log(msg: string): void {
 async function checkLive(
   siteUrl: string,
   slug: string,
+  primaryCategory: string | null,
   candidateKind: ReturnType<typeof getVerifyCandidateKind>,
 ): Promise<{ ok: boolean; status: number | null; error: string | null }> {
-  const url = `${buildVerifyUrl(siteUrl, slug, candidateKind)}?v=${Date.now()}`
+  const url = `${buildVerifyUrl(siteUrl, slug, primaryCategory, candidateKind)}?v=${Date.now()}`
   try {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), VERIFY_TIMEOUT_MS)
@@ -62,7 +63,7 @@ async function verifyChunk(articles: Article[], siteUrl: string): Promise<CheckR
     articles.map(async (article) => {
       if (!article.slug) return { article, ok: false, status: null, error: 'no slug' }
       const candidateKind = getVerifyCandidateKind(article)
-      const { ok, status, error } = await checkLive(siteUrl, article.slug, candidateKind)
+      const { ok, status, error } = await checkLive(siteUrl, article.slug, article.primary_category, candidateKind)
       return { article, ok, status, error }
     })
   )

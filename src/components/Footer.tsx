@@ -12,13 +12,13 @@ const NAV_LEGAL = [
 ]
 
 const NAV_TOPICS = [
-  { href: '/topics/ai-industry',    label: 'Индустрия' },
-  { href: '/topics/ai-research',    label: 'Исследования' },
-  { href: '/topics/ai-labs',        label: 'Лаборатории' },
-  { href: '/topics/ai-investments', label: 'Инвестиции' },
-  { href: '/topics/ai-startups',    label: 'Стартапы' },
-  { href: '/russia',                label: 'Россия' },
-  { href: '/topics/coding',         label: 'Код' },
+  { href: '/categories/ai-industry',    label: 'Индустрия' },
+  { href: '/categories/ai-research',    label: 'Исследования' },
+  { href: '/categories/ai-labs',        label: 'Лаборатории' },
+  { href: '/categories/ai-investments', label: 'Инвестиции' },
+  { href: '/categories/ai-startups',    label: 'Стартапы' },
+  { href: '/russia',                    label: 'Россия' },
+  { href: '/categories/coding',         label: 'Код' },
 ]
 
 export default function Footer() {

@@ -95,12 +95,14 @@ Operational правило:
 Минимальный smoke-check:
 
 1. Открывается главная.
-2. Открывается хотя бы одна свежая статья.
-3. Canonical URL корректный.
-4. Sitemap собирается.
-5. Если меняли slug logic, legacy URL редиректит на clean URL.
-6. Если меняли media/video logic, на live-странице корректно рендерится media block.
-7. Cookie-баннер показывается в инкогнито. Выбор «Только необходимые» — Яндекс Метрика
+2. Открывается хотя бы одна свежая статья по новому URL `/categories/<primary>/<slug>`.
+3. Canonical URL на странице статьи начинается с `/categories/<primary>/<slug>` и совпадает с текущим адресом.
+4. Sitemap собирается и содержит только новые URL (`/categories/...`, `/categories/<slug>/<article>`), legacy `/articles/`/`/topics/` в нём отсутствуют.
+5. Legacy URL `/articles/<slug>` отвечает 308-редиректом на канонический `/categories/<primary>/<slug>`. Legacy `/topics/<slug>` — на `/categories/<slug>` (или `/russia` для `ai-russia`).
+6. Хлебные крошки на странице статьи кликабельны и ведут на главную → категорию.
+7. Если меняли media/video logic, на live-странице корректно рендерится media block.
+8. RSS (`/rss.xml`) и `llms.txt` отдают новые URL.
+9. Cookie-баннер показывается в инкогнито. Выбор «Только необходимые» — Яндекс Метрика
    не появляется в Network. Выбор «Принять все» — `mc.yandex.ru/metrika/tag.js` грузится.
 
 ## Аналитика (Яндекс Метрика) и согласие

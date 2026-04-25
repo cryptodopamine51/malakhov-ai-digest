@@ -56,7 +56,7 @@ function ImagePlaceholder({ compact = false }: { compact?: boolean }) {
 
 /* ─── Featured card: full-width with overlay (image) or light editorial (no image) ─── */
 function FeaturedCard({ article }: { article: Article }) {
-  const href    = article.slug ? getArticlePath(article.slug) : '#'
+  const href    = article.slug ? getArticlePath(article.slug, article.primary_category) : '#'
   const title   = article.ru_title ?? article.original_title
   const time    = formatRelativeTime(article.pub_date ?? article.created_at)
   const teaser  = article.lead ?? article.card_teaser
@@ -198,7 +198,7 @@ function FeaturedCard({ article }: { article: Article }) {
 
 /* ─── Default card: image + text ─── */
 function DefaultCard({ article }: { article: Article }) {
-  const href    = article.slug ? getArticlePath(article.slug) : '#'
+  const href    = article.slug ? getArticlePath(article.slug, article.primary_category) : '#'
   const title   = article.ru_title ?? article.original_title
   const time    = formatRelativeTime(article.pub_date ?? article.created_at)
   const imageUrl = getCardImageUrl(article)
@@ -255,7 +255,7 @@ function DefaultCard({ article }: { article: Article }) {
 
 /* ─── Related card: thumbnail + title (for "Читать также") ─── */
 function RelatedCard({ article }: { article: Article }) {
-  const href    = article.slug ? getArticlePath(article.slug) : '#'
+  const href    = article.slug ? getArticlePath(article.slug, article.primary_category) : '#'
   const title   = article.ru_title ?? article.original_title
   const time    = formatRelativeTime(article.pub_date ?? article.created_at)
   const topic   = (article.topics ?? [])[0]
@@ -303,7 +303,7 @@ function RelatedCard({ article }: { article: Article }) {
 
 /* ─── Compact card: text-only row ─── */
 function CompactCard({ article }: { article: Article }) {
-  const href  = article.slug ? getArticlePath(article.slug) : '#'
+  const href  = article.slug ? getArticlePath(article.slug, article.primary_category) : '#'
   const title = article.ru_title ?? article.original_title
   const time  = formatRelativeTime(article.pub_date ?? article.created_at)
 

@@ -167,17 +167,24 @@ test('publish verify classifies new, legacy and live candidates correctly', () =
 })
 
 test('publish verify uses internal preview URL for pre-live candidates', () => {
+  // Pre-live: internal route, категория не нужна.
   assert.equal(
-    buildVerifyUrl('https://news.malakhovai.ru', 'example-slug', 'new_candidate'),
+    buildVerifyUrl('https://news.malakhovai.ru', 'example-slug', 'ai-research', 'new_candidate'),
     'https://news.malakhovai.ru/internal/articles/example-slug',
   )
   assert.equal(
-    buildVerifyUrl('https://news.malakhovai.ru', 'example-slug', 'legacy_backfill'),
+    buildVerifyUrl('https://news.malakhovai.ru', 'example-slug', null, 'legacy_backfill'),
     'https://news.malakhovai.ru/internal/articles/example-slug',
   )
+  // Live sample: канонический /categories/<primary>/<slug> (волна 2.2).
   assert.equal(
-    buildVerifyUrl('https://news.malakhovai.ru', 'example-slug', 'live_sample'),
-    'https://news.malakhovai.ru/articles/example-slug',
+    buildVerifyUrl('https://news.malakhovai.ru', 'example-slug', 'ai-research', 'live_sample'),
+    'https://news.malakhovai.ru/categories/ai-research/example-slug',
+  )
+  // Если primary_category пустой — фоллбэк на DEFAULT_CATEGORY (ai-industry).
+  assert.equal(
+    buildVerifyUrl('https://news.malakhovai.ru', 'example-slug', null, 'live_sample'),
+    'https://news.malakhovai.ru/categories/ai-industry/example-slug',
   )
 })
 

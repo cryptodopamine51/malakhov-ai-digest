@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   robots: { index: false },
 }
 
-type CoverArticle = Pick<Article, 'slug' | 'ru_title' | 'original_title' | 'source_name' | 'topics'>
+type CoverArticle = Pick<Article, 'slug' | 'ru_title' | 'original_title' | 'source_name' | 'topics' | 'primary_category'>
 
 type CoverStyle = {
   id: string
@@ -283,6 +283,7 @@ const FALLBACK_ARTICLES: CoverArticle[] = [
     original_title: 'Google unveiled two agents for academic illustration and review',
     source_name: 'Google Research Blog',
     topics: ['ai-labs'],
+    primary_category: 'ai-labs',
   },
   {
     slug: null,
@@ -290,6 +291,7 @@ const FALLBACK_ARTICLES: CoverArticle[] = [
     original_title: 'Context layer and AI',
     source_name: 'Habr AI',
     topics: ['ai-russia', 'coding'],
+    primary_category: 'ai-russia',
   },
   {
     slug: null,
@@ -297,6 +299,7 @@ const FALLBACK_ARTICLES: CoverArticle[] = [
     original_title: 'Local LLMs for coding',
     source_name: 'Habr AI',
     topics: ['coding'],
+    primary_category: 'coding',
   },
 ]
 
@@ -425,7 +428,7 @@ function GallerySection({
                 </div>
                 {article.slug ? (
                   <Link
-                    href={getArticlePath(article.slug)}
+                    href={getArticlePath(article.slug, article.primary_category)}
                     className="rounded border border-line px-3 py-2 text-sm text-ink transition-colors hover:bg-surface"
                   >
                     Статья

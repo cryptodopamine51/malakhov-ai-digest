@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 
 type LabArticle = Pick<
   Article,
-  'slug' | 'ru_title' | 'original_title' | 'source_name' | 'topics' | 'cover_image_url' | 'card_teaser' | 'score'
+  'slug' | 'ru_title' | 'original_title' | 'source_name' | 'topics' | 'primary_category' | 'cover_image_url' | 'card_teaser' | 'score'
 >
 
 type Palette = {
@@ -44,6 +44,7 @@ const FALLBACK_ARTICLES: LabArticle[] = [
     original_title: 'OpenAI prepares agentic development workflows for enterprise teams',
     source_name: 'OpenAI News',
     topics: ['ai-labs', 'coding'],
+    primary_category: 'ai-labs',
     cover_image_url: null,
     card_teaser: 'Агентные инструменты переходят от демо к рабочим процессам, где важны контроль, аудит и безопасность.',
     score: 8,
@@ -54,6 +55,7 @@ const FALLBACK_ARTICLES: LabArticle[] = [
     original_title: 'New AI regulation package increases obligations for model providers',
     source_name: 'Reuters AI',
     topics: ['ai-industry'],
+    primary_category: 'ai-industry',
     cover_image_url: null,
     card_teaser: 'Регуляторы постепенно переводят AI-инфраструктуру в режим документируемой ответственности.',
     score: 7,
@@ -64,6 +66,7 @@ const FALLBACK_ARTICLES: LabArticle[] = [
     original_title: 'Local coding LLMs become a practical alternative to cloud assistants',
     source_name: 'Habr AI',
     topics: ['coding', 'ai-russia'],
+    primary_category: 'coding',
     cover_image_url: null,
     card_teaser: 'Команды снова считают стоимость, приватность и скорость, а не только качество benchmark.',
     score: 6,
@@ -254,7 +257,7 @@ export default async function ImageLabPage() {
 
 function ArticleLab({ article, index }: { article: LabArticle; index: number }) {
   const title = article.ru_title ?? article.original_title
-  const href = article.slug ? getArticlePath(article.slug) : '#'
+  const href = article.slug ? getArticlePath(article.slug, article.primary_category) : '#'
 
   return (
     <section className="border border-line bg-base">
