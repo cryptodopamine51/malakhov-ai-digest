@@ -13,6 +13,7 @@ config({ path: resolve(process.cwd(), '.env.local') })
 
 import { fetchAllFeeds, type ParsedItem, type SourceFeedResult } from './rss-parser'
 import { getServerClient } from '../lib/supabase'
+import { splitTopicsToCategories } from '../lib/categories'
 
 function log(message: string): void {
   const ts = new Date().toTimeString().slice(0, 8)
@@ -63,6 +64,7 @@ async function insertArticle(
   }
 
   const now = new Date().toISOString()
+  const { primary, secondary } = splitTopicsToCategories(item.topics)
   const { error: insertError } = await supabase.from('articles').insert({
     original_url: item.originalUrl,
     original_title: item.originalTitle,
@@ -70,6 +72,8 @@ async function insertArticle(
     source_name: item.sourceName,
     source_lang: item.sourceLang,
     topics: item.topics,
+    primary_category: primary,
+    secondary_categories: secondary,
     pub_date: item.pubDate,
     dedup_hash: item.dedupHash,
     enriched: false,
