@@ -39,7 +39,13 @@ High-level contract:
 RLS contract:
 - public tables в схеме `public` работают с включённым RLS;
 - единственная публичная policy на `articles` разрешает `SELECT` только для live-материалов (`published=true`, `quality_ok=true`, `verified_live=true`, `publish_status='live'`);
+- `categories` имеет public read только для `is_active=true`; запись — только через `service_role`;
 - operational tables (`article_attempts`, `ingest_runs`, `enrich_runs`, `digest_runs`, `pipeline_alerts`, `source_runs`) не имеют public policies и должны читаться/писаться только через `service_role`.
+
+Модель категорий:
+- одна основная категория на статью (`articles.primary_category`, FK на `categories.slug`, NOT NULL);
+- до двух смежных (`articles.secondary_categories`, `text[]` с CHECK на длину ≤ 2);
+- legacy `topics[]` остаётся read-only до полного cutover; canonical и URL опираются на `primary_category`.
 
 Дополнительные operational tables используются для observability и retries:
 - `ingest_runs`

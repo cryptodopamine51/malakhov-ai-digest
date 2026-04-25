@@ -8,6 +8,8 @@ export interface Article {
   source_name: string
   source_lang: 'en' | 'ru'
   topics: string[] | null
+  primary_category: string
+  secondary_categories: string[]
   pub_date: string | null
   cover_image_url: string | null
   ru_title: string | null
