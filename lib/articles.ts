@@ -172,6 +172,96 @@ export async function getTopTodayArticles(limit = 7): Promise<Article[]> {
   return (data ?? []) as Article[]
 }
 
+/**
+ * Свежие заголовки для левой колонки VC-блока на главной — чисто хронологически.
+ * Используется отдельно от `getLatestArticles`, который сортирует по score.
+ */
+export async function getRecentHeadlines(limit = 8, excludeIds: string[] = []): Promise<Article[]> {
+  let query = client()
+    .from('articles')
+    .select('*')
+    .eq('published', true)
+    .eq('quality_ok', true)
+    .eq('verified_live', true)
+    .eq('publish_status', 'live')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (excludeIds.length) query = query.not('id', 'in', `(${excludeIds.join(',')})`)
+
+  const { data, error } = await query
+
+  if (error) {
+    console.error('getRecentHeadlines error:', error.message)
+    return []
+  }
+
+  return (data ?? []) as Article[]
+}
+
+/**
+ * "Горячая статья дня" для верхнего блока главной (VC-style).
+ *
+ * Логика (из docs/spec_2026_04_25_site_improvements.md, волна 1, задача 1.2):
+ * 1. Кандидат — самая высоко оценённая статья за последние 24 часа из живых.
+ * 2. Если её score дотягивает до порога — возвращаем её.
+ * 3. Иначе — самая свежая опубликованная вне зависимости от окна.
+ *
+ * Детерминирован: при тех же входных данных два последовательных вызова дают тот же id.
+ * Тай-брейкер по `created_at desc` гарантирует стабильный порядок при равных score.
+ */
+export async function getHotStoryOfTheDay(
+  scoreThreshold = 5,
+  excludeIds: string[] = []
+): Promise<Article | null> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const supabase = client()
+
+  let query = supabase
+    .from('articles')
+    .select('*')
+    .eq('published', true)
+    .eq('quality_ok', true)
+    .eq('verified_live', true)
+    .eq('publish_status', 'live')
+    .gte('created_at', since)
+    .order('score', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  if (excludeIds.length) query = query.not('id', 'in', `(${excludeIds.join(',')})`)
+
+  const { data: hot, error } = await query.maybeSingle()
+
+  if (error) {
+    console.error('getHotStoryOfTheDay error:', error.message)
+    return null
+  }
+
+  if (hot && (hot as Article).score >= scoreThreshold) return hot as Article
+
+  let fallback = supabase
+    .from('articles')
+    .select('*')
+    .eq('published', true)
+    .eq('quality_ok', true)
+    .eq('verified_live', true)
+    .eq('publish_status', 'live')
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  if (excludeIds.length) fallback = fallback.not('id', 'in', `(${excludeIds.join(',')})`)
+
+  const { data: latest, error: latestError } = await fallback.maybeSingle()
+
+  if (latestError) {
+    console.error('getHotStoryOfTheDay fallback error:', latestError.message)
+    return null
+  }
+
+  return (latest as Article) ?? null
+}
+
 export async function getArticlesFeed(page = 1, perPage = 12): Promise<{ articles: Article[]; total: number }> {
   const supabase = client()
   const offset = (page - 1) * perPage

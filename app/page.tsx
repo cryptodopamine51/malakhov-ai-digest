@@ -1,13 +1,16 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { getTopTodayArticles, getArticlesFeed } from '../lib/articles'
+import { getHotStoryOfTheDay, getRecentHeadlines, getArticlesFeed } from '../lib/articles'
 import { getMoscowDateKey, shiftMoscowDateKey, pluralize } from '../lib/utils'
 import ArticleCard from '../src/components/ArticleCard'
+import PulseList from '../src/components/PulseList'
 import TopicTabs from '../src/components/TopicTabs'
 
 export const revalidate = 300
 
 const PER_PAGE = 12
+const HEADLINES_COUNT = 8
+
 export default async function HomePage({
   searchParams,
 }: {
@@ -16,16 +19,14 @@ export default async function HomePage({
   const resolvedSearchParams = await searchParams
   const page = Math.max(1, parseInt(resolvedSearchParams.page ?? '1', 10) || 1)
 
-  const [topToday, { articles: feed, total }] = await Promise.all([
-    page === 1 ? getTopTodayArticles(7) : Promise.resolve([]),
+  const hotStory = page === 1 ? await getHotStoryOfTheDay() : null
+  const [headlines, { articles: feed, total }] = await Promise.all([
+    page === 1
+      ? getRecentHeadlines(HEADLINES_COUNT, hotStory ? [hotStory.id] : [])
+      : Promise.resolve([]),
     getArticlesFeed(page, PER_PAGE),
   ])
 
-  const today = new Intl.DateTimeFormat('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    timeZone: 'Europe/Moscow',
-  }).format(new Date())
   const totalPages = Math.ceil(total / PER_PAGE)
 
   if (totalPages > 0 && page > totalPages) {
@@ -49,26 +50,16 @@ export default async function HomePage({
         </>
       )}
 
-      {page === 1 && topToday.length > 0 && (
-        <section className="mb-12">
-          <div className="mb-5 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-3">
-            <h2 className="font-serif text-3xl font-bold text-ink">Топ за сегодня</h2>
-            <span className="text-sm text-muted">{today}</span>
+      {page === 1 && hotStory && (
+        <section className="mb-12 grid grid-cols-1 gap-8 lg:grid-cols-5 lg:gap-10">
+          <div className="lg:col-span-2 lg:order-1">
+            <h2 className="mb-4 font-serif text-2xl font-bold text-ink">Свежие заголовки</h2>
+            <PulseList articles={headlines} />
           </div>
-
-          {topToday[0] && (
-            <div className="mb-5">
-              <ArticleCard article={topToday[0]} variant="featured" />
-            </div>
-          )}
-
-          {topToday.length > 1 && (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {topToday.slice(1).map((article) => (
-                <ArticleCard key={article.id} article={article} variant="default" />
-              ))}
-            </div>
-          )}
+          <div className="lg:col-span-3 lg:order-2">
+            <h2 className="mb-4 font-serif text-2xl font-bold text-ink">Главное сегодня</h2>
+            <ArticleCard article={hotStory} variant="featured" />
+          </div>
         </section>
       )}
 
