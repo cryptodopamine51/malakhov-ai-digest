@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { getTopTodayArticles, getArticlesFeed } from '../lib/articles'
 import { getMoscowDateKey, shiftMoscowDateKey, pluralize } from '../lib/utils'
 import ArticleCard from '../src/components/ArticleCard'
+import TopicTabs from '../src/components/TopicTabs'
 
 export const revalidate = 300
 
@@ -34,15 +35,18 @@ export default async function HomePage({
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:py-10 lg:py-12">
       {page === 1 && (
-        <section className="mb-12 rounded border border-line bg-base px-6 py-9 md:px-8 md:py-11 lg:px-10 lg:py-12">
-          <h1 className="font-serif text-4xl font-bold leading-none text-ink sm:text-5xl md:text-6xl">
-            Malakhov AI Дайджест
-          </h1>
-          <p className="mt-4 max-w-3xl text-sm leading-relaxed text-ink opacity-70 md:text-base lg:text-[17px]">
-            Ежедневная редакционная лента об ИИ: ключевые релизы, исследования, продукты и
-            индустриальные сдвиги без визуального шума.
-          </p>
-        </section>
+        <>
+          <section className="mb-6 rounded border border-line bg-base px-6 py-9 md:px-8 md:py-11 lg:px-10 lg:py-12">
+            <h1 className="font-serif text-4xl font-bold leading-none text-ink sm:text-5xl md:text-6xl">
+              Malakhov AI Дайджест
+            </h1>
+            <p className="mt-4 max-w-3xl text-sm leading-relaxed text-ink opacity-70 md:text-base lg:text-[17px]">
+              Ежедневная редакционная лента об ИИ: ключевые релизы, исследования, продукты и
+              индустриальные сдвиги без визуального шума.
+            </p>
+          </section>
+          <TopicTabs className="mb-12" />
+        </>
       )}
 
       {page === 1 && topToday.length > 0 && (

@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import { getArticlesByTopic } from '../../../lib/articles'
 import ArticleCard from '../../../src/components/ArticleCard'
+import TopicTabs from '../../../src/components/TopicTabs'
 
 export const revalidate = 300
 
@@ -266,7 +267,7 @@ export default async function TopicPage({
             <p className="mb-2 font-serif text-[10px] font-semibold uppercase tracking-[0.22em] text-accent">
               Раздел
             </p>
-            <h1 className="font-serif text-3xl font-extrabold tracking-tight text-ink md:text-4xl">
+            <h1 className="font-serif text-4xl font-extrabold leading-[1.1] tracking-tight text-ink md:text-[48px]">
               {meta.label}
             </h1>
             <p className="mt-3 max-w-xl text-[14px] leading-relaxed text-muted">
@@ -274,6 +275,8 @@ export default async function TopicPage({
             </p>
           </div>
         </div>
+
+        <TopicTabs activeHref={topic === 'ai-russia' ? '/russia' : `/topics/${topic}`} className="mb-8" />
 
         {articles.length === 0 ? (
           <div className="py-20 text-center text-muted">
