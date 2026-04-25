@@ -6,6 +6,10 @@ Malakhov AI Digest — русскоязычное AI-медиа, которое 
 
 Проект не должен выглядеть как бездушный RSS-агрегатор. Цель — ощущение живого, отобранного медиа.
 
+Публичный news-контур живёт на `https://news.malakhovai.ru`. Основной домен
+`https://malakhovai.ru` зарезервирован под отдельный лендинг/портфолио и не является canonical
+для новостных материалов.
+
 ## Цели по приоритету
 
 1. Интересный для чтения продукт.
@@ -31,6 +35,16 @@ Malakhov AI Digest — русскоязычное AI-медиа, которое 
 | Архив `/archive/[date]` | доступ к историческим подборкам |
 | `/privacy-policy`, `/cookie-policy`, `/consent` | юридический контур по 152-ФЗ: политика ПД, политика cookies, отзыв согласия |
 | Telegram digest | возврат аудитории и daily delivery |
+
+## Домены и SEO-границы
+
+- `news.malakhovai.ru` — единственный canonical-домен для новостного сайта, статей, разделов,
+  RSS, `llms.txt`, `robots.txt` и sitemap.
+- `malakhovai.ru` — отдельный лендинг; ссылки с него на новости должны быть абсолютными
+  `https://news.malakhovai.ru/...`.
+- На news-сайте не использовать `malakhovai.ru` в canonical, `og:url`, sitemap или RSS links.
+- `lib/site.ts` содержит жёсткий production `SITE_URL = https://news.malakhovai.ru`; SEO-файлы
+  не берут домен из env, чтобы preview/staging env не мог случайно заменить canonical.
 
 ## Что обязательно для продукта
 

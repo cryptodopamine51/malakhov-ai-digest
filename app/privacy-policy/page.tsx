@@ -1,10 +1,21 @@
 import type { Metadata } from 'next'
+import { absoluteUrl } from '../../lib/site'
 
 export const metadata: Metadata = {
   title: 'Политика обработки персональных данных',
   description:
     'Политика обработки персональных данных пользователей сайта news.malakhovai.ru — цели, основания, сроки и права субъекта по 152-ФЗ.',
   alternates: { canonical: '/privacy-policy' },
+  openGraph: {
+    title: 'Политика обработки персональных данных',
+    description:
+      'Политика обработки персональных данных пользователей сайта news.malakhovai.ru — цели, основания, сроки и права субъекта по 152-ФЗ.',
+    type: 'website',
+    url: absoluteUrl('/privacy-policy'),
+  },
+  other: {
+    'twitter:url': absoluteUrl('/privacy-policy'),
+  },
   robots: { index: true, follow: true },
 }
 

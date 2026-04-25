@@ -5,6 +5,7 @@ import Header from '../src/components/Header'
 import Footer from '../src/components/Footer'
 import Analytics from '../src/components/Analytics'
 import ConsentManager from '../src/components/ConsentManager'
+import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from '../lib/site'
 
 const onest = Onest({
   subsets: ['latin', 'cyrillic'],
@@ -25,10 +26,6 @@ const ibmMono = IBM_Plex_Mono({
   display: 'swap',
   weight: ['400', '500', '600', '700'],
 })
-
-const SITE_URL = 'https://news.malakhovai.ru'
-const SITE_NAME = 'Malakhov AI Дайджест'
-const SITE_DESCRIPTION = 'Русскоязычный редакционный дайджест об искусственном интеллекте: релизы, исследования, продукты, инвестиции и AI-рынок.'
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -52,7 +49,17 @@ export const metadata: Metadata = {
     description: SITE_DESCRIPTION,
     locale: 'ru_RU',
     type: 'website',
+    url: SITE_URL,
     images: ['/og-default.png'],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: SITE_NAME,
+    description: SITE_DESCRIPTION,
+    images: ['/og-default.png'],
+  },
+  other: {
+    'twitter:url': SITE_URL,
   },
   robots: {
     index: true,

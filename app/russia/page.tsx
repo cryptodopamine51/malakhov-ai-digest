@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { CATEGORY_PAGE_SIZE, getArticlesByCategoryPage } from '../../lib/articles'
 import { getPaginationMeta, normalizePositivePage } from '../../lib/pagination'
+import { SITE_URL, absoluteUrl } from '../../lib/site'
 import CategoryArticleList from '../../src/components/CategoryArticleList'
 import TopicTabs from '../../src/components/TopicTabs'
 
@@ -15,10 +16,17 @@ export const metadata: Metadata = {
     title: 'ИИ в России — новости и тренды',
     description: 'Российский рынок ИИ: государственная политика, отечественные модели, кейсы компаний и академические достижения.',
     type: 'website',
+    url: absoluteUrl('/russia'),
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'ИИ в России — новости и тренды',
+    description: 'Российский рынок ИИ: государственная политика, отечественные модели, кейсы компаний и академические достижения.',
+  },
+  other: {
+    'twitter:url': absoluteUrl('/russia'),
   },
 }
-
-const SITE_URL = 'https://news.malakhovai.ru'
 
 const jsonLd = {
   '@context': 'https://schema.org',

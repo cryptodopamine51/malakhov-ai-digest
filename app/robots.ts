@@ -1,7 +1,5 @@
 import type { MetadataRoute } from 'next'
-
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://news.malakhovai.ru').replace(/\/$/, '')
-const SITE_HOST = SITE_URL.replace(/^https?:\/\//, '')
+import { SITE_HOST, SITE_URL } from '../lib/site'
 
 export default function robots(): MetadataRoute.Robots {
   return {
@@ -9,7 +7,7 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: '*',
         allow: '/',
-        disallow: ['/demo/', '/api/'],
+        disallow: ['/demo/', '/internal/', '/api/', '/_next/'],
       },
       {
         userAgent: 'OAI-SearchBot',

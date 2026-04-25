@@ -5,12 +5,11 @@ import { CATEGORY_PAGE_SIZE, getArticlesByCategoryPage } from '../../../lib/arti
 import { getCategoryMeta } from '../../../lib/category-meta'
 import { CATEGORY_SLUGS } from '../../../lib/categories'
 import { getPaginationMeta, normalizePositivePage } from '../../../lib/pagination'
+import { SITE_URL, absoluteUrl } from '../../../lib/site'
 import CategoryArticleList from '../../../src/components/CategoryArticleList'
 import TopicTabs from '../../../src/components/TopicTabs'
 
 export const revalidate = 300
-
-const SITE_URL = 'https://news.malakhovai.ru'
 
 function CategoryIllustration({ slug }: { slug: string }): ReactNode {
   const shared = 'absolute inset-0 h-full w-full opacity-60'
@@ -161,15 +160,24 @@ export async function generateMetadata({
   const { category } = await params
   const meta = getCategoryMeta(category)
   if (!meta) return {}
+  const canonicalPath = `/categories/${category}`
   return {
     title: meta.seoTitle,
     description: meta.seoDescription,
-    alternates: { canonical: `/categories/${category}` },
+    alternates: { canonical: canonicalPath },
     openGraph: {
       title: meta.seoTitle,
       description: meta.seoDescription,
       type: 'website',
-      url: `${SITE_URL}/categories/${category}`,
+      url: absoluteUrl(canonicalPath),
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: meta.seoTitle,
+      description: meta.seoDescription,
+    },
+    other: {
+      'twitter:url': absoluteUrl(canonicalPath),
     },
   }
 }

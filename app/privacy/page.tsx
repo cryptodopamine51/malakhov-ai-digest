@@ -1,8 +1,19 @@
 import type { Metadata } from 'next'
+import { absoluteUrl } from '../../lib/site'
 
 export const metadata: Metadata = {
   title: 'Политика конфиденциальности',
   description: 'Как Malakhov AI Дайджест обрабатывает данные посетителей.',
+  alternates: { canonical: '/privacy' },
+  openGraph: {
+    title: 'Политика конфиденциальности',
+    description: 'Как Malakhov AI Дайджест обрабатывает данные посетителей.',
+    type: 'website',
+    url: absoluteUrl('/privacy'),
+  },
+  other: {
+    'twitter:url': absoluteUrl('/privacy'),
+  },
 }
 
 export default function PrivacyPage() {

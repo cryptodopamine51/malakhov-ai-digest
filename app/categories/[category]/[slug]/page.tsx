@@ -7,6 +7,7 @@ import { getArticleBySlug, getRelatedArticles, resolveAnchorLinks } from '../../
 import { getArticlePath, toPublicArticleSlug } from '../../../../lib/article-slugs'
 import { getCategoryMeta } from '../../../../lib/category-meta'
 import { isKnownCategory, DEFAULT_CATEGORY } from '../../../../lib/categories'
+import { SITE_URL, absoluteUrl } from '../../../../lib/site'
 import { formatRelativeTime } from '../../../../lib/utils'
 import TopicBadge from '../../../../src/components/TopicBadge'
 import ArticleCard from '../../../../src/components/ArticleCard'
@@ -33,8 +34,6 @@ type ExtractedVideo = NonNullable<Article['article_videos']>[number]
 const SHOWCASE_SLUG = 'sequoia-sobrala-7-mlrd-na-novyy-fond-pochti-vdvoe-bolshe-pre-0dd089'
 
 const SOURCES_WITH_TEXT_COVERS = new Set(['Habr AI', 'vc.ru', 'CNews'])
-
-const SITE_URL = 'https://news.malakhovai.ru'
 
 function renderBodyWithAnchors(body: string, anchors: AnchorLink[]): ReactNode[] {
   const paragraphs = body.split('\n\n').filter(Boolean)
@@ -375,10 +374,19 @@ export async function generateMetadata({
       title,
       description,
       type: 'article',
-      url: `${SITE_URL}${canonicalPath}`,
+      url: absoluteUrl(canonicalPath),
       publishedTime: article.pub_date ?? article.created_at,
       modifiedTime: article.updated_at,
       images: article.cover_image_url ? [article.cover_image_url] : ['/og-default.png'],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: article.cover_image_url ? [article.cover_image_url] : ['/og-default.png'],
+    },
+    other: {
+      'twitter:url': absoluteUrl(canonicalPath),
     },
   }
 }

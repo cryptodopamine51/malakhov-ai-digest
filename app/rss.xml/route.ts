@@ -1,10 +1,8 @@
 import { getServerClient } from '../../lib/supabase'
 import { getArticleUrl } from '../../lib/article-slugs'
+import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from '../../lib/site'
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://news.malakhovai.ru').replace(/\/$/, '')
 const FEED_URL = `${SITE_URL}/rss.xml`
-const SITE_TITLE = 'Malakhov AI Дайджест'
-const SITE_DESCRIPTION = 'Русскоязычный редакционный дайджест новостей об искусственном интеллекте.'
 
 function escapeXml(value: string): string {
   return value
@@ -61,7 +59,7 @@ export async function GET() {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>${SITE_TITLE}</title>
+    <title>${SITE_NAME}</title>
     <link>${SITE_URL}</link>
     <description>${SITE_DESCRIPTION}</description>
     <language>ru-RU</language>

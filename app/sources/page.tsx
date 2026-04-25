@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import { getSourcesStats, sourceNameToSlug } from '../../lib/articles'
+import { absoluteUrl } from '../../lib/site'
 import { pluralize } from '../../lib/utils'
 
 export const revalidate = 3600
@@ -8,6 +9,16 @@ export const revalidate = 3600
 export const metadata: Metadata = {
   title: 'Источники новостей об ИИ',
   description: 'Все источники, которые мы отслеживаем — международные и российские медиа об искусственном интеллекте.',
+  alternates: { canonical: '/sources' },
+  openGraph: {
+    title: 'Источники новостей об ИИ',
+    description: 'Все источники, которые мы отслеживаем — международные и российские медиа об искусственном интеллекте.',
+    type: 'website',
+    url: absoluteUrl('/sources'),
+  },
+  other: {
+    'twitter:url': absoluteUrl('/sources'),
+  },
 }
 
 const SOURCE_DOMAINS: Record<string, string> = {
