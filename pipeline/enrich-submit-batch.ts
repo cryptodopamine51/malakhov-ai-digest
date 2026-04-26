@@ -13,10 +13,10 @@ import { writeEnrichAttempt, createEnrichRun, finishEnrichRun, getOldestPendingA
 import { fetchArticleContent } from './fetcher'
 import { fireAlert } from './alerts'
 import { scoreArticle } from './scorer'
+import { articleHasCategory, getMinScoreForArticle } from './scorer.config'
 import { isExhausted, isRetryable, nextRetryAt, type ErrorCode } from './types'
 import { ZERO_USAGE_TOTALS } from './llm-usage'
 
-const MIN_SCORE_FOR_CLAUDE = 2
 const SUBMIT_BATCH_SIZE = Number(process.env.ENRICH_SUBMIT_BATCH_SIZE ?? 15)
 const MAX_REQUESTS_PER_BATCH = Number(process.env.ANTHROPIC_BATCH_MAX_REQUESTS ?? 15)
 
@@ -99,7 +99,7 @@ async function releasePreSubmitFailure(
   return retryable ? 'retryable' : 'failed'
 }
 
-async function rejectLowScore(
+async function rejectBeforeSubmit(
   supabase: SupabaseClient,
   article: Article,
   runId: string,
@@ -107,6 +107,8 @@ async function rejectLowScore(
   score: number,
   originalText: string,
   coverImageUrl: string | null,
+  qualityReason: string,
+  attemptMessage: string,
 ): Promise<void> {
   await supabase
     .from('articles')
@@ -124,7 +126,7 @@ async function rejectLowScore(
       enriched: true,
       published: false,
       quality_ok: false,
-      quality_reason: 'low_score',
+      quality_reason: qualityReason,
       updated_at: new Date().toISOString(),
     })
     .eq('id', article.id)
@@ -137,7 +139,7 @@ async function rejectLowScore(
     resultStatus: 'rejected',
     claimToken: article.claim_token,
     errorCode: 'quality_reject',
-    errorMessage: `low_score: ${score}`,
+    errorMessage: attemptMessage,
     payload: { run_id: runId, phase: 'submit' },
   })
 }
@@ -168,18 +170,38 @@ async function stageBatchItem(
     cover_image_url: imageUrl || article.cover_image_url,
   }
   const score = scoreArticle(hydratedArticle)
+  const minScore = getMinScoreForArticle(hydratedArticle)
+  const coverImageUrl = imageUrl || article.cover_image_url
 
-  if (score < MIN_SCORE_FOR_CLAUDE) {
-    await rejectLowScore(
+  if (articleHasCategory(hydratedArticle, 'ai-research') && !coverImageUrl && inlineImages.length === 0) {
+    await rejectBeforeSubmit(
       supabase,
       article,
       runId,
       startedAt,
       score,
       text || article.original_text || '',
-      imageUrl || article.cover_image_url,
+      coverImageUrl,
+      'rejected_low_visual',
+      'rejected_low_visual: research article has no cover or inline images',
     )
-    log(`— low_score [${score}]: ${article.original_title.slice(0, 60)}`)
+    log(`— rejected_low_visual [${score}]: ${article.original_title.slice(0, 60)}`)
+    return { item: null, rejected: true, failure: null }
+  }
+
+  if (score < minScore) {
+    await rejectBeforeSubmit(
+      supabase,
+      article,
+      runId,
+      startedAt,
+      score,
+      text || article.original_text || '',
+      coverImageUrl,
+      'low_score',
+      `low_score: ${score}; min_score: ${minScore}`,
+    )
+    log(`— low_score [${score}/${minScore}]: ${article.original_title.slice(0, 60)}`)
     return { item: null, rejected: true, failure: null }
   }
 
@@ -196,6 +218,8 @@ async function stageBatchItem(
     sourceName: article.source_name,
     sourceLang: article.source_lang,
     topics: article.topics ?? [],
+    primaryCategory: article.primary_category,
+    secondaryCategories: article.secondary_categories ?? [],
   }))
 
   const requestPayload = {

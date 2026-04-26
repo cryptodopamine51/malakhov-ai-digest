@@ -60,8 +60,17 @@ Batch-specific lifecycle не хранится в `articles.enrich_status`.
 ## Score и publish gate
 
 - Статья сначала оценивается scorer-ом.
-- Текущий порог для отправки в Claude: `score >= 2`.
+- Базовый порог для отправки в Claude: `score >= 2`.
+- Категорийные пороги задаются в `pipeline/scorer.config.ts`. Для `ai-research` порог выше:
+  `score >= 4`, потому что раздел должен получать меньше, но глубже и качественнее материалов.
 - Если score ниже порога, статья отклоняется до batch submit и не тратит Claude cost.
+- Для `ai-research` pre-submit gate дополнительно требует визуальный материал: `cover_image_url`
+  или хотя бы одну inline-картинку из fetcher. Если визуала нет, статья отклоняется с
+  `quality_reason='rejected_low_visual'`.
+- После successful batch result collector отклоняет `ai-research`, если `editorial_body` короче
+  1500 символов (`quality_reason='research_too_short: <length>'`).
+- Для `ai-startups` scorer даёт небольшой boost, если в заголовке или тексте есть признаки
+  конкретной сделки: `$...`, `Series A/B/C`, `seed`, `раунд`, `оценка`, `инвестиции`.
 - Если quality check не пройден после successful batch result, статья уходит в `rejected` и остаётся в `draft`.
 - Если quality check пройден и apply завершился успешно, статья становится `publish_ready`.
 
@@ -93,6 +102,14 @@ Batch-specific lifecycle не хранится в `articles.enrich_status`.
 - `article_images`
 - `article_videos`
 
+`article_tables` могут прийти двумя путями:
+
+- fetcher вытаскивает таблицы из HTML источника;
+- Claude может сгенерировать таблицу в JSON-output, если в исходнике есть структурированные данные
+  (сравнения, одинаковые атрибуты сущностей, timeline, benchmark/score). Если структурированных
+  данных нет, таблица не создаётся. При apply сгенерированные Claude таблицы имеют приоритет над
+  HTML-extracted таблицами.
+
 ## Media policy
 
 ### Cover image
@@ -107,6 +124,20 @@ local SVG/editorial template, cover bank и AI budget cover. Это визуал
 ### Inline images and tables
 
 Fetcher вытаскивает релевантные inline images и таблицы из оригинального HTML и сохраняет их в structured fields статьи.
+Для research-материалов отсутствие и cover, и inline images считается publish-risk: такие статьи
+отсекаются до вызова Claude, чтобы раздел не заполнялся сухими короткими заметками.
+
+## Sources and feed filters
+
+Broad RSS feeds допускаются только с keyword filters:
+
+- `vc.ru` сейчас имеет рабочий официальный RSS `https://vc.ru/rss/all`; тематические AI/startups
+  endpoints на момент проверки отвечали 404, поэтому используется общий feed с жёсткими AI/startup
+  filters из `pipeline/keyword-filters.ts`.
+- `vc.ru AI/стартапы`, `RB.ru`, `TechCrunch Startups`, `Crunchbase News`, `TechCrunch Venture`
+  дают материалы для `ai-startups`, но проходят через startup keyword filters.
+- Если в течение недели source health или ручная проверка показывает >30% мусора из broad feed,
+  фильтр нужно ужесточить или временно отключить источник в `pipeline/feeds.config.ts`.
 
 ### Video
 

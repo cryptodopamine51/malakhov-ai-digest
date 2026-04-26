@@ -11,6 +11,11 @@ export interface GlossaryEntry {
   definition: string
 }
 
+export interface EditorialTable {
+  headers: string[]
+  rows: string[][]
+}
+
 export interface EditorialOutput {
   ru_title: string
   lead: string
@@ -20,6 +25,7 @@ export interface EditorialOutput {
   editorial_body: string
   glossary: GlossaryEntry[]
   link_anchors: string[]
+  article_tables?: EditorialTable[]
   quality_ok: boolean
   quality_reason: string
 }
@@ -65,6 +71,7 @@ const SYSTEM_PROMPT = `Ты — выпускающий редактор русс
   "editorial_body": string,       // основной текст, минимум 1200 символов, минимум 3 абзаца
   "glossary": [{"term": string, "definition": string}],  // 0–7 терминов — см. ниже
   "link_anchors": string[],       // 0–3 фразы из editorial_body для внутренней перелинковки — см. ниже
+  "article_tables": [{"headers": string[], "rows": string[][]}], // 0–3 таблицы — см. ниже
   "quality_ok": boolean,          // true только если материал действительно пригоден к публикации
   "quality_reason": string        // если false — одно предложение «почему»; если true — пустая строка
 }
@@ -78,7 +85,24 @@ const SYSTEM_PROMPT = `Ты — выпускающий редактор русс
 - Детали: цифры, имена, сравнения с аналогами
 - Что было до, что параллельно происходит в отрасли
 
-Разделяй абзацы одной пустой строкой (\\n\\n). Не используй маркдаун, списки, заголовки.
+Разделяй абзацы одной пустой строкой (\\n\\n). Обычно не используй маркдаун и заголовки.
+Исключение: если материал по сути перечисление («5 трендов», «10 способов», «N компаний»),
+сделай нумерованный список markdown или короткие подзаголовки с номерами, чтобы структура была видна.
+
+ТАБЛИЦЫ. Если в исходном материале есть структурированные данные, оформи их в article_tables:
+- сравнения (X vs Y vs Z);
+- перечисления с одинаковыми атрибутами (модели + параметры + цена; компании + раунд + сумма);
+- временные оси (год/дата + событие);
+- метрики (benchmark + score).
+Если структурированных данных нет — article_tables = []. Не натягивай таблицу из обычного текста.
+Таблицы должны содержать только факты из источника, без выдуманных чисел и строк.
+
+RESEARCH. Если темы содержат ai-research, раскрой материал глубже обычной новости:
+какая проблема решается, какой подход использован, какие результаты получены,
+какие ограничения названы или следуют из источника, что это меняет для отрасли.
+
+STARTUPS. Если темы содержат ai-startups, обязательно укажи, когда это есть в источнике:
+размер раунда, инвесторов, оценку, продукт компании одной фразой и отличие от конкурентов.
 
 ГЛОССАРИЙ. В поле glossary перечисли термины из материала, которые читатель без технического
 фона может не знать. Для каждого — одно предложение определения, без воды и вводных слов.
@@ -112,6 +136,8 @@ export interface EditorialRequest {
   sourceName: string
   sourceLang: 'en' | 'ru'
   topics: string[]
+  primaryCategory?: string | null
+  secondaryCategories?: string[] | null
   usageContext?: EditorialUsageContext
 }
 
@@ -162,11 +188,19 @@ export function buildEditorialUserMessage({
   sourceName,
   sourceLang,
   topics,
+  primaryCategory,
+  secondaryCategories,
 }: EditorialRequest): string {
+  const categories = [
+    primaryCategory ? `primary=${primaryCategory}` : null,
+    secondaryCategories?.length ? `secondary=${secondaryCategories.join(', ')}` : null,
+  ].filter(Boolean).join('; ')
+
   return (
     `Источник: ${sourceName}\n` +
     `Язык источника: ${sourceLang}\n` +
     `Темы: ${topics.join(', ')}\n\n` +
+    (categories ? `Категории: ${categories}\n\n` : '') +
     `Оригинальный заголовок:\n${originalTitle}\n\n` +
     `Оригинальный текст:\n${originalText}`
   )
@@ -222,6 +256,10 @@ export function validateEditorial(out: EditorialOutput): string | null {
   if (out.editorial_body.split('\n\n').length < 3) return 'editorial_body меньше 3 абзацев'
   if (!Array.isArray(out.glossary)) return 'glossary не массив'
   if (!Array.isArray(out.link_anchors)) return 'link_anchors не массив'
+  if (out.article_tables && !Array.isArray(out.article_tables)) return 'article_tables не массив'
+  if (out.article_tables?.some((table) => !Array.isArray(table.headers) || !Array.isArray(table.rows))) {
+    return 'article_tables некорректный формат'
+  }
   if (typeof out.quality_ok !== 'boolean') return 'quality_ok не boolean'
   return null
 }

@@ -8,6 +8,7 @@ import { getServerClient, type AnthropicBatchItem, type Article } from '../lib/s
 import { listBatchResults, parseBatchCustomId, retrieveBatch, type NormalizedBatchResult } from './anthropic-batch'
 import { ensureUniqueSlug } from './slug'
 import { parseEditorialJson, validateEditorial } from './claude'
+import { articleHasCategory } from './scorer.config'
 import { createEnrichRun, finishEnrichRun, getOldestPendingAgeMinutes, log, writeEnrichAttempt } from './enrich-runtime'
 import { fireAlert } from './alerts'
 import { isExhausted, isRetryable, nextRetryAt, type ErrorCode } from './types'
@@ -307,6 +308,13 @@ async function applyReadyResults(
 
     const requestPayload = item.request_payload as Record<string, unknown>
     const articleContext = ((requestPayload.article_context ?? {}) as Record<string, unknown>)
+    const generatedTables = Array.isArray(editorial.article_tables) && editorial.article_tables.length > 0
+      ? editorial.article_tables
+      : null
+    if (articleHasCategory(article, 'ai-research') && editorial.editorial_body.length < 1500) {
+      editorial.quality_ok = false
+      editorial.quality_reason = `research_too_short: ${editorial.editorial_body.length}`
+    }
     const slug = await ensureUniqueSlug(
       supabase,
       editorial.ru_title || article.original_title,
@@ -329,7 +337,7 @@ async function applyReadyResults(
       p_editorial_model: 'claude-sonnet-4-6',
       p_glossary: editorial.glossary,
       p_link_anchors: editorial.link_anchors,
-      p_article_tables: articleContext.article_tables ?? null,
+      p_article_tables: generatedTables ?? articleContext.article_tables ?? null,
       p_article_images: articleContext.article_images ?? null,
       p_article_videos: articleContext.article_videos ?? null,
       p_quality_ok: editorial.quality_ok,

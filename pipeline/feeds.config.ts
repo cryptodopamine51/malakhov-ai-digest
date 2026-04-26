@@ -1,5 +1,7 @@
 // Конфигурация RSS-фидов для парсинга AI-новостей
 
+import { EN_AI_STARTUP_KEYWORDS, RU_AI_STARTUP_KEYWORDS } from './keyword-filters'
+
 export interface FeedConfig {
   name: string
   url: string
@@ -130,6 +132,14 @@ export const FEEDS: FeedConfig[] = [
       'series a', 'series b', 'series c', 'seed round',
     ],
   },
+  {
+    name: 'TechCrunch Startups',
+    url: 'https://techcrunch.com/category/startups/feed/',
+    lang: 'en',
+    topics: ['ai-startups'],
+    needsKeywordFilter: true,
+    keywords: EN_AI_STARTUP_KEYWORDS,
+  },
   // Axios Pro Rata — текущий feed endpoint стабильно отвечает 404, возвращать после замены на рабочий URL.
   // {
   //   name: 'Axios Pro Rata',
@@ -211,6 +221,22 @@ export const FEEDS: FeedConfig[] = [
     lang: 'ru',
     topics: ['ai-russia'],
     needsKeywordFilter: true,
+  },
+  {
+    name: 'RB.ru',
+    url: 'https://rb.ru/feeds/all/',
+    lang: 'ru',
+    topics: ['ai-startups', 'ai-russia', 'ai-investments'],
+    needsKeywordFilter: true,
+    keywords: RU_AI_STARTUP_KEYWORDS,
+  },
+  {
+    name: 'vc.ru AI/стартапы',
+    url: 'https://vc.ru/rss/all',
+    lang: 'ru',
+    topics: ['ai-startups', 'ai-russia', 'ai-industry'],
+    needsKeywordFilter: true,
+    keywords: RU_AI_STARTUP_KEYWORDS,
   },
   {
     name: 'vc.ru',

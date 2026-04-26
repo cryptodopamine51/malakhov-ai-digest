@@ -82,6 +82,11 @@ Operational правило:
 - если статья уже handed off в batch ownership, источником истины становятся `anthropic_batch_items` и `anthropic_batches`.
 - если код collector уже ожидает `article_videos`, а production DB ещё не получила `007_article_videos.sql`, collector должен оставаться backward-compatible и не ронять apply phase.
 - Claude cost observability не должна зависеть от парсинга stdout: structured usage/cost пишется в `llm_usage_logs`, `enrich_runs.total_*` и `anthropic_batches.total_*`.
+- Категорийные publish gates находятся в коде pipeline: `ai-research` требует `score >= 4`,
+  визуал до submit и `editorial_body >= 1500` после collect. Рост rejected по причинам
+  `rejected_low_visual` / `research_too_short:*` после deploy ожидаем и означает, что фильтр работает.
+- Broad feeds (`vc.ru/rss/all`, `rb.ru/feeds/all/`) должны мониториться через source health и
+  ручную выборку после первой недели. Если мусора больше 30%, ужесточить `pipeline/keyword-filters.ts`.
 
 ## Deploy
 

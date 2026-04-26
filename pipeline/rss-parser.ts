@@ -2,6 +2,7 @@ import { createHash } from 'crypto'
 import RSSParser from 'rss-parser'
 import { decodeHTML } from 'entities'
 import { FEEDS, type FeedConfig } from './feeds.config'
+import { RU_AI_KEYWORDS } from './keyword-filters'
 
 // ── Типы ─────────────────────────────────────────────────────────────────────
 
@@ -31,31 +32,6 @@ export interface FetchAllFeedsResult {
   items: ParsedItem[]
   sourceResults: SourceFeedResult[]
 }
-
-// ── Ключевые слова для русскоязычных источников с широкой тематикой ──────────
-
-const RU_AI_KEYWORDS: string[] = [
-  'искусственный интеллект',
-  'нейросеть',
-  'нейросети',
-  'машинное обучение',
-  'языковая модель',
-  'генеративный',
-  'chatgpt',
-  'gpt',
-  'llm',
-  'ии ',
-  ' ии',
-  'яндекс gpt',
-  'gigachat',
-  'сбер ai',
-  'claude',
-  'gemini',
-  'mistral',
-  'нейронная сеть',
-  'автоматизация',
-  'компьютерное зрение',
-]
 
 // ── Вспомогательные функции ───────────────────────────────────────────────────
 
