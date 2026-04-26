@@ -1,6 +1,13 @@
 // Конфигурация RSS-фидов для парсинга AI-новостей
 
-import { EN_AI_STARTUP_KEYWORDS, RU_AI_STARTUP_KEYWORDS } from './keyword-filters'
+import {
+  EN_AI_CORE_KEYWORDS,
+  EN_AI_STARTUP_KEYWORDS,
+  EN_STARTUP_DEAL_KEYWORDS,
+  RU_AI_CORE_KEYWORDS,
+  RU_AI_STARTUP_KEYWORDS,
+  RU_STARTUP_DEAL_KEYWORDS,
+} from './keyword-filters'
 
 export interface FeedConfig {
   name: string
@@ -12,6 +19,13 @@ export interface FeedConfig {
   needsKeywordFilter?: boolean
   // Переопределить список ключевых слов для этого фида (вместо глобального RU_AI_KEYWORDS)
   keywords?: string[]
+  // AND-of-OR groups: every group must match at least one keyword.
+  keywordGroups?: string[][]
+  // Broad feeds often include noisy descriptions/navigation text; use title-only for them.
+  keywordSearchFields?: 'title' | 'titleAndSnippet'
+  // Дополнительная защита для ru-фидов, где RSS может отдавать evergreen/non-news страницы.
+  // По умолчанию не требуется: pubDate RSS уже является основным фильтром свежести.
+  requireDateInUrl?: boolean
 }
 
 export const FEEDS: FeedConfig[] = [
@@ -145,6 +159,7 @@ export const FEEDS: FeedConfig[] = [
     topics: ['ai-startups'],
     needsKeywordFilter: true,
     keywords: EN_AI_STARTUP_KEYWORDS,
+    keywordGroups: [EN_AI_CORE_KEYWORDS, EN_STARTUP_DEAL_KEYWORDS],
   },
   // Axios Pro Rata — текущий feed endpoint стабильно отвечает 404, возвращать после замены на рабочий URL.
   // {
@@ -219,7 +234,8 @@ export const FEEDS: FeedConfig[] = [
     lang: 'ru',
     topics: ['ai-startups', 'ai-russia'],
     needsKeywordFilter: true,
-    keywords: RU_AI_STARTUP_KEYWORDS,
+    keywords: RU_AI_CORE_KEYWORDS,
+    keywordSearchFields: 'title',
   },
   // РБК — RSS недоступен (404/401), временно отключён
   // {
@@ -235,6 +251,8 @@ export const FEEDS: FeedConfig[] = [
     lang: 'ru',
     topics: ['ai-russia'],
     needsKeywordFilter: true,
+    keywords: RU_AI_CORE_KEYWORDS,
+    keywordSearchFields: 'title',
   },
   {
     name: 'RB.ru',
@@ -243,6 +261,8 @@ export const FEEDS: FeedConfig[] = [
     topics: ['ai-startups', 'ai-russia', 'ai-investments'],
     needsKeywordFilter: true,
     keywords: RU_AI_STARTUP_KEYWORDS,
+    keywordGroups: [RU_AI_CORE_KEYWORDS, RU_STARTUP_DEAL_KEYWORDS],
+    keywordSearchFields: 'title',
   },
   {
     name: 'vc.ru AI/стартапы',
@@ -251,13 +271,8 @@ export const FEEDS: FeedConfig[] = [
     topics: ['ai-startups', 'ai-russia', 'ai-industry'],
     needsKeywordFilter: true,
     keywords: RU_AI_STARTUP_KEYWORDS,
-  },
-  {
-    name: 'vc.ru',
-    url: 'https://vc.ru/rss/all',
-    lang: 'ru',
-    topics: ['ai-russia'],
-    needsKeywordFilter: true,
+    keywordGroups: [RU_AI_CORE_KEYWORDS],
+    keywordSearchFields: 'title',
   },
   // vc.ru Финансы / Стартапы — текущие feed endpoints отвечают 404, вернём после проверки новых URL.
   // {

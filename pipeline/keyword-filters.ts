@@ -11,8 +11,7 @@ export const RU_AI_KEYWORDS: string[] = [
   'chatgpt',
   'gpt',
   'llm',
-  'ии ',
-  ' ии',
+  'ии',
   'яндекс gpt',
   'gigachat',
   'сбер ai',
@@ -20,23 +19,30 @@ export const RU_AI_KEYWORDS: string[] = [
   'gemini',
   'mistral',
   'нейронная сеть',
-  'автоматизация',
   'компьютерное зрение',
 ]
 
-export const RU_AI_STARTUP_KEYWORDS: string[] = [
+export const RU_AI_CORE_KEYWORDS: string[] = [
   'искусственный интеллект',
   'нейросеть',
   'нейросети',
   'машинное обучение',
   'языковая модель',
   'генеративн',
+  'компьютерное зрение',
   'chatgpt',
   'gpt',
   'llm',
+  'ии',
   'openai',
   'anthropic',
   'mistral',
+  'claude',
+  'gemini',
+  'gigachat',
+]
+
+export const RU_STARTUP_DEAL_KEYWORDS: string[] = [
   'стартап',
   'раунд',
   'инвестиции',
@@ -49,7 +55,12 @@ export const RU_AI_STARTUP_KEYWORDS: string[] = [
   'венчур',
 ]
 
-export const EN_AI_STARTUP_KEYWORDS: string[] = [
+export const RU_AI_STARTUP_KEYWORDS: string[] = [
+  ...RU_AI_CORE_KEYWORDS,
+  ...RU_STARTUP_DEAL_KEYWORDS,
+]
+
+export const EN_AI_CORE_KEYWORDS: string[] = [
   'artificial intelligence',
   'generative ai',
   'machine learning',
@@ -61,8 +72,11 @@ export const EN_AI_STARTUP_KEYWORDS: string[] = [
   'deepmind',
   'mistral',
   'cohere',
-  'cursor',
-  'perplexity',
+  'claude',
+  'gemini',
+]
+
+export const EN_STARTUP_DEAL_KEYWORDS: string[] = [
   'startup',
   'funding',
   'raises',
@@ -72,4 +86,11 @@ export const EN_AI_STARTUP_KEYWORDS: string[] = [
   'series a',
   'series b',
   'series c',
+]
+
+export const EN_AI_STARTUP_KEYWORDS: string[] = [
+  'cursor',
+  'perplexity',
+  ...EN_AI_CORE_KEYWORDS,
+  ...EN_STARTUP_DEAL_KEYWORDS,
 ]

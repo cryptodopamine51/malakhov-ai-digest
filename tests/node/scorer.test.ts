@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import type { Article } from '../../lib/supabase'
+import { keywordMatches } from '../../pipeline/rss-parser'
 import { scoreArticle } from '../../pipeline/scorer'
 import { getMinScoreForArticle } from '../../pipeline/scorer.config'
 
@@ -79,4 +80,11 @@ test('startup articles receive a deal-signal score boost', () => {
   }))
 
   assert.equal(withDealSignal, withoutDealSignal + 1)
+})
+
+test('keywordMatches treats short AI abbreviations as whole words', () => {
+  assert.equal(keywordMatches('новый инструмент для ии-поиска', 'ии'), true)
+  assert.equal(keywordMatches('новости россии и бизнеса', 'ии'), false)
+  assert.equal(keywordMatches('AI startup raises seed round', 'ai'), true)
+  assert.equal(keywordMatches('said startup raises seed round', 'ai'), false)
 })

@@ -87,6 +87,14 @@ function buildDedupHash(title: string, url: string): string {
     .slice(0, 32)
 }
 
+export function keywordMatches(searchText: string, keyword: string): boolean {
+  const normalized = keyword.trim().toLowerCase()
+  if (normalized === 'ии' || normalized === 'ai') {
+    return new RegExp(`(^|[^\\p{L}\\p{N}])${normalized}([^\\p{L}\\p{N}]|$)`, 'iu').test(searchText)
+  }
+  return searchText.includes(normalized)
+}
+
 /**
  * Парсит все RSS-фиды и возвращает список свежих AI-новостей + source-level результаты.
  *
@@ -193,20 +201,22 @@ async function parseFeed(
       const url = item.link ?? item.guid
       if (!url) continue
 
-      if (feed.lang === 'ru' && feed.needsKeywordFilter && !hasDateInUrl(url)) {
+      if (feed.lang === 'ru' && feed.needsKeywordFilter && feed.requireDateInUrl === true && !hasDateInUrl(url)) {
         continue
       }
 
       if (feed.needsKeywordFilter) {
-        const searchText = [
-          item.title ?? '',
-          item.contentSnippet ?? item.content ?? '',
-        ]
+        const fields = feed.keywordSearchFields === 'title'
+          ? [item.title ?? '']
+          : [item.title ?? '', item.contentSnippet ?? item.content ?? '']
+        const searchText = fields
           .join(' ')
           .toLowerCase()
 
         const keywordList = feed.keywords ?? RU_AI_KEYWORDS
-        const hasKeyword = keywordList.some((kw) => searchText.includes(kw))
+        const hasKeyword = feed.keywordGroups?.length
+          ? feed.keywordGroups.every((group) => group.some((kw) => keywordMatches(searchText, kw)))
+          : keywordList.some((kw) => keywordMatches(searchText, kw))
         if (!hasKeyword) continue
       }
 

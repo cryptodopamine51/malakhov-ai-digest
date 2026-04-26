@@ -136,6 +136,14 @@ Broad RSS feeds допускаются только с keyword filters:
   filters из `pipeline/keyword-filters.ts`.
 - `vc.ru AI/стартапы`, `RB.ru`, `TechCrunch Startups`, `Crunchbase News`, `TechCrunch Venture`
   дают материалы для `ai-startups`, но проходят через startup keyword filters.
+- Для самых широких startup feeds доступен `keywordGroups`: каждая группа должна иметь хотя бы одно
+  совпадение. Например, RB.ru должен совпасть и с AI-группой, и со startup/deal-группой, чтобы
+  обычные новости про маркетплейсы или инвестиции не попадали в `ai-startups`.
+- Для шумных broad feeds можно включить `keywordSearchFields='title'`: keyword matching идёт только
+  по заголовку, чтобы HTML/navigation/related text в RSS description не протаскивал нерелевантные
+  материалы.
+- Для ru broad feeds свежесть определяется по RSS `pubDate`; проверка даты в URL доступна только
+  как opt-in `requireDateInUrl`, потому что `vc.ru` и `RB.ru` не обязаны иметь дату в canonical URL.
 - `Google DeepMind Blog` добавлен как официальный research/labs RSS. Проверенные стандартные RSS
   endpoints `anthropic.com` на момент проверки отвечали 404, поэтому Anthropic остаётся источником
   через broad AI feeds и keyword filters, а не через неофициальный агрегатор.
