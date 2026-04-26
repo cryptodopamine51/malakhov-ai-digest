@@ -87,6 +87,9 @@ Operational правило:
   `rejected_low_visual` / `research_too_short:*` после deploy ожидаем и означает, что фильтр работает.
 - Broad feeds (`vc.ru/rss/all`, `rb.ru/feeds/all/`) должны мониториться через source health и
   ручную выборку после первой недели. Если мусора больше 30%, ужесточить `pipeline/keyword-filters.ts`.
+- Не подключать неофициальные агрегаторы как замену source-owned RSS без отдельного решения:
+  например, стандартные RSS endpoints `anthropic.com` сейчас отвечают 404, поэтому Anthropic
+  покрывается broad feeds/filters до появления официального feed endpoint.
 
 ## Deploy
 

@@ -106,6 +106,12 @@ export const FEEDS: FeedConfig[] = [
     topics: ['ai-labs'],
   },
   {
+    name: 'Google DeepMind Blog',
+    url: 'https://deepmind.google/blog/rss.xml',
+    lang: 'en',
+    topics: ['ai-research', 'ai-labs'],
+  },
+  {
     name: 'Hugging Face Blog',
     url: 'https://huggingface.co/blog/feed.xml',
     lang: 'en',
@@ -206,6 +212,14 @@ export const FEEDS: FeedConfig[] = [
     lang: 'ru',
     topics: ['ai-russia', 'coding'],
     // Habr AI hub — все статьи по теме, фильтр не нужен
+  },
+  {
+    name: 'Habr Startups',
+    url: 'https://habr.com/ru/rss/hubs/startuprise/articles/',
+    lang: 'ru',
+    topics: ['ai-startups', 'ai-russia'],
+    needsKeywordFilter: true,
+    keywords: RU_AI_STARTUP_KEYWORDS,
   },
   // РБК — RSS недоступен (404/401), временно отключён
   // {
