@@ -120,6 +120,7 @@ STARTUPS. Если темы содержат ai-startups, обязательно
 Все условия должны выполняться:
 - В лиде есть минимум один конкретный якорь (имя / число / дата / продукт).
 - В editorial_body минимум 3 абзаца и минимум 1200 символов.
+- Если категория содержит ai-research: editorial_body минимум 1500 символов.
 - summary содержит минимум 3 пункта.
 - Нет слов из списка запретов.
 - Материал не повторяет заголовок в первом абзаце.
@@ -182,6 +183,31 @@ export function buildEditorialSystemPrompt(): string {
   return SYSTEM_PROMPT
 }
 
+function buildCategoryHint(
+  primaryCategory: string | null | undefined,
+  secondaryCategories: string[] | null | undefined,
+): string {
+  const all = [primaryCategory, ...(secondaryCategories ?? [])].filter(Boolean) as string[]
+  const hints: string[] = []
+
+  if (all.includes('ai-research')) {
+    hints.push(
+      'RESEARCH: это материал про исследования. Обязательно раскрой: какая проблема решается, ' +
+      'какой подход использован, какие результаты получены, какие ограничения названы или следуют из источника, ' +
+      'что это меняет для отрасли. editorial_body — не менее 1500 символов.',
+    )
+  }
+
+  if (all.includes('ai-startups')) {
+    hints.push(
+      'STARTUPS: если в источнике есть — обязательно укажи: размер раунда, инвесторов, оценку компании, ' +
+      'продукт одной фразой, отличие от конкурентов.',
+    )
+  }
+
+  return hints.length > 0 ? hints.join('\n') + '\n\n' : ''
+}
+
 export function buildEditorialUserMessage({
   originalTitle,
   originalText,
@@ -196,11 +222,14 @@ export function buildEditorialUserMessage({
     secondaryCategories?.length ? `secondary=${secondaryCategories.join(', ')}` : null,
   ].filter(Boolean).join('; ')
 
+  const categoryHint = buildCategoryHint(primaryCategory, secondaryCategories)
+
   return (
     `Источник: ${sourceName}\n` +
     `Язык источника: ${sourceLang}\n` +
     `Темы: ${topics.join(', ')}\n\n` +
     (categories ? `Категории: ${categories}\n\n` : '') +
+    categoryHint +
     `Оригинальный заголовок:\n${originalTitle}\n\n` +
     `Оригинальный текст:\n${originalText}`
   )
