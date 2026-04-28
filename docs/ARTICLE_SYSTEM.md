@@ -56,6 +56,11 @@ Batch-specific lifecycle не хранится в `articles.enrich_status`.
 - `articles.enrich_status='processing'` в batch-flow означает, что статья находится внутри enrich pipeline, но final apply ещё не завершён;
 - `articles.current_batch_item_id` указывает на активный batch-owned item, если ownership уже передан из article lease;
 - item-level states (`queued_for_batch`, `batch_submitted`, `batch_processing`, `batch_result_ready`, `applying`, `applied`, `batch_failed`, `apply_failed_*`) живут только в batch tables.
+- Anthropic `custom_id` в Batch API имеет лимит 64 символа. Pipeline строит короткий
+  `item:<compact-batch-item-uuid>:attempt:<n>`, а полный контекст статьи хранит в
+  `anthropic_batch_items` и `request_payload.article_context`. Collector матчится по
+  `anthropic_batch_items.request_custom_id`; legacy `article:<article_id>:attempt:<n>:item:<item_id>`
+  остаётся parseable для старых результатов.
 
 ## Score и publish gate
 

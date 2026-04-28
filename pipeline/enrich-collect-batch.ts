@@ -131,37 +131,50 @@ async function importBatchResults(
   let usage = ZERO_USAGE_TOTALS
 
   for (const result of imported) {
-    const parsedCustomId = parseBatchCustomId(result.customId)
-    if (!parsedCustomId) {
-      continue
-    }
-
     const responsePayload = {
       output_text: result.outputText,
       raw_result: result.raw,
     }
 
-    const { data: itemRow, error: itemError } = await supabase
+    const updatePayload = {
+      result_type: result.resultType,
+      response_payload: responsePayload,
+      result_imported_at: new Date().toISOString(),
+      input_tokens: result.inputTokens,
+      output_tokens: result.outputTokens,
+      cache_read_tokens: result.cacheReadTokens,
+      cache_creation_tokens: result.cacheCreateTokens,
+      estimated_cost_usd: result.estimatedCostUsd,
+      error_code: result.errorCode,
+      error_message: result.errorMessage,
+      status: result.resultType === 'succeeded' ? 'batch_result_ready' : 'batch_failed',
+      updated_at: new Date().toISOString(),
+    }
+
+    let { data: itemRow, error: itemError } = await supabase
       .from('anthropic_batch_items')
-      .update({
-        result_type: result.resultType,
-        response_payload: responsePayload,
-        result_imported_at: new Date().toISOString(),
-        input_tokens: result.inputTokens,
-        output_tokens: result.outputTokens,
-        cache_read_tokens: result.cacheReadTokens,
-        cache_creation_tokens: result.cacheCreateTokens,
-        estimated_cost_usd: result.estimatedCostUsd,
-        error_code: result.errorCode,
-        error_message: result.errorMessage,
-        status: result.resultType === 'succeeded' ? 'batch_result_ready' : 'batch_failed',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', parsedCustomId.batchItemId)
+      .update(updatePayload)
+      .eq('request_custom_id', result.customId)
       .is('result_imported_at', null)
       .neq('status', 'applied')
       .select('*')
       .maybeSingle()
+
+    if (!itemError && !itemRow) {
+      const parsedCustomId = parseBatchCustomId(result.customId)
+      if (parsedCustomId?.batchItemId) {
+        const fallback = await supabase
+          .from('anthropic_batch_items')
+          .update(updatePayload)
+          .eq('id', parsedCustomId.batchItemId)
+          .is('result_imported_at', null)
+          .neq('status', 'applied')
+          .select('*')
+          .maybeSingle()
+        itemRow = fallback.data
+        itemError = fallback.error
+      }
+    }
 
     if (itemError || !itemRow) continue
 

@@ -34,6 +34,24 @@ export interface NormalizedBatchResult {
   raw: MessageBatchIndividualResponse
 }
 
+const ANTHROPIC_CUSTOM_ID_MAX_LENGTH = 64
+
+function compactUuid(value: string): string {
+  const compact = value.replace(/-/g, '').toLowerCase()
+  return /^[0-9a-f]{32}$/.test(compact) ? compact : value
+}
+
+function restoreUuid(value: string): string {
+  if (!/^[0-9a-f]{32}$/.test(value)) return value
+  return [
+    value.slice(0, 8),
+    value.slice(8, 12),
+    value.slice(12, 16),
+    value.slice(16, 20),
+    value.slice(20),
+  ].join('-')
+}
+
 function getClient(): Anthropic {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
@@ -43,18 +61,31 @@ function getClient(): Anthropic {
   return new Anthropic({ apiKey })
 }
 
-export function buildBatchCustomId({ articleId, attemptNo, batchItemId }: BatchRequestContext): string {
-  return `article:${articleId}:attempt:${attemptNo}:item:${batchItemId}`
+export function buildBatchCustomId({ attemptNo, batchItemId }: BatchRequestContext): string {
+  const customId = `item:${compactUuid(batchItemId)}:attempt:${attemptNo}`
+  if (customId.length > ANTHROPIC_CUSTOM_ID_MAX_LENGTH) {
+    throw new Error(`Anthropic batch custom_id exceeds ${ANTHROPIC_CUSTOM_ID_MAX_LENGTH} chars: ${customId.length}`)
+  }
+  return customId
 }
 
 export function parseBatchCustomId(customId: string): BatchRequestContext | null {
-  const match = customId.match(/^article:([^:]+):attempt:(\d+):item:([^:]+)$/)
-  if (!match) return null
+  const compactMatch = customId.match(/^item:([^:]+):attempt:(\d+)$/)
+  if (compactMatch) {
+    return {
+      articleId: '',
+      attemptNo: Number(compactMatch[2] ?? '0'),
+      batchItemId: restoreUuid(compactMatch[1] ?? ''),
+    }
+  }
+
+  const legacyMatch = customId.match(/^article:([^:]+):attempt:(\d+):item:([^:]+)$/)
+  if (!legacyMatch) return null
 
   return {
-    articleId: match[1] ?? '',
-    attemptNo: Number(match[2] ?? '0'),
-    batchItemId: match[3] ?? '',
+    articleId: legacyMatch[1] ?? '',
+    attemptNo: Number(legacyMatch[2] ?? '0'),
+    batchItemId: legacyMatch[3] ?? '',
   }
 }
 

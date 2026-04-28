@@ -80,6 +80,10 @@ Operational правило:
 
 - ожидание результата Anthropic больше не должно зависеть от `articles.lease_expires_at`;
 - если статья уже handed off в batch ownership, источником истины становятся `anthropic_batch_items` и `anthropic_batches`.
+- Anthropic Batch `custom_id` обязан быть не длиннее 64 символов. Если provider возвращает
+  HTTP 400 `invalid_request_error`, submit классифицирует это как `provider_invalid_request`,
+  не ретраит бесконечно и завершает workflow non-zero, когда staged items не создали ни одного
+  provider batch.
 - если код collector уже ожидает `article_videos`, а production DB ещё не получила `007_article_videos.sql`, collector должен оставаться backward-compatible и не ронять apply phase.
 - Claude cost observability не должна зависеть от парсинга stdout: structured usage/cost пишется в `llm_usage_logs`, `enrich_runs.total_*` и `anthropic_batches.total_*`.
 - Категорийные publish gates находятся в коде pipeline: `ai-research` требует `score >= 4`,
@@ -150,6 +154,25 @@ Operational scripts и workflows отвечают за:
 - backlog monitoring;
 - provider guard и alerting.
 - Claude cost report и budget guard.
+
+### Manual editorial backfill
+
+Ручной backfill нужен только для deterministic outage, когда источник проблемы уже понятен
+и владелец подтвердил восстановление публикаций/Telegram.
+
+Порядок:
+
+1. Выбрать failed/retry_wait статьи за нужное московское окно публикации.
+2. Извлечь source text через `pipeline/fetcher.ts`, сохранить source media/tables по тем же полям, что batch submit.
+3. Сформировать editorial fields без вызова Anthropic API, соблюдая контракт `validateEditorial`.
+4. Записать статью как `enrich_status='enriched_ok'`, `publish_status='publish_ready'`,
+   `published=true`, `quality_ok=true`, `tg_sent=false`, `editorial_model='codex-manual-backfill-<date>'`.
+5. Добавить `article_attempts` со `stage='enrich'`, `result_status='ok'` и
+   `payload.manual_backfill=true`.
+6. Запустить `npm run publish-verify` или GitHub workflow `publish-verify.yml` с production secrets.
+7. Проверить `publish_status='live'`, `verified_live=true` и публичные URLs.
+8. Backdated Telegram digest отправлять только после явного подтверждения владельца; после отправки
+   проверить `digest_runs.status='success'` и `articles.tg_sent=true` для всех отправленных материалов.
 
 ## Claude Cost Observability
 

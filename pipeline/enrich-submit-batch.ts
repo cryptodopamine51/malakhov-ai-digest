@@ -29,11 +29,56 @@ interface StagedBatchItem {
   params: ReturnType<typeof buildEditorialMessageParams>
 }
 
-function mapBatchCreateError(error: unknown): ErrorCode {
+function extractErrorDetails(error: unknown): { status: number | null; text: string } {
   const status = typeof error === 'object' && error !== null && 'status' in error
     ? Number((error as { status?: unknown }).status)
     : null
-  return status === 429 ? 'claude_rate_limit' : 'claude_api_error'
+  const parts: string[] = []
+
+  if (error instanceof Error) parts.push(error.message)
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>
+    for (const key of ['message', 'type']) {
+      if (typeof record[key] === 'string') parts.push(record[key])
+    }
+    const providerError = record.error
+    if (providerError && typeof providerError === 'object') {
+      const providerRecord = providerError as Record<string, unknown>
+      for (const key of ['message', 'type']) {
+        if (typeof providerRecord[key] === 'string') parts.push(providerRecord[key])
+      }
+      const nestedError = providerRecord.error
+      if (nestedError && typeof nestedError === 'object') {
+        const nestedRecord = nestedError as Record<string, unknown>
+        for (const key of ['message', 'type']) {
+          if (typeof nestedRecord[key] === 'string') parts.push(nestedRecord[key])
+        }
+      }
+    }
+  }
+
+  return { status: Number.isFinite(status) ? status : null, text: parts.join(' ') }
+}
+
+export function mapBatchCreateError(error: unknown): ErrorCode {
+  const { status, text } = extractErrorDetails(error)
+  if (status === 429) return 'claude_rate_limit'
+  if (status === 400 && /invalid_request_error|invalid request|custom_id/i.test(text)) {
+    return 'provider_invalid_request'
+  }
+  return 'claude_api_error'
+}
+
+export function getBatchSubmitFatalError(params: {
+  stagedItems: number
+  submittedItems: number
+  fatalConsistencyError: string | null
+}): string | null {
+  if (params.fatalConsistencyError) return params.fatalConsistencyError
+  if (params.stagedItems > 0 && params.submittedItems === 0) {
+    return `batch submit produced zero provider batches for ${params.stagedItems} staged items`
+  }
+  return null
 }
 
 async function releasePreSubmitFailure(
@@ -437,7 +482,13 @@ export async function runEnrichSubmitBatch(): Promise<void> {
     }
   }
 
-  metrics.errorSummary = fatalConsistencyError ??
+  const fatalSubmitError = getBatchSubmitFatalError({
+    stagedItems: stagedItems.length,
+    submittedItems,
+    fatalConsistencyError,
+  })
+
+  metrics.errorSummary = fatalSubmitError ??
     `submitted_batches=${submittedBatches}; submitted_items=${submittedItems}; queued_items=${stagedItems.length}`
   await finishEnrichRun(supabase, runId, metrics)
 
@@ -447,8 +498,8 @@ export async function runEnrichSubmitBatch(): Promise<void> {
   log(`Submit failed: ${metrics.failed}`)
   log(`Submitted batches: ${submittedBatches}`)
   log(`Submitted items: ${submittedItems}`)
-  if (fatalConsistencyError) {
-    throw new Error(fatalConsistencyError)
+  if (fatalSubmitError) {
+    throw new Error(fatalSubmitError)
   }
   log('=== enrich-submit-batch.ts завершён ===')
 }

@@ -13,6 +13,7 @@ export type ErrorCode =
   | 'fetch_failed'
   | 'fetch_timeout'
   | 'claude_api_error'
+  | 'provider_invalid_request'
   | 'claude_rate_limit'
   | 'claude_truncated'
   | 'batch_expired'
@@ -39,6 +40,7 @@ export const RETRYABLE_ERRORS: ErrorCode[] = [
 export const PERMANENT_ERRORS: ErrorCode[] = [
   'claude_parse_failed',
   'editorial_parse_failed',
+  'provider_invalid_request',
   'quality_reject',
 ]
 

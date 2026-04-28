@@ -16,6 +16,10 @@ import {
   normalizeBatchResult,
   parseBatchCustomId,
 } from '../../pipeline/anthropic-batch'
+import {
+  getBatchSubmitFatalError,
+  mapBatchCreateError,
+} from '../../pipeline/enrich-submit-batch'
 
 const VALID_EDITORIAL_JSON = JSON.stringify({
   ru_title: 'OpenAI добавила batch-обработку для редакционного контура',
@@ -53,13 +57,22 @@ test('editorial message params reuse the same system and user builders', () => {
 
 test('batch custom id is deterministic and parseable', () => {
   const customId = buildBatchCustomId({
-    articleId: 'article-123',
+    articleId: '11111111-1111-4111-8111-111111111111',
     attemptNo: 2,
-    batchItemId: 'item-456',
+    batchItemId: '22222222-2222-4222-8222-222222222222',
   })
 
-  assert.equal(customId, 'article:article-123:attempt:2:item:item-456')
+  assert.equal(customId, 'item:22222222222242228222222222222222:attempt:2')
+  assert.ok(customId.length <= 64)
   assert.deepEqual(parseBatchCustomId(customId), {
+    articleId: '',
+    attemptNo: 2,
+    batchItemId: '22222222-2222-4222-8222-222222222222',
+  })
+})
+
+test('legacy batch custom id remains parseable', () => {
+  assert.deepEqual(parseBatchCustomId('article:article-123:attempt:2:item:item-456'), {
     articleId: 'article-123',
     attemptNo: 2,
     batchItemId: 'item-456',
@@ -69,6 +82,38 @@ test('batch custom id is deterministic and parseable', () => {
 test('chunkBatchRequests respects max request count', () => {
   const chunks = chunkBatchRequests([1, 2, 3, 4, 5], 2)
   assert.deepEqual(chunks, [[1, 2], [3, 4], [5]])
+})
+
+test('batch submit maps invalid Anthropic requests to permanent provider error', () => {
+  const error = {
+    status: 400,
+    error: {
+      type: 'invalid_request_error',
+      message: 'requests.0.custom_id: String should have at most 64 characters',
+    },
+  }
+
+  assert.equal(mapBatchCreateError(error), 'provider_invalid_request')
+  assert.equal(mapBatchCreateError({ status: 429, message: 'rate limit' }), 'claude_rate_limit')
+})
+
+test('batch submit becomes fatal when staged items produce zero provider batches', () => {
+  assert.equal(
+    getBatchSubmitFatalError({
+      stagedItems: 5,
+      submittedItems: 0,
+      fatalConsistencyError: null,
+    }),
+    'batch submit produced zero provider batches for 5 staged items',
+  )
+  assert.equal(
+    getBatchSubmitFatalError({
+      stagedItems: 5,
+      submittedItems: 2,
+      fatalConsistencyError: null,
+    }),
+    null,
+  )
 })
 
 test('parseEditorialJson and validateEditorial accept valid output contract', () => {

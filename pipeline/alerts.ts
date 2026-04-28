@@ -10,6 +10,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 const COOLDOWN_HOURS: Record<string, number> = {
   source_down: 4,
   backlog_high: 2,
+  provider_invalid_request: 6,
   provider_rate_limit: 1,
   enrich_failed_spike: 2,
   batch_submit_failed: 1,
@@ -31,6 +32,17 @@ export interface AlertPayload {
   payload?: Record<string, unknown>
   botToken?: string
   adminChatId?: string
+}
+
+function hasTelegramAlertTarget(opts: Pick<AlertPayload, 'botToken' | 'adminChatId'>): opts is {
+  botToken: string
+  adminChatId: string
+} {
+  if (opts.botToken && opts.adminChatId) return true
+  if (opts.botToken || opts.adminChatId) {
+    console.warn('[alerts] Telegram admin alert skipped: TELEGRAM_BOT_TOKEN and TELEGRAM_ADMIN_CHAT_ID are both required')
+  }
+  return false
 }
 
 /**
@@ -56,7 +68,7 @@ export async function fireAlert(opts: AlertPayload): Promise<boolean> {
     if (selectError) {
       console.error(`[alerts] Failed to query pipeline_alerts: ${selectError.message}`)
       // Still attempt Telegram even if DB is down
-      if (opts.botToken && opts.adminChatId) {
+      if (hasTelegramAlertTarget(opts)) {
         await sendTelegramAlert(opts.botToken, opts.adminChatId, severity, message)
       }
       return true
@@ -121,7 +133,7 @@ export async function fireAlert(opts: AlertPayload): Promise<boolean> {
   }
 
   // Send Telegram notification regardless of DB outcome
-  if (opts.botToken && opts.adminChatId) {
+  if (hasTelegramAlertTarget(opts)) {
     await sendTelegramAlert(opts.botToken, opts.adminChatId, severity, message)
   }
 
@@ -167,7 +179,14 @@ async function sendTelegramAlert(
       }),
     })
     if (!res.ok) {
-      console.error(`[alerts] Telegram send failed: ${res.status}`)
+      let body = ''
+      try {
+        body = await res.text()
+      } catch {
+        body = ''
+      }
+      const bodySuffix = body ? ` ${body.slice(0, 500)}` : ''
+      console.error(`[alerts] Telegram send failed: ${res.status}${bodySuffix}`)
     }
   } catch (err) {
     // Non-critical — alert is already written to DB

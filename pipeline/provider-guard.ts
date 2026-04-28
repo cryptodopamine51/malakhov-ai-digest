@@ -14,6 +14,7 @@ import { fireAlert, resolveAlert } from './alerts'
 
 const WINDOW_HOURS = 2
 const RATE_LIMIT_ALERT_COUNT = 5
+const INVALID_REQUEST_ALERT_COUNT = 1
 const ERROR_RATE_THRESHOLD = 0.3  // 30% failure rate triggers alert
 
 function log(msg: string): void {
@@ -46,7 +47,7 @@ async function checkProviderHealth(): Promise<void> {
 
   const { data: batchItems, error: batchError } = await supabase
     .from('anthropic_batch_items')
-    .select('status, error_code, result_type')
+    .select('status, error_code, error_message, result_type')
     .gte('updated_at', since)
 
   if (batchError) {
@@ -68,6 +69,9 @@ async function checkProviderHealth(): Promise<void> {
   const apiErrors =
     (attempts?.filter((a) => a.error_code === 'claude_api_error').length ?? 0) +
     (batchItems?.filter((item) => item.result_type === 'errored').length ?? 0)
+  const invalidRequestHits =
+    (attempts?.filter((a) => a.error_code === 'provider_invalid_request').length ?? 0) +
+    (batchItems?.filter((item) => item.error_code === 'provider_invalid_request').length ?? 0)
   const batchApplyFailures = batchItems?.filter((item) =>
     item.status === 'apply_failed_retriable' || item.status === 'apply_failed_terminal'
   ).length ?? 0
@@ -82,11 +86,27 @@ async function checkProviderHealth(): Promise<void> {
 
   log(
     `Provider activity за ${WINDOW_HOURS}h: attempts=${totalAttempts}, batch_items=${totalBatchItems}, ` +
-    `rate_limit=${rateLimitHits}, api_errors=${apiErrors}, apply_failures=${batchApplyFailures}, ` +
+    `rate_limit=${rateLimitHits}, api_errors=${apiErrors}, invalid_request=${invalidRequestHits}, apply_failures=${batchApplyFailures}, ` +
     `error_rate=${(errorRate * 100).toFixed(1)}%`,
   )
 
-  if (rateLimitHits >= RATE_LIMIT_ALERT_COUNT) {
+  if (invalidRequestHits < INVALID_REQUEST_ALERT_COUNT) {
+    await resolveAlert(supabase, 'provider_invalid_request', 'claude')
+  }
+
+  if (invalidRequestHits >= INVALID_REQUEST_ALERT_COUNT) {
+    await fireAlert({
+      supabase,
+      alertType: 'provider_invalid_request',
+      severity: 'critical',
+      entityKey: 'claude',
+      message: `Claude invalid request hit ${invalidRequestHits} times in last ${WINDOW_HOURS}h. Batch submit is likely misconfigured and needs code/operator action.`,
+      payload: { invalidRequestHits, apiErrors, total, totalAttempts, totalBatchItems, errorRate },
+      botToken,
+      adminChatId,
+    })
+    log(`⚠️ Invalid request alert fired (${invalidRequestHits} hits)`)
+  } else if (rateLimitHits >= RATE_LIMIT_ALERT_COUNT) {
     await fireAlert({
       supabase,
       alertType: 'provider_rate_limit',
