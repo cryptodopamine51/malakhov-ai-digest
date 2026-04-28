@@ -62,8 +62,9 @@ test('batch custom id is deterministic and parseable', () => {
     batchItemId: '22222222-2222-4222-8222-222222222222',
   })
 
-  assert.equal(customId, 'item:22222222222242228222222222222222:attempt:2')
+  assert.equal(customId, 'item_22222222222242228222222222222222_attempt_2')
   assert.ok(customId.length <= 64)
+  assert.match(customId, /^[a-zA-Z0-9_-]{1,64}$/)
   assert.deepEqual(parseBatchCustomId(customId), {
     articleId: '',
     attemptNo: 2,

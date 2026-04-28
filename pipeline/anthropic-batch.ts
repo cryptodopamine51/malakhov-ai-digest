@@ -62,7 +62,7 @@ function getClient(): Anthropic {
 }
 
 export function buildBatchCustomId({ attemptNo, batchItemId }: BatchRequestContext): string {
-  const customId = `item:${compactUuid(batchItemId)}:attempt:${attemptNo}`
+  const customId = `item_${compactUuid(batchItemId)}_attempt_${attemptNo}`
   if (customId.length > ANTHROPIC_CUSTOM_ID_MAX_LENGTH) {
     throw new Error(`Anthropic batch custom_id exceeds ${ANTHROPIC_CUSTOM_ID_MAX_LENGTH} chars: ${customId.length}`)
   }
@@ -70,7 +70,7 @@ export function buildBatchCustomId({ attemptNo, batchItemId }: BatchRequestConte
 }
 
 export function parseBatchCustomId(customId: string): BatchRequestContext | null {
-  const compactMatch = customId.match(/^item:([^:]+):attempt:(\d+)$/)
+  const compactMatch = customId.match(/^item_(.+)_attempt_(\d+)$/)
   if (compactMatch) {
     return {
       articleId: '',

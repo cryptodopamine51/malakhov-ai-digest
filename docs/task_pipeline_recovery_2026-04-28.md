@@ -51,12 +51,13 @@ article:<article_uuid>:attempt:<n>:item:<batch_item_uuid>
 Сделать короткий deterministic `custom_id`:
 
 ```text
-item:<compact-batch-item-uuid>:attempt:<attemptNo>
+item_<compact-batch-item-uuid>_attempt_<attemptNo>
 ```
 
 Требования:
 
 - длина всегда `<= 64`;
+- charset соответствует Anthropic pattern `^[a-zA-Z0-9_-]{1,64}$`;
 - уникальность внутри batch;
 - `parseBatchCustomId` продолжает возвращать `attemptNo`, `batchItemId` для новых ids;
 - для старого формата parser остаётся backward-compatible, чтобы collector не ломался на уже созданных rows/results.
@@ -178,3 +179,5 @@ Backdated Telegram отправку не делать автоматически
 - Отправлены backdated Telegram digest posts за 26 и 27 апреля после подтверждения владельца.
 - Одна статья за 26 апреля была отсечена transient HEAD-check перед digest delivery; после
   повторной live-проверки отправлена отдельным recovery-post и помечена `tg_sent=true`.
+- Первый production smoke после фикса выявил второе ограничение Anthropic: кроме длины,
+  `custom_id` не допускает `:`. Финальный формат заменён на underscore-only.

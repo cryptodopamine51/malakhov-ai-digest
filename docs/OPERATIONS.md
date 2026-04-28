@@ -80,10 +80,10 @@ Operational правило:
 
 - ожидание результата Anthropic больше не должно зависеть от `articles.lease_expires_at`;
 - если статья уже handed off в batch ownership, источником истины становятся `anthropic_batch_items` и `anthropic_batches`.
-- Anthropic Batch `custom_id` обязан быть не длиннее 64 символов. Если provider возвращает
-  HTTP 400 `invalid_request_error`, submit классифицирует это как `provider_invalid_request`,
-  не ретраит бесконечно и завершает workflow non-zero, когда staged items не создали ни одного
-  provider batch.
+- Anthropic Batch `custom_id` обязан быть не длиннее 64 символов и match-ить
+  `^[a-zA-Z0-9_-]{1,64}$`. Если provider возвращает HTTP 400 `invalid_request_error`,
+  submit классифицирует это как `provider_invalid_request`, не ретраит бесконечно и
+  завершает workflow non-zero, когда staged items не создали ни одного provider batch.
 - если код collector уже ожидает `article_videos`, а production DB ещё не получила `007_article_videos.sql`, collector должен оставаться backward-compatible и не ронять apply phase.
 - Claude cost observability не должна зависеть от парсинга stdout: structured usage/cost пишется в `llm_usage_logs`, `enrich_runs.total_*` и `anthropic_batches.total_*`.
 - Категорийные publish gates находятся в коде pipeline: `ai-research` требует `score >= 4`,
