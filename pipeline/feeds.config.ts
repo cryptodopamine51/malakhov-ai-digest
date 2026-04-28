@@ -5,7 +5,6 @@ import {
   EN_AI_STARTUP_KEYWORDS,
   EN_STARTUP_DEAL_KEYWORDS,
   RU_AI_CORE_KEYWORDS,
-  RU_AI_STARTUP_KEYWORDS,
   RU_STARTUP_DEAL_KEYWORDS,
 } from './keyword-filters'
 
@@ -260,7 +259,6 @@ export const FEEDS: FeedConfig[] = [
     lang: 'ru',
     topics: ['ai-startups', 'ai-russia', 'ai-investments'],
     needsKeywordFilter: true,
-    keywords: RU_AI_STARTUP_KEYWORDS,
     keywordGroups: [RU_AI_CORE_KEYWORDS, RU_STARTUP_DEAL_KEYWORDS],
     keywordSearchFields: 'title',
   },
@@ -270,7 +268,6 @@ export const FEEDS: FeedConfig[] = [
     lang: 'ru',
     topics: ['ai-startups', 'ai-russia', 'ai-industry'],
     needsKeywordFilter: true,
-    keywords: RU_AI_STARTUP_KEYWORDS,
     keywordGroups: [RU_AI_CORE_KEYWORDS],
     keywordSearchFields: 'title',
   },
