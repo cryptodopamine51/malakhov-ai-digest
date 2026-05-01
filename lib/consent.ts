@@ -9,7 +9,7 @@
 export const CONSENT_STORAGE_KEY = 'consent_v1'
 export const CONSENT_CHANGED_EVENT = 'consent-changed'
 
-export type ConsentDecision = 'accept_all' | 'necessary_only' | 'custom'
+export type ConsentDecision = 'accept_all' | 'necessary_only' | 'custom' | 'notice_ok'
 
 export interface ConsentRecord {
   version: 1
@@ -52,5 +52,5 @@ export function writeConsent(record: Omit<ConsentRecord, 'version' | 'decidedAt'
 }
 
 export function hasAnalyticsConsent(record: ConsentRecord | null): boolean {
-  return record?.categories.analytics === true
+  return record ? record.categories.analytics === true : true
 }

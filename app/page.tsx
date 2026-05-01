@@ -9,7 +9,8 @@ import TopicTabs from '../src/components/TopicTabs'
 export const revalidate = 300
 
 const PER_PAGE = 12
-const HEADLINES_COUNT = 8
+const HEADLINES_COUNT = 12
+const HEADLINES_PAGE_SIZE = 4
 
 export default async function HomePage({
   searchParams,
@@ -54,7 +55,7 @@ export default async function HomePage({
         <section className="mb-12 grid grid-cols-1 gap-8 lg:grid-cols-5 lg:gap-10">
           <div className="lg:col-span-2 lg:order-1">
             <h2 className="mb-4 font-serif text-2xl font-bold text-ink">Свежие заголовки</h2>
-            <PulseList articles={headlines} />
+            <PulseList articles={headlines} pageSize={HEADLINES_PAGE_SIZE} />
           </div>
           <div className="lg:col-span-3 lg:order-2">
             <h2 className="mb-4 font-serif text-2xl font-bold text-ink">Главное сегодня</h2>

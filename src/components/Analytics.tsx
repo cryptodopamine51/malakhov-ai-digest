@@ -14,8 +14,8 @@ interface AnalyticsProps {
 }
 
 /**
- * Подгружает Яндекс Метрику только после явного согласия на аналитические cookies.
- * До решения пользователя ничего не загружаем — это требование 152-ФЗ и логика баннера.
+ * Подгружает Яндекс Метрику по умолчанию для РФ-модели уведомления.
+ * Если пользователь отозвал согласие на /consent, сохранённый opt-out блокирует загрузку.
  */
 export default function Analytics({ metrikaId }: AnalyticsProps) {
   const [allowed, setAllowed] = useState(false)

@@ -31,7 +31,7 @@ export default function PrivacyPolicyPage() {
       <h1 className="mb-2 font-serif text-3xl font-bold text-ink md:text-4xl">
         Политика обработки персональных данных
       </h1>
-      <p className="mb-8 text-sm text-muted">Редакция от 2026-04-25 · версия 1</p>
+      <p className="mb-8 text-sm text-muted">Редакция от 2026-05-01 · версия 2</p>
 
       <h2>1. Общие положения</h2>
       <p>
@@ -52,7 +52,7 @@ export default function PrivacyPolicyPage() {
       <ul>
         <li>cookies и технические идентификаторы (см. Политику cookies);</li>
         <li>IP-адрес, user-agent и техническая информация о запросе;</li>
-        <li>данные систем веб-аналитики (Яндекс Метрика) — только при согласии;</li>
+        <li>данные систем веб-аналитики (Яндекс Метрика) — при использовании Сайта после уведомления о cookies;</li>
         <li>email-адрес — только если пользователь добровольно подписался на рассылку.</li>
       </ul>
 

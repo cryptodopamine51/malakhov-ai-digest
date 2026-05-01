@@ -1,15 +1,17 @@
 'use client'
 
 import { useState } from 'react'
-import { CONSENT_CHANGED_EVENT, CONSENT_STORAGE_KEY } from '../../lib/consent'
+import { writeConsent } from '../../lib/consent'
 
 export default function RevokeConsentButton() {
   const [done, setDone] = useState(false)
 
   const revoke = () => {
     try {
-      window.localStorage.removeItem(CONSENT_STORAGE_KEY)
-      window.dispatchEvent(new CustomEvent(CONSENT_CHANGED_EVENT, { detail: null }))
+      writeConsent({
+        decision: 'necessary_only',
+        categories: { necessary: true, analytics: false, marketing: false },
+      })
       setDone(true)
       window.setTimeout(() => window.location.reload(), 800)
     } catch {

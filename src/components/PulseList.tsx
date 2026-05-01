@@ -1,4 +1,7 @@
+'use client'
+
 import Link from 'next/link'
+import { useMemo, useState } from 'react'
 import { getArticlePath } from '../../lib/article-slugs'
 import type { Article } from '../../lib/supabase'
 import RelativeTime from './RelativeTime'
@@ -6,17 +9,38 @@ import { TOPIC_LABELS } from './TopicBadge'
 
 interface PulseListProps {
   articles: Article[]
+  pageSize?: number
 }
 
-export default function PulseList({ articles }: PulseListProps) {
+export default function PulseList({ articles, pageSize = 4 }: PulseListProps) {
+  const [page, setPage] = useState(0)
+
+  const totalPages = Math.max(1, Math.ceil(articles.length / pageSize))
+  const currentArticles = useMemo(() => {
+    const start = page * pageSize
+    return articles.slice(start, start + pageSize)
+  }, [articles, page, pageSize])
+
   if (!articles.length) return null
 
   return (
-    <ul className="divide-y divide-line border-y border-line">
-      {articles.map((article) => (
-        <PulseListItem key={article.id} article={article} />
-      ))}
-    </ul>
+    <div>
+      <ul className="divide-y divide-line border-y border-line" aria-live="polite">
+        {currentArticles.map((article) => (
+          <PulseListItem key={article.id} article={article} />
+        ))}
+      </ul>
+
+      {articles.length > pageSize && (
+        <button
+          type="button"
+          onClick={() => setPage((current) => (current + 1) % totalPages)}
+          className="mt-3 inline-flex w-full items-center justify-center rounded border border-line px-4 py-2 text-xs font-medium uppercase tracking-[0.06em] text-muted transition-colors hover:border-ink hover:text-ink"
+        >
+          Ещё
+        </button>
+      )}
+    </div>
   )
 }
 
