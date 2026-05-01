@@ -402,7 +402,7 @@ async function pollBatches(
     .from('anthropic_batches')
     .select('id, provider_batch_id, processing_status, poll_attempts')
     .in('status', ['submitted', 'partial', 'completed', 'failed'])
-    .order('last_polled_at', { ascending: true })
+    .order('last_polled_at', { ascending: true, nullsFirst: true })
     .limit(BATCH_POLL_LIMIT)
 
   if (error || !batches?.length) return { retryable: 0, failed: 0, usage: ZERO_USAGE_TOTALS }

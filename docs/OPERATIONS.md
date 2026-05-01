@@ -85,6 +85,7 @@ Operational правило:
   submit классифицирует это как `provider_invalid_request`, не ретраит бесконечно и
   завершает workflow non-zero, когда staged items не создали ни одного provider batch.
 - если код collector уже ожидает `article_videos`, а production DB ещё не получила `007_article_videos.sql`, collector должен оставаться backward-compatible и не ронять apply phase.
+- collector poll-очередь по `anthropic_batches` сортируется `last_polled_at ASC NULLS FIRST`. Без `nullsFirst` в Postgres NULL уезжают в конец, и свежие submitted-батчи навсегда вытесняются уже завершёнными — что приводит к incident 2026-05-01 (89 застрявших статей за 2 суток). Документировано в `docs/incident_report_2026-05-01.md`.
 - Claude cost observability не должна зависеть от парсинга stdout: structured usage/cost пишется в `llm_usage_logs`, `enrich_runs.total_*` и `anthropic_batches.total_*`.
 - Категорийные publish gates находятся в коде pipeline: `ai-research` требует `score >= 4`,
   визуал до submit и `editorial_body >= 1500` после collect. Рост rejected по причинам
