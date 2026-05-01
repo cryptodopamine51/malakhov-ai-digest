@@ -206,13 +206,66 @@ function normalizeVideo(rawUrl: string, baseUrl: string): Omit<ExtractedVideo, '
   return null
 }
 
+// Селекторы контейнеров «тела статьи». Хабр, vc.ru, RB.ru, ТАСС используют
+// собственные классы — без них iframe-ы из article-body теряются и в БД нет видео.
+const ARTICLE_BODY_SELECTORS = [
+  'article',
+  'main',
+  '.content',
+  '.post',
+  '[class*="article"]',
+  '[class*="content"]',
+  // Habr
+  '.tm-article-body',
+  '.article-formatted-body',
+  '[class*="tm-article"]',
+  // vc.ru / DTF / TJ (один движок)
+  '.content--full',
+  '[class*="content--"]',
+  // RB.ru
+  '.s-news__text',
+  '.b-article__text',
+  // Habr Q&A / classic
+  '.post__text',
+  '[class*="js-mediator-article"]',
+] as const
+
+const KNOWN_VIDEO_HOST_RE =
+  /(?:youtube\.com|youtu\.be|youtube-nocookie\.com|player\.vimeo\.com|vimeo\.com|rutube\.ru|vk\.com\/video_ext|player\.vk\.com|vkvideo\.ru)/i
+
+function isInsideExcludedRegion(node: Element): boolean {
+  // Скрываем sidebar/related/comments — они не часть статьи.
+  let cursor: Element | null = node
+  while (cursor) {
+    const className = (cursor.getAttribute?.('class') ?? '').toLowerCase()
+    const id = (cursor.getAttribute?.('id') ?? '').toLowerCase()
+    if (/sidebar|aside|related|recommend|comment|footer|promo|advert|ad-/.test(className)) return true
+    if (/sidebar|aside|related|recommend|comment|footer|promo|advert|ad-/.test(id)) return true
+    cursor = cursor.parentElement
+  }
+  return false
+}
+
 function extractInlineVideos(document: Document, baseUrl: string): ExtractedVideo[] {
   const videos: ExtractedVideo[] = []
   const seen = new Set<string>()
 
   try {
-    const iframeSelector = 'article iframe, .content iframe, .post iframe, main iframe, [class*="article"] iframe, [class*="content"] iframe'
-    document.querySelectorAll(iframeSelector).forEach((iframe) => {
+    const iframeSelector = ARTICLE_BODY_SELECTORS.map((sel) => `${sel} iframe`).join(', ')
+    const containerIframes = Array.from(document.querySelectorAll(iframeSelector))
+
+    // Fallback: если контейнерных iframe-ов нет, берём ВСЕ iframe на странице,
+    // но фильтруем по known video host (YouTube/Rutube/VK/Vimeo) и исключаем
+    // sidebar/related/comments. Это покрывает источники с нестандартной разметкой
+    // (RB.ru, ТАСС) без рисков притянуть рекламу.
+    const candidateIframes = containerIframes.length > 0
+      ? containerIframes
+      : Array.from(document.querySelectorAll('iframe')).filter((iframe) => {
+          const src = (iframe.getAttribute('src') ?? iframe.getAttribute('data-src') ?? '')
+          return KNOWN_VIDEO_HOST_RE.test(src) && !isInsideExcludedRegion(iframe)
+        })
+
+    candidateIframes.forEach((iframe) => {
       const rawSrc =
         iframe.getAttribute('src') ??
         iframe.getAttribute('data-src') ??
@@ -230,7 +283,7 @@ function extractInlineVideos(document: Document, baseUrl: string): ExtractedVide
       })
     })
 
-    const videoSelector = 'article video, .content video, .post video, main video, [class*="article"] video, [class*="content"] video'
+    const videoSelector = ARTICLE_BODY_SELECTORS.map((sel) => `${sel} video`).join(', ')
     document.querySelectorAll(videoSelector).forEach((video) => {
       const directSrc =
         video.getAttribute('src') ??

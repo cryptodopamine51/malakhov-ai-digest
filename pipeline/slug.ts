@@ -36,6 +36,40 @@ export function generateSlug(ruTitle: string): string {
   return base || 'article'
 }
 
+/**
+ * Defensive slug normalizer для входящих slug-ов из любого источника
+ * (legacy backfill, ручной импорт, прошлые версии generator-а).
+ * Возвращает только `[a-z0-9-]`, без leading/trailing/duplicate дефисов
+ * и без legacy hex-хвоста.
+ */
+export function normalizeSlug(slug: string): string {
+  const lowered = slug.toLowerCase()
+  // Translit Cyrillic letters (защита от старых slug-ов с кириллицей в БД)
+  const translit = lowered
+    .split('')
+    .map((ch) => TRANSLIT_MAP[ch] ?? ch)
+    .join('')
+  return translit
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{1,2}[a-f0-9]{6}$/i, '')
+    .slice(0, MAX_SLUG_LENGTH)
+    .replace(/^-+|-+$/g, '')
+}
+
+/**
+ * Runtime guard: бросает если slug содержит запрещённые символы.
+ * Используется в collector apply path как safety net.
+ */
+export function assertAsciiSlug(slug: string): void {
+  if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(slug)) {
+    throw new Error(`invalid_slug: must match ^[a-z0-9-]+$, got ${JSON.stringify(slug)}`)
+  }
+}
+
 function withNumericSuffix(baseSlug: string, ordinal: number): string {
   const suffix = `-${ordinal}`
   const trimmedBase = baseSlug

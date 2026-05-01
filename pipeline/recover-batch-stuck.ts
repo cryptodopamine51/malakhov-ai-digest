@@ -10,6 +10,8 @@ import { log } from './enrich-runtime'
 const PROVIDER_BATCH_POLL_STUCK_MINUTES = Number(process.env.BATCH_POLL_STUCK_MINUTES ?? 90)
 const RESULT_IMPORTED_NOT_APPLIED_MINUTES = Number(process.env.BATCH_RESULT_NOT_APPLIED_MINUTES ?? 30)
 const APPLY_STARTED_NOT_FINISHED_MINUTES = Number(process.env.BATCH_APPLY_STUCK_MINUTES ?? 30)
+const NULL_POLL_RESCUE_AFTER_MINUTES = Number(process.env.BATCH_NULL_POLL_RESCUE_MINUTES ?? 5)
+const POLL_PRIORITY_EPOCH = '1970-01-01T00:00:00Z'
 
 export async function runRecoverBatchStuck(): Promise<void> {
   log('=== Запуск recover-batch-stuck.ts ===')
@@ -24,12 +26,28 @@ export async function runRecoverBatchStuck(): Promise<void> {
 
   const { data: stuckBatches } = await supabase
     .from('anthropic_batches')
-    .select('id, provider_batch_id, processing_status, last_polled_at')
+    .select('id, provider_batch_id, processing_status, last_polled_at, created_at')
     .neq('processing_status', 'ended')
     .or(`last_polled_at.is.null,last_polled_at.lte.${pollThreshold}`)
     .limit(50)
 
+  // Auto-rescue: для строк с last_polled_at = NULL старше чем NULL_POLL_RESCUE_AFTER_MINUTES
+  // выставляем last_polled_at = эпоха, чтобы они уехали в начало очереди collector-а.
+  // Без этого Postgres сортирует NULL последними (даже при nullsFirst=true в JS клиенте сбой
+  // может произойти в legacy коде), и новые батчи навсегда вытесняются уже опрошенными.
+  const nullRescueCutoff = new Date(now - NULL_POLL_RESCUE_AFTER_MINUTES * 60_000).toISOString()
+  let nullRescued = 0
   for (const batch of stuckBatches ?? []) {
+    if (batch.last_polled_at == null && batch.created_at && batch.created_at <= nullRescueCutoff) {
+      const { error: rescueError } = await supabase
+        .from('anthropic_batches')
+        .update({ last_polled_at: POLL_PRIORITY_EPOCH, updated_at: new Date().toISOString() })
+        .eq('id', batch.id)
+        .is('last_polled_at', null)
+
+      if (!rescueError) nullRescued++
+    }
+
     await fireAlert({
       supabase,
       alertType: 'batch_poll_stuck',
@@ -105,6 +123,7 @@ export async function runRecoverBatchStuck(): Promise<void> {
   }
 
   log(`Stuck batches: ${stuckBatches?.length ?? 0}`)
+  log(`Null-poll rescued: ${nullRescued}`)
   log(`Result imported not applied: ${readyNotApplied?.length ?? 0}`)
   log(`Applying stuck: ${applyingStuck?.length ?? 0}`)
   log('=== recover-batch-stuck.ts завершён ===')

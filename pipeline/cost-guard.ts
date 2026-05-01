@@ -1,13 +1,37 @@
 import { config } from 'dotenv'
 import { resolve } from 'path'
+import { pathToFileURL } from 'url'
 config({ path: resolve(process.cwd(), '.env.local') })
 
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { getServerClient } from '../lib/supabase'
 import { fireAlert, resolveAlert } from './alerts'
 import { queryClaudeCostReport } from './llm-usage'
 
 const MOSCOW_TZ = 'Europe/Moscow'
 const DAILY_BUDGET_USD = Number(process.env.CLAUDE_DAILY_BUDGET_USD ?? 1)
+
+export interface DailyBudgetStatus {
+  spent: number
+  budget: number
+  overBudget: boolean
+  topOps: Array<{ key: string; costUsd: number }>
+}
+
+/**
+ * Возвращает текущее состояние дневного расхода Claude по МСК.
+ * Используется и cost-guard cron-ом (для алёртов), и enrich-submit-batch
+ * (для проактивной блокировки до того, как мы потратим больше денег).
+ */
+export async function getDailyBudgetStatus(supabase: SupabaseClient): Promise<DailyBudgetStatus> {
+  const report = await queryClaudeCostReport(supabase, getMoscowDayStart(), new Date())
+  return {
+    spent: report.totalCostUsd,
+    budget: DAILY_BUDGET_USD,
+    overBudget: report.totalCostUsd > DAILY_BUDGET_USD,
+    topOps: report.byOperation.slice(0, 5).map((row) => ({ key: row.key, costUsd: row.costUsd })),
+  }
+}
 
 function log(msg: string): void {
   const ts = new Date().toTimeString().slice(0, 8)
@@ -76,7 +100,9 @@ async function main(): Promise<void> {
   log('=== cost-guard завершён ===')
 }
 
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error))
-  process.exit(1)
-})
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exit(1)
+  })
+}

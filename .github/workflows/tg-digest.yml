@@ -2,7 +2,15 @@ name: Telegram Daily Digest
 
 on:
   schedule:
-    - cron: '0 6 * * *'   # 09:00 МСК (UTC+3)
+    # GitHub Actions cron не имеет SLA: задержка 1–2 часа в часы пик — типична.
+    # Запускаем 4 раза с интервалом 1 час: первый успевший в день claim-ит slot
+    # через digest_runs (UNIQUE на digest_date+channel_id), остальные мгновенно
+    # exit-ят с already_claimed. Это компенсирует задержки GH без сторонних
+    # сервисов и без риска дублирования сообщений в канале.
+    - cron: '0 6 * * *'    # 09:00 МСК — основное окно
+    - cron: '0 7 * * *'    # 10:00 МСК — backup-1
+    - cron: '0 8 * * *'    # 11:00 МСК — backup-2
+    - cron: '0 9 * * *'    # 12:00 МСК — last resort
   workflow_dispatch:
     inputs:
       force:

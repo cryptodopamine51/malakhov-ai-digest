@@ -16,6 +16,7 @@ import { scoreArticle } from './scorer'
 import { articleHasCategory, getMinScoreForArticle } from './scorer.config'
 import { isExhausted, isRetryable, nextRetryAt, type ErrorCode } from './types'
 import { ZERO_USAGE_TOTALS } from './llm-usage'
+import { getDailyBudgetStatus } from './cost-guard'
 
 const SUBMIT_BATCH_SIZE = Number(process.env.ENRICH_SUBMIT_BATCH_SIZE ?? 15)
 const MAX_REQUESTS_PER_BATCH = Number(process.env.ANTHROPIC_BATCH_MAX_REQUESTS ?? 15)
@@ -405,6 +406,34 @@ export async function runEnrichSubmitBatch(): Promise<void> {
     oldestPendingAgeMinutes,
     usage: ZERO_USAGE_TOTALS,
     errorSummary: null as string | null,
+  }
+
+  // Pre-submit cost gate: блокируем claim если уже превысили дневной бюджет.
+  // Без этого batch-submit крутился каждые 30 мин и продолжал тратить деньги
+  // даже когда cost-guard уже отправил алёрт. Hard-stop теперь проактивный.
+  try {
+    const budget = await getDailyBudgetStatus(supabase)
+    if (budget.overBudget) {
+      log(`Дневной бюджет Claude превышен: $${budget.spent.toFixed(4)} > $${budget.budget.toFixed(2)}. Submit пропущен.`)
+      metrics.errorSummary = `budget_exceeded: spent=$${budget.spent.toFixed(4)} budget=$${budget.budget.toFixed(2)}`
+      await fireAlert({
+        supabase,
+        alertType: 'enrich_submit_blocked_budget',
+        severity: 'critical',
+        entityKey: 'anthropic',
+        message:
+          `enrich-submit-batch заблокирован: дневной расход Claude $${budget.spent.toFixed(4)} ` +
+          `превысил бюджет $${budget.budget.toFixed(2)}. Submit будет пропущен до начала следующих суток МСК.`,
+        payload: { spent: budget.spent, budget: budget.budget, topOps: budget.topOps },
+        botToken: process.env.TELEGRAM_BOT_TOKEN,
+        adminChatId: process.env.TELEGRAM_ADMIN_CHAT_ID,
+      })
+      await finishEnrichRun(supabase, runId, metrics)
+      return
+    }
+  } catch (budgetErr) {
+    // budget check is best-effort: если запрос упал, не блокируем submit
+    log(`cost gate failed: ${budgetErr instanceof Error ? budgetErr.message : String(budgetErr)}`)
   }
 
   const claimedArticles = await claimBatch(supabase, SUBMIT_BATCH_SIZE)

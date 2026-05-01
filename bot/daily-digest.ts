@@ -496,7 +496,37 @@ async function main(): Promise<void> {
 
   if (articles.length === 0) {
     log('Нет новых статей для дайджеста')
-    await finalizeDigestNonDelivery(supabase, runId, 'skipped', { articles_count: 0, site_url: siteUrl })
+
+    // Pipeline-stalled detection: пустая выборка может означать (а) тихий день,
+    // (б) застрявший enrichment. Проверяем количество статей в processing > 6h —
+    // это явный сигнал, что collector не подбирает результаты.
+    const stalledThreshold = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString()
+    const { count: stuckProcessing } = await supabase
+      .from('articles')
+      .select('*', { count: 'exact', head: true })
+      .eq('enrich_status', 'processing')
+      .lte('processing_started_at', stalledThreshold)
+
+    if ((stuckProcessing ?? 0) > 0 && adminChatId) {
+      try {
+        await fireAlert({
+          supabase,
+          alertType: 'digest_pipeline_stalled',
+          severity: 'critical',
+          entityKey: digestDate,
+          message: `Дайджест за ${digestDate} пуст, но в pipeline ${stuckProcessing} статей в processing > 6h — collector не подбирает результаты Anthropic Batch. Проверь recover-batch-stuck и nullsFirst в pollBatches.`,
+          payload: { digestDate, stuckProcessing, stalledThreshold },
+          botToken,
+          adminChatId,
+        })
+      } catch { /* alert is best-effort */ }
+    }
+
+    await finalizeDigestNonDelivery(supabase, runId, 'skipped', {
+      articles_count: 0,
+      site_url: siteUrl,
+      error_message: (stuckProcessing ?? 0) > 0 ? `pipeline_stalled: ${stuckProcessing} processing>6h` : 'no_articles_in_window',
+    })
     process.exit(0)
   }
 

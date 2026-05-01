@@ -6,7 +6,7 @@ config({ path: resolve(process.cwd(), '.env.local') })
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getServerClient, type AnthropicBatchItem, type Article } from '../lib/supabase'
 import { listBatchResults, parseBatchCustomId, retrieveBatch, type NormalizedBatchResult } from './anthropic-batch'
-import { ensureUniqueSlug } from './slug'
+import { assertAsciiSlug, ensureUniqueSlug } from './slug'
 import { parseEditorialJson, validateEditorial } from './claude'
 import { articleHasCategory } from './scorer.config'
 import { createEnrichRun, finishEnrichRun, getOldestPendingAgeMinutes, log, writeEnrichAttempt } from './enrich-runtime'
@@ -333,6 +333,24 @@ async function applyReadyResults(
       editorial.ru_title || article.original_title,
       article.id,
     )
+    try {
+      assertAsciiSlug(slug)
+    } catch (slugErr) {
+      const outcome = await finalizeBatchFailure(
+        supabase,
+        item,
+        article,
+        runId,
+        {
+          errorCode: 'claude_parse_failed',
+          errorMessage: slugErr instanceof Error ? slugErr.message : String(slugErr),
+          itemStatus: 'apply_failed_terminal',
+        },
+      )
+      if (outcome === 'retryable') metrics.retryable++
+      else metrics.failed++
+      continue
+    }
 
     const rpcParams = {
       p_batch_item_id: item.id,
