@@ -189,7 +189,7 @@ curl -s -X POST "https://api.supabase.com/v1/projects/oziddrpkwzsdtsibauon/datab
   -d "{\"query\": \"SELECT status, processing_status, COUNT(*) FROM anthropic_batches GROUP BY 1,2\"}"
 
 # Force-collect с локальной машины
-BATCH_POLL_LIMIT=50 npx tsx pipeline/enrich-collect-batch.ts
+ANTHROPIC_BATCH_POLL_LIMIT=50 npx tsx pipeline/enrich-collect-batch.ts
 
 # Force-trigger дайджеста на сегодня
 gh workflow run tg-digest.yml -f force=true

@@ -16,6 +16,27 @@ import { addUsageTotals, formatUsageSummary, refreshAnthropicBatchUsageTotals, w
 
 const BATCH_POLL_LIMIT = Number(process.env.ANTHROPIC_BATCH_POLL_LIMIT ?? 10)
 const APPLY_READY_LIMIT = Number(process.env.ANTHROPIC_BATCH_APPLY_LIMIT ?? 50)
+const UNIMPORTED_BATCH_ITEM_STATUSES = ['batch_submitted', 'batch_processing'] as const
+
+interface BatchPollRow {
+  id: string
+  provider_batch_id: string
+  processing_status: string
+  poll_attempts: number
+}
+
+function dedupeBatchPollRows(rows: BatchPollRow[]): BatchPollRow[] {
+  const seen = new Set<string>()
+  const result: BatchPollRow[] = []
+
+  for (const row of rows) {
+    if (seen.has(row.id)) continue
+    seen.add(row.id)
+    result.push(row)
+  }
+
+  return result
+}
 
 function mapBatchItemErrorCode(result: NormalizedBatchResult): ErrorCode {
   if (result.resultType === 'expired') return 'batch_expired'
@@ -412,24 +433,64 @@ async function applyReadyResults(
   return metrics
 }
 
+async function fetchBatchesForPolling(supabase: SupabaseClient): Promise<BatchPollRow[]> {
+  const { data: activeBatches, error } = await supabase
+    .from('anthropic_batches')
+    .select('id, provider_batch_id, processing_status, poll_attempts')
+    .neq('processing_status', 'ended')
+    .in('status', ['submitted'])
+    .order('last_polled_at', { ascending: true, nullsFirst: true })
+    .limit(BATCH_POLL_LIMIT)
+
+  if (error) return []
+
+  const rows = (activeBatches ?? []) as BatchPollRow[]
+  if (rows.length >= BATCH_POLL_LIMIT) return rows
+
+  const { data: unimportedItems, error: itemError } = await supabase
+    .from('anthropic_batch_items')
+    .select('batch_id')
+    .in('status', [...UNIMPORTED_BATCH_ITEM_STATUSES])
+    .not('batch_id', 'is', null)
+    .limit(BATCH_POLL_LIMIT * 3)
+
+  if (itemError || !unimportedItems?.length) return rows
+
+  const terminalBatchIds = Array.from(new Set(
+    unimportedItems
+      .map((item) => item.batch_id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0),
+  ))
+  if (!terminalBatchIds.length) return rows
+
+  const { data: terminalPendingBatches, error: terminalError } = await supabase
+    .from('anthropic_batches')
+    .select('id, provider_batch_id, processing_status, poll_attempts')
+    .in('id', terminalBatchIds)
+    .in('status', ['completed', 'partial', 'failed'])
+    .order('last_polled_at', { ascending: true, nullsFirst: true })
+    .limit(BATCH_POLL_LIMIT - rows.length)
+
+  if (terminalError) return rows
+
+  return dedupeBatchPollRows([
+    ...rows,
+    ...((terminalPendingBatches ?? []) as BatchPollRow[]),
+  ]).slice(0, BATCH_POLL_LIMIT)
+}
+
 async function pollBatches(
   supabase: SupabaseClient,
   runId: string,
 ): Promise<{ retryable: number; failed: number; usage: UsageTotals }> {
-  const { data: batches, error } = await supabase
-    .from('anthropic_batches')
-    .select('id, provider_batch_id, processing_status, poll_attempts')
-    .in('status', ['submitted', 'partial', 'completed', 'failed'])
-    .order('last_polled_at', { ascending: true, nullsFirst: true })
-    .limit(BATCH_POLL_LIMIT)
-
-  if (error || !batches?.length) return { retryable: 0, failed: 0, usage: ZERO_USAGE_TOTALS }
+  const batches = await fetchBatchesForPolling(supabase)
+  if (!batches.length) return { retryable: 0, failed: 0, usage: ZERO_USAGE_TOTALS }
 
   let retryable = 0
   let failed = 0
   let usage = ZERO_USAGE_TOTALS
 
-  for (const batchRow of batches as Array<{ id: string; provider_batch_id: string; processing_status: string; poll_attempts: number }>) {
+  for (const batchRow of batches) {
     const remote = await retrieveBatch(batchRow.provider_batch_id)
     const counts = remote.request_counts
     const failedCount = (counts.errored ?? 0) + (counts.expired ?? 0) + (counts.canceled ?? 0)
