@@ -53,14 +53,32 @@ NEXT_PUBLIC_METRIKA_ID
 | Workflow | Расписание | Назначение |
 |---|---|---|
 | `rss-parse.yml` | каждые 30 минут | ingest RSS-источников |
-| `enrich.yml` | каждые 30 минут | pre-submit recover + batch submit |
+| `enrich.yml` | каждые 30 минут | recover + cost-guard pre-check + batch submit |
 | `enrich-collect-batch.yml` | каждые 15 минут | collect/apply готовых batch results |
-| `recover-batch-stuck.yml` | каждые 30 минут | recovery для stuck batch poll/apply |
+| `recover-batch-stuck.yml` | каждые 30 минут | recovery для stuck batch poll/apply (включая null-poll auto-rescue) |
 | `publish-verify.yml` | каждый час, на 20 минуте | проверка live-публикации |
 | `retry-failed.yml` | каждые 4 часа, на 30 минуте | возврат retryable статей |
-| `pipeline-health.yml` | каждые 2 часа, на 45 минуте | source health, backlog, provider guard |
-| `tg-digest.yml` | ежедневно в 06:00 UTC | daily digest в Telegram |
+| `pipeline-health.yml` | каждые 2 часа, на 45 минуте | source health, backlog, provider guard, cost guard |
+| `tg-digest.yml` | 06/07/08/09 UTC ежедневно | daily digest в Telegram (4 cron-времени, idempotent через UNIQUE на digest_runs) |
 | `docs-guard.yml` | push/pull request | проверка doc-impact |
+
+### Cron-избыточность для tg-digest
+
+GitHub Actions cron имеет типичную задержку 1–2 часа в часы пик (без SLA). Чтобы это не приводило к полному пропуску дайджеста, в `tg-digest.yml` объявлены 4 cron-времени подряд (06:00, 07:00, 08:00, 09:00 UTC). Первый успевший запуск claim-ит slot через `digest_runs` (UNIQUE на `digest_date+channel_id`). Остальные мгновенно exit-ят с `already_claimed`. Дублирование сообщений невозможно.
+
+### Cost-guard и hard-stop
+
+`pipeline/cost-guard.ts` теперь экспортирует `getDailyBudgetStatus()`. Эта функция используется в начале `enrich-submit-batch` для **проактивной** блокировки submit, если расход за сегодня (МСК) уже превысил `CLAUDE_DAILY_BUDGET_USD` (по умолчанию `$1`). Submit пропускается без claim, алёрт `enrich_submit_blocked_budget` идёт админу. Это hard-stop, работающий на уровне функции независимо от cron-расписания cost-guard.
+
+Дополнительно cost-guard теперь запускается как pre-step в `enrich.yml` каждые 30 минут (а не только раз в 2 часа в `pipeline-health.yml`).
+
+### Slug нормализация
+
+При больших backfill-операциях запускать `scripts/normalize-slugs.ts`:
+- Без аргументов — dry-run, печатает что будет изменено.
+- `APPLY=1 npx tsx scripts/normalize-slugs.ts` — реальное обновление. Конфликты slug-ов разрешаются через `-2/-3/...` суффикс.
+
+`pipeline/enrich-collect-batch.ts` после `ensureUniqueSlug` вызывает `assertAsciiSlug` — невалидный slug приведёт item в `apply_failed_terminal` вместо записи мусора в `articles.slug`.
 
 ## Batch enrich runtime
 

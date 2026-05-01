@@ -80,6 +80,20 @@ Batch-specific lifecycle не хранится в `articles.enrich_status`.
 - Если quality check не пройден после successful batch result, статья уходит в `rejected` и остаётся в `draft`.
 - Если quality check пройден и apply завершился успешно, статья становится `publish_ready`.
 
+### Slug validation gate
+
+- `pipeline/slug.ts::generateSlug` транслитерирует ru-заголовок в ASCII через TRANSLIT_MAP и стрипит всё, кроме `[a-z0-9-]`.
+- `pipeline/slug.ts::normalizeSlug` — defensive helper, который приводит slug из любого источника (legacy backfill, ручной импорт) к каноническому виду.
+- `pipeline/slug.ts::assertAsciiSlug` — runtime guard, бросает на slug-ах с не-ASCII символами или с битой структурой. Вызывается в `pipeline/enrich-collect-batch.ts` после `ensureUniqueSlug`. Невалидный slug приводит item в `apply_failed_terminal` и НЕ записывается в `articles.slug` — это защита от регрессий вроде incident 2026-05-01.
+
+### Telegram digest и pipeline-health detection
+
+`bot/daily-digest.ts` при пустой выборке статей за вчерашний день дополнительно проверяет количество статей в `enrich_status='processing'` старше 6 часов. Если их > 0, скрипт:
+- пишет `digest_runs.error_message='pipeline_stalled: N processing>6h'`,
+- отправляет критический алёрт `digest_pipeline_stalled` в админский Telegram.
+
+Без этого gate скрипт молча писал `skipped`, и проблему обнаруживали только постфактум по отсутствию сообщения в канале.
+
 ## Categories (модель статьи ↔ категория)
 
 Каждая статья принадлежит **одной основной категории** и опционально **до двух смежным**.
@@ -163,12 +177,15 @@ Broad RSS feeds допускаются только с keyword filters:
 Если в исходном материале есть тематически уместное встроенное видео, оно должно попадать в статью.
 
 Текущая логика:
-- fetcher определяет поддерживаемые embed/direct video источники;
+- fetcher (`pipeline/fetcher.ts`) определяет поддерживаемые embed/direct video источники;
+- селекторы тела статьи покрывают Habr (`.tm-article-body`, `.article-formatted-body`, `.post__text`), vc.ru/DTF (`.content--full`), RB.ru (`.s-news__text`, `.b-article__text`), а также общие `article`, `main`, `.content`, `.post`, `[class*="article"]`, `[class*="content"]`;
+- если в article-контейнерах нет iframe-ов, fallback ищет ВСЕ iframe-ы на странице, фильтруя по known video host (YouTube/Vimeo/Rutube/VK) и исключая sidebar/related/comments по class/id;
 - новые статьи после enrich сохраняют `article_videos` в статье после применения миграции `007_article_videos.sql`;
 - для старых статей без сохранённого видео страница статьи может получить media fallback из исходника;
 - до применения `007_article_videos.sql` collector остаётся совместим со старой RPC-сигнатурой, поэтому deploy не ломает batch apply;
 - на странице статьи видео показывается отдельным блоком;
-- structured data страницы включает `VideoObject`, если видео есть.
+- structured data страницы включает `VideoObject`, если видео есть;
+- backfill для уже опубликованных статей: `npx tsx scripts/backfill-article-videos.ts`.
 
 Поддерживаемые провайдеры:
 - YouTube
