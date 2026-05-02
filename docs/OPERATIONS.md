@@ -45,8 +45,19 @@ TELEGRAM_BOT_TOKEN
 TELEGRAM_CHANNEL_ID
 TELEGRAM_ADMIN_CHAT_ID
 PUBLISH_VERIFY_SECRET
+HEALTH_TOKEN
 NEXT_PUBLIC_METRIKA_ID
+CRON_SECRET
 ```
+
+`CRON_SECRET` обязателен для эндпоинтов под Vercel Cron (см. `vercel.json`):
+Vercel автоматически добавляет `Authorization: Bearer ${CRON_SECRET}` к
+исходящим cron-запросам, route-ы (`/api/cron/*`) проверяют этот заголовок и
+отвечают 401 без него.
+
+Аварийные/настроечные переменные:
+
+- `PUBLISH_RPC_DISABLED=1` — только emergency bypass для `publish-verify`: временно возвращает legacy update вместо RPC `publish_article` и поднимает warning alert `publish_rpc_bypass_active`.
 
 ## GitHub Actions
 
@@ -59,18 +70,46 @@ NEXT_PUBLIC_METRIKA_ID
 | `publish-verify.yml` | каждый час, на 20 минуте | проверка live-публикации |
 | `retry-failed.yml` | каждые 4 часа, на 30 минуте | возврат retryable статей |
 | `pipeline-health.yml` | каждые 2 часа, на 45 минуте | source health, backlog, provider guard, cost guard |
-| `tg-digest.yml` | 06/07/08/09 UTC ежедневно | daily digest в Telegram (4 cron-времени, idempotent через UNIQUE на digest_runs) |
 | `docs-guard.yml` | push/pull request | проверка doc-impact |
 
-### Cron-избыточность для tg-digest
+> **Telegram-дайджест с 2026-05-02 ушёл из GitHub Actions в Vercel Cron** —
+> см. ниже. `tg-digest.yml` удалён.
 
-GitHub Actions cron имеет типичную задержку 1–2 часа в часы пик (без SLA). Чтобы это не приводило к полному пропуску дайджеста, в `tg-digest.yml` объявлены 4 cron-времени подряд (06:00, 07:00, 08:00, 09:00 UTC). Первый успевший запуск claim-ит slot через `digest_runs` (UNIQUE на `digest_date+channel_id`). Остальные мгновенно exit-ят с `already_claimed`. Дублирование сообщений невозможно.
+## Vercel Cron
+
+Эндпоинты дёргаются Vercel-планировщиком напрямую и срабатывают с минутной точностью (в отличие от GitHub Actions cron, у которого нет SLA и задержка 1–2 часа в часы пик — норма). Расписание задано в `vercel.json`:
+
+| Path | Расписание (UTC) | МСК | Дни | Назначение |
+|---|---|---|---|---|
+| `/api/cron/tg-digest` | `30 6 * * 1-5` | 09:30 | Пн–Пт | daily digest в Telegram |
+| `/api/cron/tg-digest` | `30 8 * * 6,0` | 11:30 | Сб + Вс | daily digest в Telegram |
+
+Реализация: `app/api/cron/tg-digest/route.ts` → `runDailyDigest()` из `bot/daily-digest-core.ts`. Авторизация через `Authorization: Bearer ${CRON_SECRET}` (Vercel подставляет заголовок автоматически, если `CRON_SECRET` задан в Project Settings → Environment Variables).
+
+Idempotency сохранена: UNIQUE-claim в `digest_runs (digest_date+channel_id)` гарантирует, что повторный вызов (ручной курлом или backfill workflow) не отправит дубль — второй вызов отвечает 200 с `status: 'skipped_already_claimed'`.
+
+Ручной триггер: `curl -H "Authorization: Bearer $CRON_SECRET" https://news.malakhovai.ru/api/cron/tg-digest`. Для force-режима (обход даты) — запустить локально `FORCE_DIGEST=1 FORCE_DIGEST_CONFIRM_DATE=YYYY-MM-DD npm run tg-digest`; роут force-режим не поддерживает специально, чтобы случайный курл не пробил guard.
 
 ### Cost-guard и hard-stop
 
 `pipeline/cost-guard.ts` теперь экспортирует `getDailyBudgetStatus()`. Эта функция используется в начале `enrich-submit-batch` для **проактивной** блокировки submit, если расход за сегодня (МСК) уже превысил `CLAUDE_DAILY_BUDGET_USD` (по умолчанию `$1`). Submit пропускается без claim, алёрт `enrich_submit_blocked_budget` идёт админу. Это hard-stop, работающий на уровне функции независимо от cron-расписания cost-guard.
 
 Дополнительно cost-guard теперь запускается как pre-step в `enrich.yml` каждые 30 минут (а не только раз в 2 часа в `pipeline-health.yml`).
+
+### Pipeline alerts
+
+- `claude_parse_failed` — warning, cooldown 4 часа, dedupe по `batch_id`. Срабатывает
+  в `enrich-collect-batch`, когда Claude batch result не содержит `output_text`, JSON не
+  парсится или editorial validation отвергает структуру ответа.
+- `lease_expired_spike` — warning, cooldown 2 часа. `recover-stuck` поднимает его,
+  если за один запуск восстановлено больше 3 pre-submit статей с истёкшей lease.
+- `llm_usage_log_write_failed` — warning, cooldown 4 часа. `writeLlmUsageLog`
+  поднимает его при ошибке записи в `llm_usage_logs`; ошибка не пробрасывается наружу,
+  чтобы collect-batch не падал из-за cost-observability.
+- `publish_rpc_bypass_active` — warning, cooldown 6 часов. Срабатывает, если
+  `PUBLISH_RPC_DISABLED=1` и `publish-verify` вынужден публиковать legacy update-ом
+  вместо RPC `publish_article`. После снятия флага первый успешный RPC-переход
+  resolve-ит этот alert.
 
 ### Slug нормализация
 
@@ -79,6 +118,28 @@ GitHub Actions cron имеет типичную задержку 1–2 часа 
 - `APPLY=1 npx tsx scripts/normalize-slugs.ts` — реальное обновление. Конфликты slug-ов разрешаются через `-2/-3/...` суффикс.
 
 `pipeline/enrich-collect-batch.ts` после `ensureUniqueSlug` вызывает `assertAsciiSlug` — невалидный slug приведёт item в `apply_failed_terminal` вместо записи мусора в `articles.slug`.
+
+### Media sanitizer backfill
+
+Для очистки старых live-статей от рекламных, promo и author/byline изображений используется
+`scripts/sanitize-existing-article-media.ts`.
+
+Команды:
+
+```bash
+npx tsx scripts/sanitize-existing-article-media.ts --dry-run
+npx tsx scripts/sanitize-existing-article-media.ts --dry-run --limit=50
+npx tsx scripts/sanitize-existing-article-media.ts --dry-run --slug=<slug>
+npx tsx scripts/sanitize-existing-article-media.ts --apply --limit=50
+```
+
+Правила:
+
+- default mode — dry-run, без DB writes;
+- `--apply` обязателен для записи;
+- скрипт обновляет только `cover_image_url` и `article_images`;
+- перед apply нужно просмотреть summary `changed`, `by_reason`, `by_source` и examples;
+- apply пишет rollback-audit в `tmp/media-sanitizer-audit-*.jsonl`.
 
 ## Batch enrich runtime
 
@@ -106,11 +167,33 @@ Operational правило:
 - collector poll-очередь по `anthropic_batches` сортируется `last_polled_at ASC NULLS FIRST`. Без `nullsFirst` в Postgres NULL уезжают в конец, и свежие submitted-батчи навсегда вытесняются уже завершёнными — что приводит к incident 2026-05-01 (89 застрявших статей за 2 суток). Документировано в `docs/incident_report_2026-05-01.md`.
 - terminal batch-и (`completed`/`partial`/`failed`) нельзя бесконечно poll-ить после импорта результатов. Collector берёт такие batch-и только если в `anthropic_batch_items` ещё есть неимпортированные `batch_submitted`/`batch_processing` items; обычная очередь poll-а ограничена active `submitted` batch-ами.
 - Claude cost observability не должна зависеть от парсинга stdout: structured usage/cost пишется в `llm_usage_logs`, `enrich_runs.total_*` и `anthropic_batches.total_*`.
+- Fetch observability: `fetchArticleContent` нормализует article-fetch ошибки в
+  `fetch_404`, `fetch_5xx`, `fetch_timeout`, `fetch_aborted`, `fetch_too_large`,
+  `fetch_empty`, `fetch_blocked`, `fetch_unknown`. При ошибке `enrich-submit-batch`
+  пишет отдельный `article_attempts` row со `stage='fetch'`, `result_status='failed'`
+  и payload `{run_id, phase, url}`. Для production-деплоя перед этим нужна миграция
+  014, расширяющая CHECK constraint `article_attempts.stage`.
+- Media sanitizer observability: если sanitizer отбрасывает медиа, submit/collect пишут
+  `article_attempts.stage='media_sanitize'`. `result_status='ok'` означает, что очистка
+  прошла и pipeline продолжил работу; `result_status='rejected'` используется для
+  pre-submit media gate, когда все медиа отсеяны и research-статья уходит в
+  `rejected_low_visual`. Payload содержит rejects и оставшееся media summary.
 - Категорийные publish gates находятся в коде pipeline: `ai-research` требует `score >= 4`,
   визуал до submit и `editorial_body >= 1500` после collect. Рост rejected по причинам
   `rejected_low_visual` / `research_too_short:*` после deploy ожидаем и означает, что фильтр работает.
 - Broad feeds (`vc.ru/rss/all`, `rb.ru/feeds/all/`) должны мониториться через source health и
   ручную выборку после первой недели. Если мусора больше 30%, ужесточить `pipeline/keyword-filters.ts`.
+- RSS rejected observability: `parseFeed` возвращает rejected summary по причинам
+  `keyword_filter` и `requireDateInUrl`; `ingest` добавляет `dedup` после проверки
+  `articles.dedup_hash` и пишет агрегат в `source_runs.items_rejected_count` /
+  `items_rejected_breakdown`. Если миграция 014 ещё не применена, insert
+  `source_runs` повторяется без этих колонок.
+- Publish verification: normal path переводит `publish_ready/verifying` в `live`
+  только через RPC `public.publish_article(article_id, 'publish-verify')`. Перед W4
+  текущая production-функция была проверена безопасным smoke-call на несуществующий UUID
+  (`not_eligible`). Неуспешные RPC-коды пишутся в `article_attempts.stage='verify'`
+  с `error_code='publish_rpc_*'`; `rejected_quality` дополнительно withdraw-ит статью
+  и поднимает critical `publish_verify_failed`.
 - Не подключать неофициальные агрегаторы как замену source-owned RSS без отдельного решения:
   например, стандартные RSS endpoints `anthropic.com` сейчас отвечают 404, поэтому Anthropic
   покрывается broad feeds/filters до появления официального feed endpoint.
@@ -142,13 +225,17 @@ Operational правило:
    «Показать ещё» догружает следующую страницу, URL меняется на `?page=2`, а после конца ленты
    кнопка скрывается.
 8. Если меняли media/video logic, на live-странице корректно рендерится media block.
-9. RSS (`/rss.xml`) и `llms.txt` отдают новые URL.
-10. `robots.txt` содержит `Host: news.malakhovai.ru`, sitemap на news-домене и запреты
+9. Если меняли media sanitizer, problem pages с Habr career/course banner и Ars Technica
+   `Photo of ...` не показывают эти inline images; нормальная тематическая картинка остаётся.
+10. RSS (`/rss.xml`) и `llms.txt` отдают новые URL.
+11. `robots.txt` содержит `Host: news.malakhovai.ru`, sitemap на news-домене и запреты
     `/internal/`, `/api/`, `/_next/`.
-11. Canonical и `og:url` на главной, категории, статье, источниках и архиве начинаются с
+12. Canonical и `og:url` на главной, категории, статье, источниках и архиве начинаются с
     `https://news.malakhovai.ru`.
-12. Cookie-баннер показывается в инкогнито. Выбор «Только необходимые» — Яндекс Метрика
+13. Cookie-баннер показывается в инкогнито. Выбор «Только необходимые» — Яндекс Метрика
    не появляется в Network. Выбор «Принять все» — `mc.yandex.ru/metrika/tag.js` грузится.
+14. `/consent` открывается как страница согласия на обработку персональных данных и не содержит
+   видимой кнопки «Отозвать согласие».
 
 ## Аналитика (Яндекс Метрика) и согласие
 
@@ -206,6 +293,70 @@ Operational scripts и workflows отвечают за:
 - До полного cutover `cost:report` умеет падать обратно на legacy `enrich_runs.error_summary`, если structured logs ещё не накопились.
 
 Любое изменение этих процессов требует обновления этого файла.
+
+## Health endpoint
+
+`GET /api/health?token=$HEALTH_TOKEN` отдаёт оперативный snapshot pipeline. Контракт ответа определён в `lib/health-summary.ts::HealthSummary`. Помимо last-run для ingest/enrich/digest и счётчиков open alerts/batches, ответ включает:
+
+- `oldest_pending_age_minutes` — возраст самой старой статьи в `pending`/`retry_wait`/`processing`.
+- `articles_published_today` — переходы в `live` за сегодня по МСК (использует индекс `idx_articles_published_at_live`).
+- `articles_rejected_today_by_reason` — агрегат по `enrich_runs.rejected_breakdown` за сегодня (МСК), коллапсируется по префиксу до `:` (`research_too_short:1240` и `research_too_short:980` сливаются в `research_too_short`).
+- `cost_today_usd` — сумма `llm_usage_logs.estimated_cost_usd` за сегодня (МСК), округлено до micro-USD.
+- `live_window_6h_count` — публикации за последние 6 часов; используется алёртом `published_low_window` (волна 2).
+- `top_open_alerts` — top-5 open алёртов по `last_seen_at DESC`.
+
+Latency target — < 300 ms; cache-control `no-store`.
+
+## Internal dashboard
+
+`GET /internal/dashboard?token=$HEALTH_TOKEN` — server-rendered operator page для первого
+разбора инцидента. Тот же токен можно передать header-ом `x-health-token`. Если `HEALTH_TOKEN`
+не задан или request не содержит валидный token/header, page вызывает `notFound()` и публично
+отдаёт 404, а не 401.
+
+Данные собираются в `lib/internal-dashboard.ts`:
+
+- health cards из `lib/health-summary.ts`;
+- последние 10 `pipeline_alerts` (`open` first, затем recent resolved);
+- top-10 stuck `anthropic_batch_items` старше 30 минут и не в terminal states;
+- последние 20 live-переходов с `verified_live_at` и lag от `publish_ready_at`;
+- последние 5 `digest_runs`.
+
+Страница полностью server-rendered, без client-side state, с auto-refresh каждые 60 секунд.
+`robots.txt` уже запрещает `/internal/`.
+
+## Cleanup мёртвых alert types (2026-05-01)
+
+В рамках инициативы `docs/spec_observability_publication_2026-05-01.md` из `pipeline/alerts.ts:COOLDOWN_HOURS` удалён ключ `batch_partial_failure_spike` — он не имел ни одного `fireAlert` вызова. Тест `tests/node/alert-cleanup.test.ts` следит, что каждый ключ в `COOLDOWN_HOURS` имеет соответствующий `fireAlert`.
+
+Существующие алёрт-типы: `source_down`, `backlog_high`, `provider_invalid_request`, `provider_rate_limit`, `enrich_failed_spike`, `batch_submit_failed`, `batch_collect_failed`, `batch_poll_stuck`, `batch_apply_stuck`, `claude_daily_budget_exceeded`, `publish_verify_failed`, `publish_verify_failed_warn`, `publish_rpc_bypass_active`, `published_low_window`, `digest_low_articles` (+ bot-side `digest_pipeline_stalled`, `enrich_submit_blocked_budget`).
+
+## Published-window monitor (Wave 2.1, 2026-05-02)
+
+`pipeline/published-window-monitor.ts` запускается из `pipeline-health.yml` каждые 2 часа. Логика:
+
+- считаем переходы в `publish_status='live'` за последние `PUBLISHED_LOW_WINDOW_HOURS` (default 6);
+- если 0 live, при этом за окно есть хоть один `ingest_runs.status IN ('ok','partial')` — `fireAlert('published_low_window', warning, cooldown 2ч)`;
+- если все ingest за окно `failed` — silent (root cause виден через `source_down`);
+- если время попадает в `[PUBLISHED_LOW_WINDOW_QUIET_START_MSK, PUBLISHED_LOW_WINDOW_QUIET_END_MSK)` (по умолчанию 00:00–06:00 МСК) — silent;
+- при появлении хотя бы одной live в окне — `resolveAlert('published_low_window')`.
+
+ENV: `PUBLISHED_LOW_WINDOW_HOURS`, `PUBLISHED_LOW_WINDOW_QUIET_START_MSK`, `PUBLISHED_LOW_WINDOW_QUIET_END_MSK` (все опциональны, см. `docs/file_map_observability_publication_2026-05-01.md` § 11).
+
+## digest_runs status enum (Wave 2.4, миграция 015)
+
+CHECK constraint `digest_runs_status_check_v2` расширен НАДМНОЖЕСТВОМ — старые row из миграций 002/009 (`running`, `success`, `skipped`, `low_articles`, `error`, `failed`) продолжают существовать; новый код `bot/daily-digest.ts::main()` пишет точные коды:
+
+| Код | Когда |
+|---|---|
+| `success` | дайджест отправлен, message_id записан |
+| `skipped_already_claimed` | slot для `(digest_date, channel_id)` уже занят, либо tg_sent fallback показал, что отправка уже была за окно 8h |
+| `skipped_no_articles` | за окно дня нет live-статей под отправку, pipeline в норме |
+| `low_articles` (legacy) | live статей меньше 3 — отправка пропускается, health-отчёт админу |
+| `failed_pipeline_stalled` | за окно нет статей, и > 0 статей застряло в `processing` старше 6h — collector не подбирает результаты Anthropic Batch |
+| `failed_send` | ошибка запроса к Supabase или Telegram API при отправке |
+
+Pre-claim env-config errors (`TELEGRAM_BOT_TOKEN`, `NEXT_PUBLIC_SITE_URL`, `assertServiceRoleKey`) намеренно НЕ пишут digest_runs — они срабатывают до любого DB-touch и логируются в stderr.
 
 ## Database security
 

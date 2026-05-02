@@ -1,12 +1,13 @@
 import { notFound, redirect } from 'next/navigation'
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
-import { CATEGORY_PAGE_SIZE, getArticlesByCategoryPage } from '../../../lib/articles'
+import { CATEGORY_PAGE_SIZE, getArticlesByCategoryPage, getInterestingArticlesByCategory } from '../../../lib/articles'
 import { getCategoryMeta } from '../../../lib/category-meta'
 import { CATEGORY_SLUGS } from '../../../lib/categories'
 import { getPaginationMeta, normalizePositivePage } from '../../../lib/pagination'
 import { SITE_URL, absoluteUrl } from '../../../lib/site'
 import CategoryArticleList from '../../../src/components/CategoryArticleList'
+import InterestingArticles from '../../../src/components/InterestingArticles'
 import TopicTabs from '../../../src/components/TopicTabs'
 
 export const revalidate = 300
@@ -196,6 +197,9 @@ export default async function CategoryPage({
   if (!meta) notFound()
 
   const { articles, total } = await getArticlesByCategoryPage(category, page, CATEGORY_PAGE_SIZE)
+  const interestingArticles = page === 1
+    ? await getInterestingArticlesByCategory(category, 4, articles.map((article) => article.id))
+    : []
   const pagination = getPaginationMeta(total, page, CATEGORY_PAGE_SIZE)
 
   if (pagination.totalPages > 0 && page > pagination.totalPages) {
@@ -242,6 +246,8 @@ export default async function CategoryPage({
         </div>
 
         <TopicTabs activeHref={tabsActiveHref} className="mb-8" />
+
+        {page === 1 && <InterestingArticles articles={interestingArticles} />}
 
         <CategoryArticleList
           category={category}

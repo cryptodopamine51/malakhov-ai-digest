@@ -11,20 +11,23 @@
 
 import { config } from 'dotenv'
 import { resolve } from 'path'
+import { pathToFileURL } from 'url'
 config({ path: resolve(process.cwd(), '.env.local') })
 
 import { getServerClient } from '../lib/supabase'
 import { nextRetryAt, RETRY_POLICY } from './types'
+import { fireAlert } from './alerts'
 
 function log(msg: string): void {
   const ts = new Date().toTimeString().slice(0, 8)
   console.log(`[${ts}] ${msg}`)
 }
 
-async function recoverStuck(): Promise<void> {
+export async function recoverStuck(
+  supabase: ReturnType<typeof getServerClient> = getServerClient(),
+): Promise<{ scanned: number; recovered: number }> {
   log('=== Запуск recover-stuck.ts ===')
 
-  const supabase = getServerClient()
   const now = new Date().toISOString()
 
   // Find articles where lease has expired but status is still processing
@@ -43,7 +46,7 @@ async function recoverStuck(): Promise<void> {
 
   if (!stuck?.length) {
     log('Нет зависших статей')
-    return
+    return { scanned: 0, recovered: 0 }
   }
 
   log(`Зависших статей: ${stuck.length}`)
@@ -88,11 +91,29 @@ async function recoverStuck(): Promise<void> {
   }
 
   log(`Восстановлено: ${recovered} из ${stuck.length}`)
+  if (recovered > 3) {
+    await fireAlert({
+      supabase,
+      alertType: 'lease_expired_spike',
+      severity: 'warning',
+      message: `recover-stuck восстановил ${recovered} статей с истёкшей lease за один запуск`,
+      payload: {
+        recovered,
+        scanned: stuck.length,
+        threshold: 3,
+      },
+      botToken: process.env.TELEGRAM_BOT_TOKEN,
+      adminChatId: process.env.TELEGRAM_ADMIN_CHAT_ID,
+    })
+  }
   log('=== recover-stuck.ts завершён ===')
+  return { scanned: stuck.length, recovered }
 }
 
-recoverStuck().catch((error: unknown) => {
-  const msg = error instanceof Error ? error.message : String(error)
-  console.error(`[${new Date().toTimeString().slice(0, 8)}] КРИТИЧЕСКАЯ ОШИБКА: ${msg}`)
-  process.exit(1)
-})
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  recoverStuck().catch((error: unknown) => {
+    const msg = error instanceof Error ? error.message : String(error)
+    console.error(`[${new Date().toTimeString().slice(0, 8)}] КРИТИЧЕСКАЯ ОШИБКА: ${msg}`)
+    process.exit(1)
+  })
+}

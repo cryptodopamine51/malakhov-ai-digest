@@ -14,6 +14,7 @@ const config: Config = {
         surface: 'var(--surface)',
         ink:     'var(--ink)',
         muted:   'var(--muted)',
+        'hero-muted': 'var(--hero-muted)',
         line:    'var(--line)',
         accent:  'var(--accent)',
         russia:  '#dc2626',

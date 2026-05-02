@@ -7,6 +7,7 @@
 
 import { getPublicReadClient, type Article } from './supabase'
 import { toPublicArticleSlug } from './article-slugs'
+import { rankInterestingArticles, rankInterestingArticlesWithFallback } from './interest-ranking'
 import { normalizePositivePage } from './pagination'
 
 function client() {
@@ -154,8 +155,10 @@ export async function getArticlesByCategoryPage(
     .eq('verified_live', true)
     .eq('publish_status', 'live')
     .or(`primary_category.eq.${categorySlug},secondary_categories.cs.{${categorySlug}}`)
-    .order('score', { ascending: false })
+    .order('pub_date', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })
+    .order('score', { ascending: false })
+    .order('id', { ascending: false })
     .range(offset, offset + safePerPage - 1)
 
   if (error) {
@@ -167,6 +170,54 @@ export async function getArticlesByCategoryPage(
     articles: (data ?? []) as Article[],
     total: count ?? 0,
   }
+}
+
+async function getInterestingCandidatesByCategory(
+  categorySlug: string,
+  since: Date,
+  limit: number,
+): Promise<Article[]> {
+  const { data, error } = await client()
+    .from('articles')
+    .select('*')
+    .eq('published', true)
+    .eq('quality_ok', true)
+    .eq('verified_live', true)
+    .eq('publish_status', 'live')
+    .or(`primary_category.eq.${categorySlug},secondary_categories.cs.{${categorySlug}}`)
+    .gte('created_at', since.toISOString())
+    .order('created_at', { ascending: false })
+    .order('score', { ascending: false })
+    .limit(limit)
+
+  if (error) {
+    console.error('getInterestingCandidatesByCategory error:', error.message)
+    return []
+  }
+
+  return (data ?? []) as Article[]
+}
+
+export async function getInterestingArticlesByCategory(
+  categorySlug: string,
+  limit = 4,
+  excludeIds: string[] = [],
+): Promise<Article[]> {
+  const now = new Date()
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+  const primaryCandidates = await getInterestingCandidatesByCategory(categorySlug, sevenDaysAgo, 48)
+  const rankingOptions = {
+    limit,
+    excludeIds,
+    now,
+  }
+  const primaryRanked = rankInterestingArticles(primaryCandidates, rankingOptions)
+  if (primaryRanked.length >= 3) return primaryRanked.map((ranked) => ranked.article)
+
+  const fallbackCandidates = await getInterestingCandidatesByCategory(categorySlug, thirtyDaysAgo, 48)
+  return rankInterestingArticlesWithFallback(primaryCandidates, fallbackCandidates, rankingOptions)
+    .map((ranked) => ranked.article)
 }
 
 export async function getRussiaArticles(limit = 20): Promise<Article[]> {

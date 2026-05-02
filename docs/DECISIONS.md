@@ -69,3 +69,19 @@
 - Context: волна 2.1 ввела `primary_category` как фундамент. Чтобы хлебные крошки были осмысленными, canonical однозначен, а раздел был частью адреса (для SEO и читаемости), нужно перенести страницу статьи и ленту раздела на категорийные URL. Спека 2.2 явно требует редиректов со всех старых URL в том же PR, иначе SEO провалится через ~неделю.
 - Decision: настоящие маршруты — `app/categories/[category]/page.tsx` (лента) и `app/categories/[category]/[slug]/page.tsx` (статья). Старые `app/articles/[slug]` и `app/topics/[topic]` стали тонкими server-side редирект-обёртками (`permanentRedirect`, 308). URL builder централизован в `lib/article-slugs.ts::getArticlePath(slug, primaryCategory)`; все потребители (sitemap, RSS, llms.txt, ArticleCard, PulseList, демо-страницы, Telegram digest, publish-verify, generate-images) переключены через него. Лента раздела включает статью, если её `primary_category` совпадает с категорией ИЛИ категория есть в `secondary_categories` — но canonical статьи всегда строится по primary, поэтому SEO-ценность не размывается.
 - Consequences: Telegram digest и publish-verify теперь стучатся на канонический URL, а не на legacy. Sitemap и RSS отдают только новые URL. Любая поверхность, которая будет добавлять ссылку на статью, обязана получать `primary_category` (через `Article.primary_category` или явный аргумент) — иначе TS не пропустит вызов `getArticlePath`. Legacy URL остаются индексируемыми только в форме 308-редиректа; через ~30 дней Search Console должен показать переезд. Если потребуется ещё раз поменять схему slug — это уже scope волны 3.4 (рейминг slug-ов категорий) и обязательно с цепочкой редиректов.
+
+## ADR-008 · Основная лента раздела сортируется по свежести, интересность вынесена в отдельный блок
+
+- Status: accepted
+- Date: 2026-05-01
+- Context: сортировка category pages по `score desc` поднимала старые высокоскоринговые материалы выше новых статей. Это конфликтует с ожиданием читателя от раздела как свежей ленты, но полностью убирать редакционный score нельзя: он нужен для отдельной поверхности «что стоит прочитать».
+- Decision: `getArticlesByCategoryPage()` и API load-more сортируют обычную ленту по свежести (`pub_date desc nulls last`, затем `created_at desc`, `score desc`, `id desc`). «Самое интересное» считается отдельно в `lib/interest-ranking.ts`: deterministic formula без ML-персонализации и без пользовательских профилей.
+- Consequences: основной список раздела объясняется как fresh feed, а score участвует только как tie-breaker. Interest ranking можно менять и тестировать независимо от пагинации свежей ленты. Если позже появятся anonymous aggregate events, они должны добавляться в отдельную формулу/предвычисление, а не ломать порядок основной ленты.
+
+## ADR-009 · Публикация live выполняется через RPC `publish_article`
+
+- Status: accepted
+- Date: 2026-05-02
+- Context: прямой client-side update `articles.publish_status='live'` в `publish-verify` мог обойти инварианты текущей строки (`quality_ok`, актуальный `publish_status`, audit verifier) и оставить частично опубликованное состояние.
+- Decision: normal path `pipeline/publish-verify.ts` после успешного HEAD-check вызывает `public.publish_article(article_id, 'publish-verify')`. RPC возвращает typed result code, а код пишет `article_attempts.stage='verify'` для неуспешных `publish_rpc_*` исходов. Единственный разрешённый прямой update в `live` остаётся emergency bypass `PUBLISH_RPC_DISABLED=1`, который поднимает warning alert `publish_rpc_bypass_active`.
+- Consequences: переход в `live` стал атомарным и аудируемым через `last_publish_verifier`; операторы получают ранний сигнал, если bypass включён. Перед production smoke нужно убедиться, что текущая БД действительно имеет RPC: безопасный вызов с несуществующим UUID должен вернуть `not_eligible`.

@@ -65,6 +65,9 @@ export interface Article {
   verified_live_at: string | null
   live_check_error: string | null
   current_batch_item_id: string | null
+  // Migration 014: observability and publication hardening
+  last_publish_verifier: string | null
+  published_at: string | null
 }
 
 export type ArticleInsert = Omit<Article, 'id' | 'created_at' | 'updated_at'>
@@ -121,6 +124,8 @@ export interface EnrichRun {
   total_cache_creation_tokens: number
   estimated_cost_usd: number
   error_summary: string | null
+  // Migration 014
+  rejected_breakdown: Record<string, number>
 }
 
 export interface SourceRun {
@@ -136,6 +141,11 @@ export interface SourceRun {
   http_status: number | null
   error_message: string | null
   response_time_ms: number | null
+  // Migration 014
+  fetch_errors_count: number
+  fetch_errors_breakdown: Record<string, number>
+  items_rejected_count: number
+  items_rejected_breakdown: Record<string, number>
 }
 
 export interface PipelineAlert {
@@ -155,11 +165,20 @@ export interface PipelineAlert {
   resolved_at: string | null
 }
 
+export type ArticleAttemptStage =
+  | 'enrich'
+  | 'verify'
+  | 'verify_sample'
+  | 'fetch'
+  | 'media_sanitize'
+  | 'ingest'
+  | 'digest'
+
 export interface ArticleAttempt {
   id: string
   article_id: string
   batch_item_id: string | null
-  stage: 'enrich' | 'verify' | 'verify_sample'
+  stage: ArticleAttemptStage
   attempt_no: number
   worker_id: string | null
   claim_token: string | null
@@ -171,6 +190,14 @@ export interface ArticleAttempt {
   error_message: string | null
   payload: Record<string, unknown>
 }
+
+// RPC publish_article result codes (migration 014)
+export type PublishArticleResult =
+  | 'published_live'
+  | 'rejected_quality'
+  | 'rejected_unverified'
+  | 'already_live'
+  | 'not_eligible'
 
 export type AnthropicBatchStatus = 'submitted' | 'completed' | 'partial' | 'failed' | 'canceled'
 

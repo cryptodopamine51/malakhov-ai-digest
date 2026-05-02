@@ -27,7 +27,7 @@ export default function PrivacyPage() {
         </p>
         <p>
           Для базовой статистики посещений сайт может использовать Яндекс Метрику. Посетитель
-          уведомляется об использовании cookies и может отозвать согласие на странице{' '}
+          уведомляется об использовании cookies; условия согласия описаны на странице{' '}
           <Link href="/consent" className="underline hover:text-ink">/consent</Link>.
         </p>
         <p>

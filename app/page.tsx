@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { getHotStoryOfTheDay, getRecentHeadlines, getArticlesFeed } from '../lib/articles'
 import { getMoscowDateKey, shiftMoscowDateKey, pluralize } from '../lib/utils'
 import ArticleCard from '../src/components/ArticleCard'
+import ArticleFeedList from '../src/components/ArticleFeedList'
 import PulseList from '../src/components/PulseList'
 import TopicTabs from '../src/components/TopicTabs'
 
@@ -42,7 +43,7 @@ export default async function HomePage({
             <h1 className="font-serif text-4xl font-bold leading-none text-ink sm:text-5xl md:text-6xl">
               Malakhov AI Дайджест
             </h1>
-            <p className="mt-4 max-w-3xl text-sm leading-relaxed text-ink opacity-70 md:text-base lg:text-[17px]">
+            <p className="mt-4 max-w-3xl text-sm leading-relaxed text-hero-muted md:text-base lg:text-[17px]">
               Ежедневная редакционная лента об ИИ: ключевые релизы, исследования, продукты и
               индустриальные сдвиги без визуального шума.
             </p>
@@ -82,11 +83,7 @@ export default async function HomePage({
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {feed.map((article) => (
-                <ArticleCard key={article.id} article={article} variant="default" />
-              ))}
-            </div>
+            <ArticleFeedList articles={feed} featuredFirst={page === 1} />
 
             {totalPages > 1 && (
               <div className="mt-10 flex flex-wrap items-center justify-center gap-2">

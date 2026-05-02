@@ -17,6 +17,11 @@
 - Не использует `SUPABASE_SERVICE_KEY` на клиентской стороне.
 - Рендерит опубликованные статьи, topic pages, sources, archive и SEO-артефакты.
 
+`app/internal/dashboard` — исключение только по аудитории, не по runtime: это server-only
+operator page. Он использует `SUPABASE_SERVICE_KEY` через `getAdminClient()` только на сервере,
+требует `HEALTH_TOKEN` в query/header и без валидного токена отдаёт 404 через `notFound()`.
+`robots.txt` запрещает `/internal/`.
+
 ### 2. Pipeline
 
 - `pipeline/ingest.ts` создаёт или обновляет сырьевые записи статей.
@@ -70,6 +75,14 @@ RLS contract:
 - единый per-call/per-item audit trail должен писаться в `llm_usage_logs`;
 - batch-level totals в `anthropic_batches` должны пересчитываться из `anthropic_batch_items`, чтобы dashboard и alerting не зависели от логов stdout.
 
+Миграции 014 / 015 (инициатива 2026-05-01) расширяют operational схему backward-compatible изменениями (`ADD COLUMN ... DEFAULT` + надмножество CHECK enum):
+
+- `enrich_runs.rejected_breakdown` JSONB — агрегатор причин reject за run (см. `docs/ARTICLE_SYSTEM.md` секция «`enrich_runs.rejected_breakdown`»);
+- `source_runs.fetch_errors_count`/`_breakdown`, `items_rejected_count`/`_breakdown` — задел для волны 3;
+- `articles.last_publish_verifier`, `published_at` — для атомарного RPC `publish_article` (волна 4);
+- `digest_runs_status_check_v2` — расширен надмножеством, легаси значения (`running/success/skipped/low_articles/error/failed`) сохранены, добавлены точные коды для веток `main()` дайджеста (см. `docs/OPERATIONS.md`);
+- `idx_articles_published_at` — partial index `WHERE publish_status='live'` под `published_low_window` мониторинг и health endpoint.
+
 ## Основные модули
 
 | Зона | Ответственность |
@@ -78,6 +91,7 @@ RLS contract:
 | `src/components/` | UI-слой |
 | `lib/articles.ts` | серверные выборки и резолвинг article data |
 | `lib/supabase.ts` | типы и Supabase clients |
+| `lib/health-summary.ts`, `lib/internal-dashboard.ts` | operational snapshots для `/api/health` и `/internal/dashboard` |
 | `pipeline/` | ingest, enrich, scoring, fetch, verification, recovery |
 | `bot/` | Telegram delivery |
 | `.github/workflows/` | расписание и запуск фоновых процессов |

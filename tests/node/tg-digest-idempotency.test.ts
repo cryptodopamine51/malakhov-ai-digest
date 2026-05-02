@@ -153,6 +153,8 @@ test('telegram error leaves tg_sent untouched and marks run failed', async () =>
   )
 
   const failedRun = supabase.operations.find((operation) => operation.table === 'digest_runs')
-  assert.equal(failedRun?.payload.status, 'failed')
+  // Migration 015 / W2.4: default failure status uses precise code 'failed_send'
+  // вместо общего 'failed'. Старые row из 'failed' остаются в БД (надмножество в CHECK).
+  assert.equal(failedRun?.payload.status, 'failed_send')
   assert.match(String(failedRun?.payload.error_message), /Telegram API/)
 })

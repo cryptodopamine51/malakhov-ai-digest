@@ -9,9 +9,10 @@
 
 import { config } from 'dotenv'
 import { resolve } from 'path'
+import { pathToFileURL } from 'url'
 config({ path: resolve(process.cwd(), '.env.local') })
 
-import { fetchAllFeeds, type ParsedItem, type SourceFeedResult } from './rss-parser'
+import { fetchAllFeeds, summarizeRejected, type ParsedItem, type RssRejectedSummary, type SourceFeedResult } from './rss-parser'
 import { getServerClient } from '../lib/supabase'
 import { splitTopicsToCategories } from '../lib/categories'
 
@@ -100,14 +101,32 @@ async function insertArticle(
   return 'inserted'
 }
 
-async function writeSourceRun(
+export function buildSourceRejectedStats(
+  sourceResult: Pick<SourceFeedResult, 'rejected'>,
+  itemsDuplicates: number,
+): { count: number; breakdown: Record<string, number>; rejected: RssRejectedSummary[] } {
+  const rejected = summarizeRejected([
+    ...(sourceResult.rejected ?? []),
+    ...(itemsDuplicates > 0 ? [{ reason: 'dedup', count: itemsDuplicates, examples: [] }] : []),
+  ])
+  const breakdown: Record<string, number> = {}
+  let count = 0
+  for (const entry of rejected) {
+    breakdown[entry.reason] = (breakdown[entry.reason] ?? 0) + entry.count
+    count += entry.count
+  }
+  return { count, breakdown, rejected }
+}
+
+export async function writeSourceRun(
   supabase: ReturnType<typeof getServerClient>,
   ingestRunId: string,
   sourceResult: SourceFeedResult,
   itemsNew: number,
   itemsDuplicates: number,
 ): Promise<void> {
-  await supabase.from('source_runs').insert({
+  const rejectedStats = buildSourceRejectedStats(sourceResult, itemsDuplicates)
+  const basePayload = {
     ingest_run_id: ingestRunId,
     source_name: sourceResult.sourceName,
     started_at: new Date(Date.now() - sourceResult.responseTimeMs).toISOString(),
@@ -119,7 +138,28 @@ async function writeSourceRun(
     http_status: sourceResult.httpStatus,
     error_message: sourceResult.errorMessage,
     response_time_ms: sourceResult.responseTimeMs,
+  }
+
+  const { error } = await supabase.from('source_runs').insert({
+    ...basePayload,
+    items_rejected_count: rejectedStats.count,
+    items_rejected_breakdown: rejectedStats.breakdown,
   })
+
+  if (!error) return
+
+  const missingRejectedColumns =
+    error.message.includes('items_rejected_count') ||
+    error.message.includes('items_rejected_breakdown')
+
+  if (!missingRejectedColumns) {
+    throw new Error(`source_runs insert failed: ${error.message}`)
+  }
+
+  const { error: legacyError } = await supabase.from('source_runs').insert(basePayload)
+  if (legacyError) {
+    throw new Error(`legacy source_runs insert failed: ${legacyError.message}`)
+  }
 }
 
 async function main(): Promise<void> {
@@ -248,7 +288,9 @@ async function main(): Promise<void> {
   log('=== ingest.ts завершён ===')
 }
 
-main().catch((error: unknown) => {
-  logError('Необработанная ошибка', error)
-  process.exit(1)
-})
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error: unknown) => {
+    logError('Необработанная ошибка', error)
+    process.exit(1)
+  })
+}

@@ -22,6 +22,7 @@ import {
   EditorialPullQuote,
 } from '../../../../src/components/EditorialBlocks'
 import { getPublicReadClient, type Article } from '../../../../lib/supabase'
+import { sanitizeArticleImagesForRender, sanitizeArticleMedia } from '../../../../lib/media-sanitizer'
 
 export const revalidate = 3600
 
@@ -69,16 +70,26 @@ function renderBodyWithAnchors(body: string, anchors: AnchorLink[]): ReactNode[]
   })
 }
 
-function isMeaningfulCaption(text: string): boolean {
-  const value = text.trim()
-  if (!value) return false
-  if (/^https?:\/\//i.test(value)) return false
-  if (/^[\w.-]+\.(png|jpg|jpeg|webp|gif|svg)$/i.test(value)) return false
-  return value.length >= 12
-}
+function sanitizeArticleForRender(article: Article): { coverImageUrl: string | null; inlineImages: InlineImage[] } {
+  const context = {
+    sourceName: article.source_name,
+    originalUrl: article.original_url,
+    originalTitle: article.original_title,
+    ruTitle: article.ru_title,
+    lead: article.lead,
+    summary: article.summary,
+    originalText: article.original_text ?? article.editorial_body,
+  }
+  const media = sanitizeArticleMedia({
+    coverImageUrl: article.cover_image_url,
+    articleImages: article.article_images,
+    context,
+  })
 
-function selectInlineImages(images: InlineImage[] | null | undefined): InlineImage[] {
-  return (images ?? []).filter((img) => isMeaningfulCaption(img.alt)).slice(0, 2)
+  return {
+    coverImageUrl: media.coverImageUrl,
+    inlineImages: sanitizeArticleImagesForRender(article.article_images, context, 2),
+  }
 }
 
 function selectInlineTables(tables: InlineTable[] | null | undefined): InlineTable[] {
@@ -365,6 +376,7 @@ export async function generateMetadata({
   const description = article.card_teaser ?? article.lead ?? undefined
   const publicSlug = article.slug ? toPublicArticleSlug(article.slug) : slug
   const canonicalPath = getArticlePath(publicSlug, article.primary_category)
+  const { coverImageUrl } = sanitizeArticleForRender(article)
 
   return {
     title,
@@ -377,13 +389,13 @@ export async function generateMetadata({
       url: absoluteUrl(canonicalPath),
       publishedTime: article.pub_date ?? article.created_at,
       modifiedTime: article.updated_at,
-      images: article.cover_image_url ? [article.cover_image_url] : ['/og-default.png'],
+      images: coverImageUrl ? [coverImageUrl] : ['/og-default.png'],
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description,
-      images: article.cover_image_url ? [article.cover_image_url] : ['/og-default.png'],
+      images: coverImageUrl ? [coverImageUrl] : ['/og-default.png'],
     },
     other: {
       'twitter:url': absoluteUrl(canonicalPath),
@@ -416,13 +428,14 @@ export default async function CategoryArticlePage({
   ])
 
   const title = article.ru_title ?? article.original_title
+  const sanitizedMedia = sanitizeArticleForRender(article)
   const time = formatRelativeTime(article.pub_date ?? article.created_at)
   const bodyParagraphs = renderBodyWithAnchors(
     article.editorial_body ?? article.ru_text ?? '',
     anchorLinks
   )
   const inlineTables = selectInlineTables(article.article_tables)
-  const inlineImages = selectInlineImages(article.article_images)
+  const inlineImages = sanitizedMedia.inlineImages
   const primaryVideo = inlineVideos[0] ?? null
   const showcase = getEditorialShowcase(article.slug ?? '')
   const autoPullQuote = getAutoPullQuote(article)
@@ -452,13 +465,13 @@ export default async function CategoryArticlePage({
     dateModified: article.updated_at ?? article.pub_date ?? article.created_at,
     inLanguage: 'ru',
     url: `${SITE_URL}${canonicalPath}`,
-    image: article.cover_image_url ?? `${SITE_URL}/og-default.png`,
+    image: sanitizedMedia.coverImageUrl ?? `${SITE_URL}/og-default.png`,
     video: primaryVideo ? {
       '@type': 'VideoObject',
       name: primaryVideo.title || title,
       embedUrl: primaryVideo.embedUrl,
       contentUrl: primaryVideo.sourceUrl,
-      thumbnailUrl: primaryVideo.poster ?? article.cover_image_url ?? undefined,
+      thumbnailUrl: primaryVideo.poster ?? sanitizedMedia.coverImageUrl ?? undefined,
     } : undefined,
     author: { '@type': 'Organization', name: 'Malakhov AI Дайджест', url: SITE_URL },
     publisher: {
@@ -495,10 +508,10 @@ export default async function CategoryArticlePage({
         </nav>
 
         {/* Cover image */}
-        {article.cover_image_url && !SOURCES_WITH_TEXT_COVERS.has(article.source_name) && (
+        {sanitizedMedia.coverImageUrl && !SOURCES_WITH_TEXT_COVERS.has(article.source_name) && (
           <div className="relative mb-10 w-full overflow-hidden rounded border border-line" style={{ maxHeight: 460 }}>
             <Image
-              src={article.cover_image_url}
+              src={sanitizedMedia.coverImageUrl}
               alt={title}
               width={1200}
               height={460}

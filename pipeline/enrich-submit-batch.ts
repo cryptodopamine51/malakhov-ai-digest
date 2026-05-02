@@ -9,7 +9,7 @@ import { getServerClient, type Article } from '../lib/supabase'
 import { buildBatchCustomId, buildBatchRequestParams, chunkBatchRequests, createEditorialBatch } from './anthropic-batch'
 import { buildEditorialMessageParams } from './claude'
 import { claimBatch, handoffClaimToBatch } from './claims'
-import { writeEnrichAttempt, createEnrichRun, finishEnrichRun, getOldestPendingAgeMinutes, log } from './enrich-runtime'
+import { writeArticleAttempt, writeEnrichAttempt, writeMediaSanitizeAttempt, createEnrichRun, finishEnrichRun, getOldestPendingAgeMinutes, log } from './enrich-runtime'
 import { fetchArticleContent } from './fetcher'
 import { fireAlert } from './alerts'
 import { scoreArticle } from './scorer'
@@ -17,6 +17,7 @@ import { articleHasCategory, getMinScoreForArticle } from './scorer.config'
 import { isExhausted, isRetryable, nextRetryAt, type ErrorCode } from './types'
 import { ZERO_USAGE_TOTALS } from './llm-usage'
 import { getDailyBudgetStatus } from './cost-guard'
+import { sanitizeArticleMedia } from './media-sanitizer'
 
 const SUBMIT_BATCH_SIZE = Number(process.env.ENRICH_SUBMIT_BATCH_SIZE ?? 15)
 const MAX_REQUESTS_PER_BATCH = Number(process.env.ANTHROPIC_BATCH_MAX_REQUESTS ?? 15)
@@ -190,11 +191,36 @@ async function rejectBeforeSubmit(
   })
 }
 
+export async function writeFetchAttempt(
+  supabase: SupabaseClient,
+  article: Article,
+  runId: string,
+  startedAt: Date,
+  errorCode: ErrorCode,
+  errorMessage: string,
+): Promise<void> {
+  await writeArticleAttempt(supabase, {
+    articleId: article.id,
+    stage: 'fetch',
+    attemptNo: (article.attempt_count ?? 0) + 1,
+    startedAt,
+    resultStatus: 'failed',
+    claimToken: article.claim_token,
+    errorCode,
+    errorMessage,
+    payload: {
+      run_id: runId,
+      phase: 'fetch',
+      url: article.original_url,
+    },
+  })
+}
+
 async function stageBatchItem(
   supabase: SupabaseClient,
   article: Article,
   runId: string,
-): Promise<{ item: StagedBatchItem | null; rejected: boolean; failure: 'retryable' | 'failed' | null }> {
+): Promise<{ item: StagedBatchItem | null; rejected: boolean; rejectedReason: string | null; failure: 'retryable' | 'failed' | null }> {
   const startedAt = new Date()
   const { text, imageUrl, tables, inlineImages, inlineVideos, errorCode, errorMessage } = await fetchArticleContent(article.original_url)
 
@@ -207,19 +233,65 @@ async function stageBatchItem(
       errorCode,
       errorMessage ?? `fetch failed for ${article.original_url}`,
     )
-    return { item: null, rejected: false, failure }
+    await writeFetchAttempt(
+      supabase,
+      article,
+      runId,
+      startedAt,
+      errorCode,
+      errorMessage ?? `fetch failed for ${article.original_url}`,
+    )
+    return { item: null, rejected: false, rejectedReason: null, failure }
+  }
+
+  const mediaStartedAt = new Date()
+  const sanitizedMedia = sanitizeArticleMedia({
+    coverImageUrl: imageUrl || article.cover_image_url,
+    articleImages: inlineImages,
+    context: {
+      sourceName: article.source_name,
+      originalUrl: article.original_url,
+      originalTitle: article.original_title,
+      originalText: text || article.original_text || '',
+    },
+  })
+
+  if (sanitizedMedia.rejects.length > 0) {
+    log(`media sanitizer rejected ${sanitizedMedia.rejects.length} item(s) for ${article.id}`)
   }
 
   const hydratedArticle: Article = {
     ...article,
     original_text: text || article.original_text,
-    cover_image_url: imageUrl || article.cover_image_url,
+    cover_image_url: sanitizedMedia.coverImageUrl,
   }
   const score = scoreArticle(hydratedArticle)
   const minScore = getMinScoreForArticle(hydratedArticle)
-  const coverImageUrl = imageUrl || article.cover_image_url
+  const coverImageUrl = sanitizedMedia.coverImageUrl
+  const hasUsableMedia = Boolean(coverImageUrl) || sanitizedMedia.articleImages.length > 0
+  const rejectedByMediaGate = articleHasCategory(hydratedArticle, 'ai-research') && !hasUsableMedia
 
-  if (articleHasCategory(hydratedArticle, 'ai-research') && !coverImageUrl && inlineImages.length === 0) {
+  if (sanitizedMedia.rejects.length > 0) {
+    await writeMediaSanitizeAttempt(supabase, {
+      articleId: article.id,
+      attemptNo: (article.attempt_count ?? 0) + 1,
+      startedAt: mediaStartedAt,
+      resultStatus: rejectedByMediaGate ? 'rejected' : 'ok',
+      claimToken: article.claim_token,
+      runId,
+      phase: 'submit',
+      rejects: sanitizedMedia.rejects,
+      remainingMedia: {
+        coverImageUrl: Boolean(coverImageUrl),
+        articleImages: sanitizedMedia.articleImages.length,
+      },
+      errorMessage: rejectedByMediaGate
+        ? 'media_sanitize: all media rejected before submit'
+        : null,
+    })
+  }
+
+  if (rejectedByMediaGate) {
     await rejectBeforeSubmit(
       supabase,
       article,
@@ -232,7 +304,7 @@ async function stageBatchItem(
       'rejected_low_visual: research article has no cover or inline images',
     )
     log(`— rejected_low_visual [${score}]: ${article.original_title.slice(0, 60)}`)
-    return { item: null, rejected: true, failure: null }
+    return { item: null, rejected: true, rejectedReason: 'rejected_low_visual', failure: null }
   }
 
   if (score < minScore) {
@@ -248,7 +320,7 @@ async function stageBatchItem(
       `low_score: ${score}; min_score: ${minScore}`,
     )
     log(`— low_score [${score}/${minScore}]: ${article.original_title.slice(0, 60)}`)
-    return { item: null, rejected: true, failure: null }
+    return { item: null, rejected: true, rejectedReason: 'low_score', failure: null }
   }
 
   const attemptNo = (article.attempt_count ?? 0) + 1
@@ -277,12 +349,13 @@ async function stageBatchItem(
       source_lang: article.source_lang,
       topics: article.topics ?? [],
       original_text: text || article.original_text || '',
-      cover_image_url: imageUrl || article.cover_image_url,
+      cover_image_url: sanitizedMedia.coverImageUrl,
       article_tables: tables,
-      article_images: inlineImages,
+      article_images: sanitizedMedia.articleImages,
       article_videos: inlineVideos,
       score,
       attempt_no: attemptNo,
+      media_rejects: sanitizedMedia.rejects,
     },
   }
 
@@ -305,7 +378,7 @@ async function stageBatchItem(
       'unhandled_error',
       `batch item insert failed: ${insertError.message}`,
     )
-    return { item: null, rejected: false, failure }
+    return { item: null, rejected: false, rejectedReason: null, failure }
   }
 
   return {
@@ -318,8 +391,19 @@ async function stageBatchItem(
       params,
     },
     rejected: false,
+    rejectedReason: null,
     failure: null,
   }
+}
+
+export function bumpRejectedBreakdown(
+  breakdown: Record<string, number>,
+  rawKey: string | null | undefined,
+): void {
+  if (!rawKey) return
+  const trimmed = rawKey.trim()
+  if (!trimmed) return
+  breakdown[trimmed] = (breakdown[trimmed] ?? 0) + 1
 }
 
 async function persistProviderBatch(
@@ -397,6 +481,7 @@ export async function runEnrichSubmitBatch(): Promise<void> {
   const supabase = getServerClient()
   const runId = await createEnrichRun(supabase, SUBMIT_BATCH_SIZE, 'batch_submit')
   const oldestPendingAgeMinutes = await getOldestPendingAgeMinutes(supabase)
+  const rejectedBreakdown: Record<string, number> = {}
   const metrics = {
     claimed: 0,
     enrichedOk: 0,
@@ -406,6 +491,7 @@ export async function runEnrichSubmitBatch(): Promise<void> {
     oldestPendingAgeMinutes,
     usage: ZERO_USAGE_TOTALS,
     errorSummary: null as string | null,
+    rejectedBreakdown,
   }
 
   // Pre-submit cost gate: блокируем claim если уже превысили дневной бюджет.
@@ -453,6 +539,7 @@ export async function runEnrichSubmitBatch(): Promise<void> {
       stagedItems.push(staged.item)
     } else if (staged.rejected) {
       metrics.rejected++
+      bumpRejectedBreakdown(rejectedBreakdown, staged.rejectedReason)
     } else if (staged.failure === 'retryable') {
       metrics.retryable++
     } else if (staged.failure === 'failed') {

@@ -4,7 +4,7 @@ import { useState } from 'react'
 import type { Article } from '../../lib/supabase'
 import type { PaginationMeta } from '../../lib/pagination'
 import { getPaginationMeta } from '../../lib/pagination'
-import ArticleCard from './ArticleCard'
+import ArticleFeedList from './ArticleFeedList'
 
 interface CategoryArticleListProps {
   category: string
@@ -76,9 +76,6 @@ export default function CategoryArticleList({
     )
   }
 
-  const firstArticle = startedFromFirstPage ? articles[0] : null
-  const gridArticles = startedFromFirstPage ? articles.slice(1) : articles
-
   return (
     <>
       <div className="mb-5 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
@@ -87,19 +84,7 @@ export default function CategoryArticleList({
         </p>
       </div>
 
-      {firstArticle && (
-        <div className="mb-4">
-          <ArticleCard article={firstArticle} variant="featured" />
-        </div>
-      )}
-
-      {gridArticles.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {gridArticles.map((article) => (
-            <ArticleCard key={article.id} article={article} variant="default" />
-          ))}
-        </div>
-      )}
+      <ArticleFeedList articles={articles} featuredFirst={startedFromFirstPage} />
 
       {error && (
         <p className="mt-4 text-center text-sm text-muted">

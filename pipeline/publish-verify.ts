@@ -14,7 +14,7 @@ import { config } from 'dotenv'
 import { resolve } from 'path'
 config({ path: resolve(process.cwd(), '.env.local') })
 
-import { getServerClient, type Article } from '../lib/supabase'
+import { getServerClient, type Article, type PublishArticleResult } from '../lib/supabase'
 import { fireAlert, resolveAlert } from './alerts'
 import { buildVerifyUrl, getVerifyCandidateKind } from './publish-verify-utils'
 
@@ -22,6 +22,15 @@ const BATCH_SIZE = 30
 const VERIFY_TIMEOUT_MS = 5_000
 const CONCURRENCY = 5
 const MAX_VERIFY_ATTEMPTS = 3
+const PUBLISH_VERIFIER = 'publish-verify'
+
+const PUBLISH_ARTICLE_RESULTS = new Set<PublishArticleResult>([
+  'published_live',
+  'rejected_quality',
+  'rejected_unverified',
+  'already_live',
+  'not_eligible',
+])
 
 function log(msg: string): void {
   const ts = new Date().toTimeString().slice(0, 8)
@@ -89,6 +98,8 @@ async function writeVerifyAttempt(
   resultStatus: 'ok' | 'retryable' | 'failed',
   errorMessage?: string,
   stage: 'verify' | 'verify_sample' = 'verify',
+  errorCode = resultStatus !== 'ok' ? 'fetch_failed' : null,
+  payload: Record<string, unknown> = {},
 ): Promise<void> {
   await supabase.from('article_attempts').insert({
     article_id: articleId,
@@ -97,10 +108,137 @@ async function writeVerifyAttempt(
     started_at: new Date().toISOString(),
     finished_at: new Date().toISOString(),
     result_status: resultStatus,
-    error_code: resultStatus !== 'ok' ? 'fetch_failed' : null,
+    error_code: errorCode,
     error_message: errorMessage ?? null,
-    payload: {},
+    payload,
   })
+}
+
+function isPublishArticleResult(value: unknown): value is PublishArticleResult {
+  return typeof value === 'string' && PUBLISH_ARTICLE_RESULTS.has(value as PublishArticleResult)
+}
+
+function isPublishRpcBypassActive(): boolean {
+  return process.env.PUBLISH_RPC_DISABLED === '1'
+}
+
+async function publishArticleViaRpc(
+  supabase: ReturnType<typeof getServerClient>,
+  article: Article,
+  now: string,
+  botToken?: string,
+  adminChatId?: string,
+): Promise<PublishArticleResult> {
+  if (isPublishRpcBypassActive()) {
+    await fireAlert({
+      supabase,
+      alertType: 'publish_rpc_bypass_active',
+      severity: 'warning',
+      message: 'PUBLISH_RPC_DISABLED=1: publish-verify использует legacy update вместо RPC publish_article',
+      payload: { articleId: article.id, slug: article.slug, verifier: PUBLISH_VERIFIER },
+      botToken,
+      adminChatId,
+    })
+
+    const { error } = await supabase
+      .from('articles')
+      .update({
+        publish_status: 'live',
+        verified_live: true,
+        verified_live_at: now,
+        live_check_error: null,
+        updated_at: now,
+      })
+      .eq('id', article.id)
+
+    if (error) {
+      throw new Error(`legacy publish update failed: ${error.message}`)
+    }
+
+    return 'published_live'
+  }
+
+  const { data, error } = await supabase.rpc('publish_article', {
+    p_article_id: article.id,
+    p_verifier: PUBLISH_VERIFIER,
+  })
+
+  if (error) {
+    throw new Error(`publish_article RPC failed: ${error.message}`)
+  }
+
+  if (!isPublishArticleResult(data)) {
+    throw new Error(`publish_article RPC returned unexpected result: ${String(data)}`)
+  }
+
+  return data
+}
+
+async function markAlreadyLiveVerified(
+  supabase: ReturnType<typeof getServerClient>,
+  article: Article,
+  now: string,
+): Promise<void> {
+  if (article.verified_live === true) return
+
+  const { error } = await supabase
+    .from('articles')
+    .update({
+      verified_live: true,
+      verified_live_at: now,
+      live_check_error: null,
+      last_publish_verifier: PUBLISH_VERIFIER,
+      updated_at: now,
+    })
+    .eq('id', article.id)
+    .eq('publish_status', 'live')
+
+  if (error) {
+    throw new Error(`already-live verification backfill failed: ${error.message}`)
+  }
+}
+
+async function handlePublishTransitionFailure(
+  supabase: ReturnType<typeof getServerClient>,
+  article: Article,
+  result: PublishArticleResult,
+  now: string,
+  botToken?: string,
+  adminChatId?: string,
+): Promise<void> {
+  const errorMessage = `publish_article returned ${result}`
+
+  if (result === 'rejected_quality') {
+    await supabase
+      .from('articles')
+      .update({
+        publish_status: 'withdrawn',
+        verified_live: false,
+        live_check_error: errorMessage,
+        updated_at: now,
+      })
+      .eq('id', article.id)
+
+    await fireAlert({
+      supabase,
+      alertType: 'publish_verify_failed',
+      severity: 'critical',
+      entityKey: article.slug ?? article.id,
+      message: `RPC отказал публикацию из-за quality_ok=false: /articles/${article.slug}`,
+      payload: { articleId: article.id, slug: article.slug, transitionResult: result },
+      botToken,
+      adminChatId,
+    })
+    return
+  }
+
+  await supabase
+    .from('articles')
+    .update({
+      live_check_error: errorMessage,
+      updated_at: now,
+    })
+    .eq('id', article.id)
 }
 
 async function publishVerify(): Promise<void> {
@@ -195,23 +333,77 @@ async function publishVerify(): Promise<void> {
 
       if (ok) {
         if (!isLiveSample) {
-          await supabase
-            .from('articles')
-            .update({
-              publish_status: 'live',
-              verified_live: true,
-              verified_live_at: now,
-              live_check_error: null,
-              updated_at: now,
-            })
-            .in('id', [article.id])
           const prevAttempts = await countVerifyAttempts(supabase, article.id)
-          await writeVerifyAttempt(supabase, article.id, prevAttempts + 1, 'ok')
-          await resolveAlert(supabase, 'publish_verify_failed', article.slug ?? article.id)
-          verifiedLive++
-          log(`✓ live: /articles/${article.slug}`)
+          let transitionResult: PublishArticleResult
+
+          try {
+            transitionResult = await publishArticleViaRpc(supabase, article, now, botToken, adminChatId)
+          } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : String(err)
+            await writeVerifyAttempt(
+              supabase,
+              article.id,
+              prevAttempts + 1,
+              'failed',
+              errorMsg,
+              'verify',
+              'publish_rpc_error',
+              { publish_transition_result: 'rpc_error' },
+            )
+            await fireAlert({
+              supabase,
+              alertType: 'publish_verify_failed',
+              severity: 'critical',
+              entityKey: article.slug ?? article.id,
+              message: `RPC publish_article упал для /articles/${article.slug}: ${errorMsg}`,
+              payload: { articleId: article.id, slug: article.slug, error: errorMsg },
+              botToken,
+              adminChatId,
+            })
+            markedFailed++
+            log(`✗ publish_rpc_error: /articles/${article.slug} [${errorMsg}]`)
+            continue
+          }
+
+          if (transitionResult === 'published_live' || transitionResult === 'already_live') {
+            if (transitionResult === 'already_live') {
+              await markAlreadyLiveVerified(supabase, article, now)
+            }
+            await writeVerifyAttempt(
+              supabase,
+              article.id,
+              prevAttempts + 1,
+              'ok',
+              undefined,
+              'verify',
+              null,
+              { publish_transition_result: transitionResult },
+            )
+            await resolveAlert(supabase, 'publish_verify_failed', article.slug ?? article.id)
+            await resolveAlert(supabase, 'publish_verify_failed_warn', article.slug ?? article.id)
+            if (transitionResult === 'published_live') {
+              await resolveAlert(supabase, 'publish_rpc_bypass_active')
+            }
+            verifiedLive++
+            log(`✓ ${transitionResult}: /articles/${article.slug}`)
+          } else {
+            await writeVerifyAttempt(
+              supabase,
+              article.id,
+              prevAttempts + 1,
+              'failed',
+              `publish_article returned ${transitionResult}`,
+              'verify',
+              `publish_rpc_${transitionResult}`,
+              { publish_transition_result: transitionResult },
+            )
+            await handlePublishTransitionFailure(supabase, article, transitionResult, now, botToken, adminChatId)
+            markedFailed++
+            log(`✗ ${transitionResult}: /articles/${article.slug}`)
+          }
         } else {
           await resolveAlert(supabase, 'publish_verify_failed', article.slug ?? article.id)
+          await resolveAlert(supabase, 'publish_verify_failed_warn', article.slug ?? article.id)
         }
       } else if (isLiveSample) {
         const prevSampleFails = await countVerifyAttempts(supabase, article.id, 'verify_sample')
@@ -284,6 +476,18 @@ async function publishVerify(): Promise<void> {
               updated_at: now,
             })
             .eq('id', article.id)
+          // Early warning — fires once per article, deduped 1h.
+          // Critical alert still fires only on exhaustion below.
+          await fireAlert({
+            supabase,
+            alertType: 'publish_verify_failed_warn',
+            severity: 'warning',
+            entityKey: article.slug ?? article.id,
+            message: `Verify failed (попытка ${prevAttempts + 1}/${MAX_VERIFY_ATTEMPTS}): /articles/${article.slug} [${errorMsg}]`,
+            payload: { articleId: article.id, slug: article.slug, attempts: prevAttempts + 1, errorMsg },
+            botToken,
+            adminChatId,
+          })
           resetToReady++
           log(`↻ retry (${prevAttempts + 1}/${MAX_VERIFY_ATTEMPTS}): /articles/${article.slug} [${candidateKind}]`)
         } else {
@@ -301,7 +505,7 @@ async function publishVerify(): Promise<void> {
           await fireAlert({
             supabase,
             alertType: 'publish_verify_failed',
-            severity: 'warning',
+            severity: 'critical',
             entityKey: article.slug ?? article.id,
             message: `Статья недоступна после ${MAX_VERIFY_ATTEMPTS} попыток: /articles/${article.slug}`,
             payload: { articleId: article.id, slug: article.slug, attempts: MAX_VERIFY_ATTEMPTS },

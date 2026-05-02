@@ -9,10 +9,11 @@ import { listBatchResults, parseBatchCustomId, retrieveBatch, type NormalizedBat
 import { assertAsciiSlug, ensureUniqueSlug } from './slug'
 import { parseEditorialJson, validateEditorial } from './claude'
 import { articleHasCategory } from './scorer.config'
-import { createEnrichRun, finishEnrichRun, getOldestPendingAgeMinutes, log, writeEnrichAttempt } from './enrich-runtime'
+import { createEnrichRun, finishEnrichRun, getOldestPendingAgeMinutes, log, writeEnrichAttempt, writeMediaSanitizeAttempt } from './enrich-runtime'
 import { fireAlert } from './alerts'
 import { isExhausted, isRetryable, nextRetryAt, type ErrorCode } from './types'
 import { addUsageTotals, formatUsageSummary, refreshAnthropicBatchUsageTotals, writeLlmUsageLog, ZERO_USAGE_TOTALS, type UsageTotals } from './llm-usage'
+import { sanitizeArticleMedia, type ArticleImageCandidate } from './media-sanitizer'
 
 const BATCH_POLL_LIMIT = Number(process.env.ANTHROPIC_BATCH_POLL_LIMIT ?? 10)
 const APPLY_READY_LIMIT = Number(process.env.ANTHROPIC_BATCH_APPLY_LIMIT ?? 50)
@@ -23,6 +24,33 @@ interface BatchPollRow {
   provider_batch_id: string
   processing_status: string
   poll_attempts: number
+}
+
+export async function fireClaudeParseFailedAlert(
+  supabase: SupabaseClient,
+  params: {
+    runId: string
+    batchId: string | null
+    itemId: string
+    reason: string
+  },
+): Promise<void> {
+  const entityKey = params.batchId ?? params.itemId
+  await fireAlert({
+    supabase,
+    alertType: 'claude_parse_failed',
+    severity: 'warning',
+    entityKey,
+    message: `Claude batch parse failed for ${params.batchId ? `batch ${params.batchId}` : `item ${params.itemId}`}: ${params.reason}`,
+    payload: {
+      runId: params.runId,
+      batchId: params.batchId,
+      itemId: params.itemId,
+      reason: params.reason,
+    },
+    botToken: process.env.TELEGRAM_BOT_TOKEN,
+    adminChatId: process.env.TELEGRAM_ADMIN_CHAT_ID,
+  })
 }
 
 function dedupeBatchPollRows(rows: BatchPollRow[]): BatchPollRow[] {
@@ -260,9 +288,20 @@ async function importBatchResults(
   return { retryable, failed, usage }
 }
 
+export function bumpRejectedBreakdown(
+  breakdown: Record<string, number>,
+  rawKey: string | null | undefined,
+): void {
+  if (!rawKey) return
+  const trimmed = rawKey.trim()
+  if (!trimmed) return
+  breakdown[trimmed] = (breakdown[trimmed] ?? 0) + 1
+}
+
 async function applyReadyResults(
   supabase: SupabaseClient,
   runId: string,
+  rejectedBreakdown: Record<string, number>,
 ): Promise<{ enrichedOk: number; rejected: number; retryable: number; failed: number }> {
   const metrics = { enrichedOk: 0, rejected: 0, retryable: 0, failed: 0 }
   const { data: items, error } = await supabase
@@ -285,6 +324,7 @@ async function applyReadyResults(
     const responsePayload = (item.response_payload ?? {}) as Record<string, unknown>
     const outputText = typeof responsePayload.output_text === 'string' ? responsePayload.output_text : null
     if (!outputText) {
+      const parseFailureReason = 'missing output_text in batch response_payload'
       const outcome = await finalizeBatchFailure(
         supabase,
         item,
@@ -292,17 +332,24 @@ async function applyReadyResults(
         runId,
         {
           errorCode: 'claude_parse_failed',
-          errorMessage: 'missing output_text in batch response_payload',
+          errorMessage: parseFailureReason,
           itemStatus: 'apply_failed_terminal',
         },
       )
       if (outcome === 'retryable') metrics.retryable++
       else metrics.failed++
+      await fireClaudeParseFailedAlert(supabase, {
+        runId,
+        batchId: item.batch_id,
+        itemId: item.id,
+        reason: parseFailureReason,
+      })
       continue
     }
 
     const editorial = parseEditorialJson(outputText)
     if (!editorial) {
+      const parseFailureReason = 'failed to parse editorial json from batch item'
       const outcome = await finalizeBatchFailure(
         supabase,
         item,
@@ -310,12 +357,18 @@ async function applyReadyResults(
         runId,
         {
           errorCode: 'claude_parse_failed',
-          errorMessage: 'failed to parse editorial json from batch item',
+          errorMessage: parseFailureReason,
           itemStatus: 'apply_failed_terminal',
         },
       )
       if (outcome === 'retryable') metrics.retryable++
       else metrics.failed++
+      await fireClaudeParseFailedAlert(supabase, {
+        runId,
+        batchId: item.batch_id,
+        itemId: item.id,
+        reason: parseFailureReason,
+      })
       continue
     }
 
@@ -324,6 +377,7 @@ async function applyReadyResults(
 
     const validationError = validateEditorial(editorial)
     if (validationError) {
+      const parseFailureReason = `editorial validation failed: ${validationError}`
       const outcome = await finalizeBatchFailure(
         supabase,
         item,
@@ -331,12 +385,18 @@ async function applyReadyResults(
         runId,
         {
           errorCode: 'claude_parse_failed',
-          errorMessage: `editorial validation failed: ${validationError}`,
+          errorMessage: parseFailureReason,
           itemStatus: 'apply_failed_terminal',
         },
       )
       if (outcome === 'retryable') metrics.retryable++
       else metrics.failed++
+      await fireClaudeParseFailedAlert(supabase, {
+        runId,
+        batchId: item.batch_id,
+        itemId: item.id,
+        reason: parseFailureReason,
+      })
       continue
     }
 
@@ -373,12 +433,52 @@ async function applyReadyResults(
       continue
     }
 
+    const mediaStartedAt = new Date()
+    const sanitizedMedia = sanitizeArticleMedia({
+      coverImageUrl: typeof articleContext.cover_image_url === 'string'
+        ? articleContext.cover_image_url
+        : article.cover_image_url,
+      articleImages: Array.isArray(articleContext.article_images)
+        ? articleContext.article_images as ArticleImageCandidate[]
+        : article.article_images,
+      context: {
+        sourceName: article.source_name,
+        originalUrl: article.original_url,
+        originalTitle: article.original_title,
+        ruTitle: editorial.ru_title,
+        lead: editorial.lead,
+        summary: editorial.summary,
+        originalText: typeof articleContext.original_text === 'string'
+          ? articleContext.original_text
+          : article.original_text,
+      },
+    })
+
+    if (sanitizedMedia.rejects.length > 0) {
+      log(`media sanitizer rejected ${sanitizedMedia.rejects.length} item(s) for ${article.id}`)
+      await writeMediaSanitizeAttempt(supabase, {
+        articleId: article.id,
+        batchItemId: item.id,
+        attemptNo: (article.attempt_count ?? 0) + 1,
+        startedAt: mediaStartedAt,
+        resultStatus: 'ok',
+        claimToken: article.claim_token,
+        runId,
+        phase: 'collect',
+        rejects: sanitizedMedia.rejects,
+        remainingMedia: {
+          coverImageUrl: Boolean(sanitizedMedia.coverImageUrl),
+          articleImages: sanitizedMedia.articleImages.length,
+        },
+      })
+    }
+
     const rpcParams = {
       p_batch_item_id: item.id,
       p_enrich_status: editorial.quality_ok ? 'enriched_ok' : 'rejected',
       p_publish_status: editorial.quality_ok ? 'publish_ready' : 'draft',
       p_score: Number(articleContext.score ?? article.score ?? 0),
-      p_cover_image_url: articleContext.cover_image_url ?? article.cover_image_url,
+      p_cover_image_url: sanitizedMedia.coverImageUrl,
       p_original_text: articleContext.original_text ?? article.original_text,
       p_ru_title: editorial.ru_title,
       p_lead: editorial.lead,
@@ -390,7 +490,7 @@ async function applyReadyResults(
       p_glossary: editorial.glossary,
       p_link_anchors: editorial.link_anchors,
       p_article_tables: generatedTables ?? articleContext.article_tables ?? null,
-      p_article_images: articleContext.article_images ?? null,
+      p_article_images: sanitizedMedia.articleImages.length > 0 ? sanitizedMedia.articleImages : null,
       p_article_videos: articleContext.article_videos ?? null,
       p_quality_ok: editorial.quality_ok,
       p_quality_reason: editorial.quality_reason || '',
@@ -417,8 +517,12 @@ async function applyReadyResults(
     }
 
     if (rpcRow.state === 'applied' || rpcRow.applied === true) {
-      if (editorial.quality_ok) metrics.enrichedOk++
-      else metrics.rejected++
+      if (editorial.quality_ok) {
+        metrics.enrichedOk++
+      } else {
+        metrics.rejected++
+        bumpRejectedBreakdown(rejectedBreakdown, editorial.quality_reason || 'unspecified')
+      }
       continue
     }
 
@@ -543,6 +647,7 @@ export async function runEnrichCollectBatch(): Promise<void> {
   const supabase = getServerClient()
   const runId = await createEnrichRun(supabase, APPLY_READY_LIMIT, 'batch_collect')
   const oldestPendingAgeMinutes = await getOldestPendingAgeMinutes(supabase)
+  const rejectedBreakdown: Record<string, number> = {}
   const metrics = {
     claimed: 0,
     enrichedOk: 0,
@@ -552,6 +657,7 @@ export async function runEnrichCollectBatch(): Promise<void> {
     oldestPendingAgeMinutes,
     usage: ZERO_USAGE_TOTALS,
     errorSummary: null as string | null,
+    rejectedBreakdown,
   }
 
   try {
@@ -560,7 +666,7 @@ export async function runEnrichCollectBatch(): Promise<void> {
     metrics.failed += imported.failed
     metrics.usage = addUsageTotals(metrics.usage, imported.usage)
 
-    const applied = await applyReadyResults(supabase, runId)
+    const applied = await applyReadyResults(supabase, runId, rejectedBreakdown)
     metrics.enrichedOk += applied.enrichedOk
     metrics.rejected += applied.rejected
     metrics.retryable += applied.retryable

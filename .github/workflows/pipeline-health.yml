@@ -39,6 +39,17 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
 
+      - name: Published window monitor
+        run: npx tsx pipeline/published-window-monitor.ts
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+          PUBLISHED_LOW_WINDOW_HOURS: '6'
+          PUBLISHED_LOW_WINDOW_QUIET_START_MSK: '0'
+          PUBLISHED_LOW_WINDOW_QUIET_END_MSK: '6'
+
       - name: Provider guard
         run: npx tsx pipeline/provider-guard.ts
         env:

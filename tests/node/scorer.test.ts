@@ -63,6 +63,8 @@ function article(overrides: Partial<Article>): Article {
     verified_live_at: null,
     live_check_error: null,
     current_batch_item_id: null,
+    last_publish_verifier: null,
+    published_at: null,
     ...overrides,
   }
 }

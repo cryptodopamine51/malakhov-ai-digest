@@ -24,7 +24,7 @@ const RULES: Rule[] = [
   {
     doc: 'docs/ARTICLE_SYSTEM.md',
     matches: (file) =>
-      /^(app\/articles\/|app\/archive\/|app\/topics\/|app\/sources\/|bot\/daily-digest\.ts$|lib\/articles\.ts$|lib\/article-slugs\.ts$|app\/sitemap\.ts$|src\/components\/ArticleCard\.tsx$)/.test(file),
+      /^(app\/articles\/|app\/archive\/|app\/topics\/|app\/sources\/|bot\/daily-digest\.ts$|bot\/daily-digest-core\.ts$|lib\/articles\.ts$|lib\/article-slugs\.ts$|app\/sitemap\.ts$|src\/components\/ArticleCard\.tsx$)/.test(file),
   },
   {
     doc: 'docs/ARCHITECTURE.md',
@@ -34,7 +34,7 @@ const RULES: Rule[] = [
   {
     doc: 'docs/OPERATIONS.md',
     matches: (file) =>
-      /^(\.github\/workflows\/|vercel\.json$|package\.json$|scripts\/|pipeline\/(alerts|provider-guard|source-health|backlog-monitor|publish-verify|publish-verify-utils|retry-failed|recover-stuck|claims|types)\.ts$)/.test(file),
+      /^(\.github\/workflows\/|vercel\.json$|package\.json$|scripts\/|app\/api\/cron\/|pipeline\/(alerts|provider-guard|source-health|backlog-monitor|publish-verify|publish-verify-utils|retry-failed|recover-stuck|claims|types)\.ts$)/.test(file),
   },
   {
     doc: 'docs/PROJECT.md',

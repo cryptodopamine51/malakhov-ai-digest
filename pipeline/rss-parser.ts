@@ -23,6 +23,7 @@ export interface SourceFeedResult {
   status: 'ok' | 'empty' | 'failed'
   itemsSeen: number
   itemsReturned: number
+  rejected: RssRejectedSummary[]
   httpStatus: number | null
   errorMessage: string | null
   responseTimeMs: number
@@ -31,6 +32,15 @@ export interface SourceFeedResult {
 export interface FetchAllFeedsResult {
   items: ParsedItem[]
   sourceResults: SourceFeedResult[]
+  rejected: RssRejectedSummary[]
+}
+
+export type RssRejectedReason = 'keyword_filter' | 'requireDateInUrl' | 'dedup'
+
+export interface RssRejectedSummary {
+  reason: RssRejectedReason | string
+  count: number
+  examples: string[]
 }
 
 // ── Вспомогательные функции ───────────────────────────────────────────────────
@@ -87,6 +97,35 @@ function buildDedupHash(title: string, url: string): string {
     .slice(0, 32)
 }
 
+function rejectionExample(title: string | null | undefined, url: string | null | undefined): string {
+  return [title?.trim(), url?.trim()].filter(Boolean).join(' | ').slice(0, 240)
+}
+
+function addRejected(
+  rejected: Map<string, RssRejectedSummary>,
+  reason: RssRejectedReason,
+  example: string,
+): void {
+  const current = rejected.get(reason) ?? { reason, count: 0, examples: [] }
+  current.count++
+  if (example && current.examples.length < 3) current.examples.push(example)
+  rejected.set(reason, current)
+}
+
+export function summarizeRejected(rejected: Iterable<RssRejectedSummary>): RssRejectedSummary[] {
+  const aggregate = new Map<string, RssRejectedSummary>()
+  for (const entry of rejected) {
+    if (!entry.reason || entry.count <= 0) continue
+    const current = aggregate.get(entry.reason) ?? { reason: entry.reason, count: 0, examples: [] }
+    current.count += entry.count
+    for (const example of entry.examples ?? []) {
+      if (example && current.examples.length < 3) current.examples.push(example)
+    }
+    aggregate.set(entry.reason, current)
+  }
+  return [...aggregate.values()]
+}
+
 export function keywordMatches(searchText: string, keyword: string): boolean {
   const normalized = keyword.trim().toLowerCase()
   if (normalized === 'ии' || normalized === 'ai') {
@@ -127,7 +166,11 @@ export async function fetchAllFeeds(maxAgeMinutes = 60): Promise<FetchAllFeedsRe
     }
   }
 
-  return { items: allItems, sourceResults }
+  return {
+    items: allItems,
+    sourceResults,
+    rejected: summarizeRejected(sourceResults.flatMap((result) => result.rejected)),
+  }
 }
 
 /**
@@ -137,7 +180,7 @@ async function parseFeedWithRetry(
   parser: RSSParser,
   feed: FeedConfig,
   cutoff: Date
-): Promise<{ items: ParsedItem[]; sourceResult: SourceFeedResult }> {
+): Promise<{ items: ParsedItem[]; rejected: RssRejectedSummary[]; sourceResult: SourceFeedResult }> {
   try {
     return await parseFeed(parser, feed, cutoff)
   } catch {
@@ -149,13 +192,14 @@ async function parseFeedWithRetry(
 /**
  * Парсит один RSS-фид и фильтрует элементы по свежести и ключевым словам.
  */
-async function parseFeed(
+export async function parseFeed(
   parser: RSSParser,
   feed: FeedConfig,
   cutoff: Date
-): Promise<{ items: ParsedItem[]; sourceResult: SourceFeedResult }> {
+): Promise<{ items: ParsedItem[]; rejected: RssRejectedSummary[]; sourceResult: SourceFeedResult }> {
   const ts = () => new Date().toTimeString().slice(0, 8)
   const startedAt = Date.now()
+  const rejected = new Map<string, RssRejectedSummary>()
 
   const sourceResult: SourceFeedResult = {
     sourceName: feed.name,
@@ -163,6 +207,7 @@ async function parseFeed(
     status: 'failed',
     itemsSeen: 0,
     itemsReturned: 0,
+    rejected: [],
     httpStatus: null,
     errorMessage: null,
     responseTimeMs: 0,
@@ -182,7 +227,7 @@ async function parseFeed(
     if (!response.ok) {
       sourceResult.errorMessage = `HTTP ${response.status}`
       console.error(`[${ts()}] Ошибка фида "${feed.name}": HTTP ${response.status}`)
-      return { items: [], sourceResult }
+      return { items: [], rejected: [], sourceResult }
     }
 
     const xml = await response.text()
@@ -202,6 +247,7 @@ async function parseFeed(
       if (!url) continue
 
       if (feed.lang === 'ru' && feed.needsKeywordFilter && feed.requireDateInUrl === true && !hasDateInUrl(url)) {
+        addRejected(rejected, 'requireDateInUrl', rejectionExample(item.title, url))
         continue
       }
 
@@ -217,7 +263,10 @@ async function parseFeed(
         const hasKeyword = feed.keywordGroups?.length
           ? feed.keywordGroups.every((group) => group.some((kw) => keywordMatches(searchText, kw)))
           : keywordList.some((kw) => keywordMatches(searchText, kw))
-        if (!hasKeyword) continue
+        if (!hasKeyword) {
+          addRejected(rejected, 'keyword_filter', rejectionExample(item.title, url))
+          continue
+        }
       }
 
       const rawTitle = item.title ?? 'Без заголовка'
@@ -241,18 +290,19 @@ async function parseFeed(
     }
 
     sourceResult.itemsReturned = result.length
+    sourceResult.rejected = [...rejected.values()]
     sourceResult.status = result.length === 0 ? 'empty' : 'ok'
 
     console.log(
       `[${ts()}] ${feed.name}: получено ${items.length} записей, отфильтровано ${result.length}`
     )
 
-    return { items: result, sourceResult }
+    return { items: result, rejected: sourceResult.rejected, sourceResult }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     sourceResult.responseTimeMs = Date.now() - startedAt
     sourceResult.errorMessage = message
     console.error(`[${new Date().toTimeString().slice(0, 8)}] Ошибка фида "${feed.name}": ${message}`)
-    return { items: [], sourceResult }
+    return { items: [], rejected: [], sourceResult }
   }
 }

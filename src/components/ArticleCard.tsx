@@ -4,6 +4,7 @@ import type { Article } from '../../lib/supabase'
 import { formatRelativeTime } from '../../lib/utils'
 import TopicBadge, { TOPIC_LABELS } from './TopicBadge'
 import SafeImage from './SafeImage'
+import { sanitizeArticleMedia } from '../../lib/media-sanitizer'
 
 interface ArticleCardProps {
   article: Article
@@ -15,7 +16,19 @@ const SOURCES_WITH_TEXT_COVERS = new Set(['Habr AI', 'vc.ru', 'CNews'])
 
 function getCardImageUrl(article: Article): string | null {
   if (SOURCES_WITH_TEXT_COVERS.has(article.source_name)) return null
-  return article.cover_image_url ?? null
+  return sanitizeArticleMedia({
+    coverImageUrl: article.cover_image_url,
+    articleImages: null,
+    context: {
+      sourceName: article.source_name,
+      originalUrl: article.original_url,
+      originalTitle: article.original_title,
+      ruTitle: article.ru_title,
+      lead: article.lead,
+      summary: article.summary,
+      originalText: article.original_text ?? article.editorial_body,
+    },
+  }).coverImageUrl
 }
 
 function SourceLabel({ name }: { name: string }) {

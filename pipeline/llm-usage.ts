@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { fireAlert } from './alerts'
 
 const MOSCOW_TZ = 'Europe/Moscow'
 
@@ -140,6 +141,46 @@ function getUsageLogClient(): SupabaseClient | null {
   return usageLogClient
 }
 
+function formatUsageLogError(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>
+    return [record.message, record.code, record.details, record.hint]
+      .filter((part): part is string => typeof part === 'string' && part.length > 0)
+      .join(' | ') || JSON.stringify(record)
+  }
+  return String(error)
+}
+
+async function reportUsageLogWriteFailure(
+  supabase: SupabaseClient,
+  params: LlmUsageLogParams,
+  error: unknown,
+): Promise<void> {
+  const message = formatUsageLogError(error)
+  console.error(`[llm-usage] insert failed: ${message}`)
+  await fireAlert({
+    supabase,
+    alertType: 'llm_usage_log_write_failed',
+    severity: 'warning',
+    entityKey: params.enrichRunId ?? params.batchItemId ?? params.articleId ?? params.operation,
+    message: `llm_usage_logs write failed for ${params.operation}: ${message}`,
+    payload: {
+      provider: params.provider,
+      model: params.model,
+      operation: params.operation,
+      runKind: params.runKind ?? null,
+      enrichRunId: params.enrichRunId ?? null,
+      articleId: params.articleId ?? null,
+      batchItemId: params.batchItemId ?? null,
+      resultStatus: params.resultStatus ?? null,
+      error: message,
+    },
+    botToken: process.env.TELEGRAM_BOT_TOKEN,
+    adminChatId: process.env.TELEGRAM_ADMIN_CHAT_ID,
+  })
+}
+
 export async function writeLlmUsageLog(params: LlmUsageLogParams): Promise<void> {
   const supabase = params.supabase ?? getUsageLogClient()
   if (!supabase) return
@@ -172,10 +213,10 @@ export async function writeLlmUsageLog(params: LlmUsageLogParams): Promise<void>
       })
 
     if (error) {
-      console.error(`[llm-usage] insert failed: ${error.message}`)
+      await reportUsageLogWriteFailure(supabase, params, error)
     }
   } catch (error) {
-    console.error(`[llm-usage] unexpected insert error: ${error instanceof Error ? error.message : String(error)}`)
+    await reportUsageLogWriteFailure(supabase, params, error)
   }
 }
 

@@ -80,21 +80,21 @@ test('releaseClaim skips stale claims', async () => {
   assert.equal(released, false)
 })
 
-test('fetchArticleContent returns fetch_failed on non-200 response', async () => {
+test('fetchArticleContent returns normalized code on 5xx response', async () => {
   const originalFetch = global.fetch
   global.fetch = (async () =>
     new Response('nope', { status: 503, statusText: 'Service Unavailable' })) as typeof fetch
 
   try {
     const result = await fetchArticleContent('https://example.com/fail')
-    assert.equal(result.errorCode, 'fetch_failed')
+    assert.equal(result.errorCode, 'fetch_5xx')
     assert.match(result.errorMessage ?? '', /HTTP 503/)
   } finally {
     global.fetch = originalFetch
   }
 })
 
-test('fetchArticleContent returns fetch_timeout on aborted request', async () => {
+test('fetchArticleContent returns fetch_aborted on aborted request', async () => {
   const originalFetch = global.fetch
   global.fetch = (async () => {
     throw new Error('The operation was aborted')
@@ -102,7 +102,7 @@ test('fetchArticleContent returns fetch_timeout on aborted request', async () =>
 
   try {
     const result = await fetchArticleContent('https://example.com/timeout')
-    assert.equal(result.errorCode, 'fetch_timeout')
+    assert.equal(result.errorCode, 'fetch_aborted')
   } finally {
     global.fetch = originalFetch
   }

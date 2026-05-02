@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { ArticleAttemptStage } from '../lib/supabase'
 import { WORKER_ID } from './claims'
 import type { UsageTotals } from './llm-usage'
 import { ZERO_USAGE_TOTALS } from './llm-usage'
@@ -14,6 +15,9 @@ export interface EnrichRunMetrics {
   oldestPendingAgeMinutes: number | null
   usage: UsageTotals
   errorSummary?: string | null
+  // Migration 014: per-run agregator причин reject (pre-submit + post-collect).
+  // Ключ — нормализованный quality_reason / reject code.
+  rejectedBreakdown?: Record<string, number>
 }
 
 export interface WriteEnrichAttemptParams {
@@ -27,6 +31,28 @@ export interface WriteEnrichAttemptParams {
   errorCode?: string | null
   errorMessage?: string | null
   payload?: Record<string, unknown>
+}
+
+export interface WriteArticleAttemptParams extends WriteEnrichAttemptParams {
+  stage: ArticleAttemptStage
+}
+
+export interface WriteMediaSanitizeAttemptParams {
+  articleId: string
+  attemptNo: number
+  startedAt: Date
+  resultStatus: 'ok' | 'rejected'
+  runId: string
+  phase: 'submit' | 'collect'
+  rejects: unknown[]
+  remainingMedia: {
+    coverImageUrl: boolean
+    articleImages: number
+  }
+  claimToken?: string | null
+  batchItemId?: string | null
+  workerId?: string | null
+  errorMessage?: string | null
 }
 
 export function log(msg: string): void {
@@ -90,6 +116,8 @@ export async function finishEnrichRun(
     error_summary: metrics.errorSummary ?? null,
   }
 
+  const rejectedBreakdownPayload = metrics.rejectedBreakdown ?? {}
+
   const { error } = await supabase
     .from('enrich_runs')
     .update({
@@ -99,6 +127,7 @@ export async function finishEnrichRun(
       total_cache_read_tokens: usage.cacheReadTokens,
       total_cache_creation_tokens: usage.cacheCreateTokens,
       estimated_cost_usd: usage.estimatedCostUsd,
+      rejected_breakdown: rejectedBreakdownPayload,
     })
     .eq('id', runId)
 
@@ -109,7 +138,8 @@ export async function finishEnrichRun(
     error.message.includes('total_output_tokens') ||
     error.message.includes('total_cache_read_tokens') ||
     error.message.includes('total_cache_creation_tokens') ||
-    error.message.includes('estimated_cost_usd')
+    error.message.includes('estimated_cost_usd') ||
+    error.message.includes('rejected_breakdown')
 
   if (!legacyColumnMismatch) {
     throw new Error(`enrich_runs update failed: ${error.message}`)
@@ -125,15 +155,15 @@ export async function finishEnrichRun(
   }
 }
 
-export async function writeEnrichAttempt(
+export async function writeArticleAttempt(
   supabase: SupabaseClient,
-  params: WriteEnrichAttemptParams,
+  params: WriteArticleAttemptParams,
 ): Promise<void> {
   const now = new Date()
   const { error } = await supabase.from('article_attempts').insert({
     article_id: params.articleId,
     batch_item_id: params.batchItemId ?? null,
-    stage: 'enrich',
+    stage: params.stage,
     attempt_no: params.attemptNo,
     worker_id: params.workerId ?? WORKER_ID,
     claim_token: params.claimToken ?? null,
@@ -149,4 +179,35 @@ export async function writeEnrichAttempt(
   if (error && !(params.batchItemId && error.code === '23505')) {
     throw new Error(`article_attempts insert failed: ${error.message}`)
   }
+}
+
+export async function writeEnrichAttempt(
+  supabase: SupabaseClient,
+  params: WriteEnrichAttemptParams,
+): Promise<void> {
+  await writeArticleAttempt(supabase, { ...params, stage: 'enrich' })
+}
+
+export async function writeMediaSanitizeAttempt(
+  supabase: SupabaseClient,
+  params: WriteMediaSanitizeAttemptParams,
+): Promise<void> {
+  await writeArticleAttempt(supabase, {
+    articleId: params.articleId,
+    batchItemId: params.batchItemId ?? null,
+    stage: 'media_sanitize',
+    attemptNo: params.attemptNo,
+    startedAt: params.startedAt,
+    resultStatus: params.resultStatus,
+    claimToken: params.claimToken ?? null,
+    workerId: params.workerId ?? null,
+    errorCode: params.resultStatus === 'rejected' ? 'media_sanitize_rejected' : null,
+    errorMessage: params.errorMessage ?? null,
+    payload: {
+      run_id: params.runId,
+      phase: params.phase,
+      rejects: params.rejects,
+      remaining_media: params.remainingMedia,
+    },
+  })
 }

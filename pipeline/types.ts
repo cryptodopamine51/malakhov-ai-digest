@@ -11,7 +11,14 @@ export const STUCK_THRESHOLD_MS = 15 * 60 * 1000 // lease + 5 min grace
 
 export type ErrorCode =
   | 'fetch_failed'
+  | 'fetch_404'
+  | 'fetch_5xx'
   | 'fetch_timeout'
+  | 'fetch_aborted'
+  | 'fetch_too_large'
+  | 'fetch_empty'
+  | 'fetch_blocked'
+  | 'fetch_unknown'
   | 'claude_api_error'
   | 'provider_invalid_request'
   | 'claude_rate_limit'
@@ -27,7 +34,14 @@ export type ErrorCode =
 
 export const RETRYABLE_ERRORS: ErrorCode[] = [
   'fetch_failed',
+  'fetch_404',
+  'fetch_5xx',
   'fetch_timeout',
+  'fetch_aborted',
+  'fetch_too_large',
+  'fetch_empty',
+  'fetch_blocked',
+  'fetch_unknown',
   'claude_api_error',
   'claude_rate_limit',
   'claude_truncated',

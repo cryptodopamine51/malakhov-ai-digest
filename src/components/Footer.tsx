@@ -8,7 +8,7 @@ const NAV_MAIN = [
 const NAV_LEGAL = [
   { href: '/privacy-policy', label: 'Политика персональных данных' },
   { href: '/cookie-policy',  label: 'Политика cookies' },
-  { href: '/consent',        label: 'Отзыв согласия' },
+  { href: '/consent',        label: 'Согласие на обработку персональных данных' },
 ]
 
 const NAV_TOPICS = [

@@ -17,9 +17,14 @@ const COOLDOWN_HOURS: Record<string, number> = {
   batch_collect_failed: 1,
   batch_poll_stuck: 2,
   batch_apply_stuck: 2,
-  batch_partial_failure_spike: 2,
   claude_daily_budget_exceeded: 6,
+  claude_parse_failed: 4,
+  lease_expired_spike: 2,
+  llm_usage_log_write_failed: 4,
   publish_verify_failed: 6,
+  publish_verify_failed_warn: 1,
+  publish_rpc_bypass_active: 6,
+  published_low_window: 2,
   digest_low_articles: 12,
 }
 

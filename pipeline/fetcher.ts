@@ -7,6 +7,7 @@
 
 import { JSDOM, VirtualConsole } from 'jsdom'
 import { Readability } from '@mozilla/readability'
+import type { ErrorCode } from './types'
 
 const FETCH_TIMEOUT_MS = 15_000
 const MAX_TEXT_LENGTH = 8_000
@@ -24,6 +25,16 @@ export interface ExtractedTable {
 export interface ExtractedImage {
   src: string
   alt: string
+  title?: string | null
+  caption?: string | null
+  width?: number | null
+  height?: number | null
+  parentClassName?: string | null
+  parentId?: string | null
+  parentHref?: string | null
+  nearestFigureClassName?: string | null
+  nearestFigureId?: string | null
+  source?: 'inline'
 }
 
 export interface ExtractedVideo {
@@ -40,7 +51,16 @@ export interface FetchedContent {
   tables: ExtractedTable[]
   inlineImages: ExtractedImage[]
   inlineVideos: ExtractedVideo[]
-  errorCode?: 'fetch_failed' | 'fetch_timeout'
+  errorCode?: Extract<ErrorCode,
+    | 'fetch_404'
+    | 'fetch_5xx'
+    | 'fetch_timeout'
+    | 'fetch_aborted'
+    | 'fetch_too_large'
+    | 'fetch_empty'
+    | 'fetch_blocked'
+    | 'fetch_unknown'
+  >
   errorMessage?: string
 }
 
@@ -93,6 +113,24 @@ function absolutizeUrl(rawUrl: string, baseUrl: string): string | null {
   }
 }
 
+function pickImageSrc(img: Element): string {
+  const direct =
+    img.getAttribute('src') ??
+    img.getAttribute('data-src') ??
+    img.getAttribute('data-lazy-src') ??
+    img.getAttribute('data-original') ??
+    ''
+  if (direct.trim()) return direct
+
+  const srcset = img.getAttribute('srcset') ?? img.getAttribute('data-srcset') ?? ''
+  const firstSrc = srcset
+    .split(',')
+    .map((part) => part.trim().split(/\s+/)[0])
+    .find(Boolean)
+
+  return firstSrc ?? ''
+}
+
 function extractTables(document: Document): ExtractedTable[] {
   const tables: ExtractedTable[] = []
   try {
@@ -121,14 +159,18 @@ function extractTables(document: Document): ExtractedTable[] {
 function extractInlineImages(document: Document, baseUrl: string): ExtractedImage[] {
   const images: ExtractedImage[] = []
   try {
-    const imgs = document.querySelectorAll('article img, .content img, .post img, main img, [class*="article"] img, [class*="content"] img')
+    const selector = ARTICLE_BODY_SELECTORS.map((sel) => `${sel} img`).join(', ')
+    const imgs = document.querySelectorAll(selector)
     const seen = new Set<string>()
 
     imgs.forEach((img) => {
-      const src = img.getAttribute('src') ?? ''
-      const alt = img.getAttribute('alt')?.trim() ?? ''
+      if (isInsideExcludedRegion(img)) return
 
-      if (!src || seen.has(src)) return
+      const src = pickImageSrc(img)
+      const alt = img.getAttribute('alt')?.trim() ?? ''
+      const title = img.getAttribute('title')?.trim() || null
+
+      if (!src) return
       if (src.startsWith('data:')) return
 
       const w = parseInt(img.getAttribute('width') ?? '0', 10)
@@ -138,9 +180,28 @@ function extractInlineImages(document: Document, baseUrl: string): ExtractedImag
 
       const absoluteSrc = absolutizeUrl(src, baseUrl)
       if (!absoluteSrc) return
+      if (seen.has(absoluteSrc)) return
 
-      seen.add(src)
-      images.push({ src: absoluteSrc, alt })
+      const parent = img.parentElement
+      const parentLink = img.closest('a')
+      const figure = img.closest('figure')
+      const caption = figure?.querySelector('figcaption')?.textContent?.trim() || null
+
+      seen.add(absoluteSrc)
+      images.push({
+        src: absoluteSrc,
+        alt,
+        title,
+        caption,
+        width: Number.isFinite(w) && w > 0 ? w : null,
+        height: Number.isFinite(h) && h > 0 ? h : null,
+        parentClassName: parent?.getAttribute('class') ?? null,
+        parentId: parent?.getAttribute('id') ?? null,
+        parentHref: parentLink?.getAttribute('href') ?? null,
+        nearestFigureClassName: figure?.getAttribute('class') ?? null,
+        nearestFigureId: figure?.getAttribute('id') ?? null,
+        source: 'inline',
+      })
     })
   } catch { /* некритично */ }
   return images.slice(0, 5)
@@ -237,10 +298,13 @@ function isInsideExcludedRegion(node: Element): boolean {
   // Скрываем sidebar/related/comments — они не часть статьи.
   let cursor: Element | null = node
   while (cursor) {
+    const tagName = cursor.tagName?.toLowerCase()
+    if (tagName && /^(aside|nav|footer|header)$/.test(tagName)) return true
+
     const className = (cursor.getAttribute?.('class') ?? '').toLowerCase()
     const id = (cursor.getAttribute?.('id') ?? '').toLowerCase()
-    if (/sidebar|aside|related|recommend|comment|footer|promo|advert|ad-/.test(className)) return true
-    if (/sidebar|aside|related|recommend|comment|footer|promo|advert|ad-/.test(id)) return true
+    if (/(?:sidebar|aside|related|recommend|comment|footer|promo|advert|banner|career|jobs|byline|author|profile|avatar|\bad[-_])/i.test(className)) return true
+    if (/(?:sidebar|aside|related|recommend|comment|footer|promo|advert|banner|career|jobs|byline|author|profile|avatar|\bad[-_])/i.test(id)) return true
     cursor = cursor.parentElement
   }
   return false
@@ -317,13 +381,59 @@ function extractReadableTextFromDocument(document: Document): string {
   }
 }
 
+function emptyFetchResult(errorCode: NonNullable<FetchedContent['errorCode']>, errorMessage: string): FetchedContent {
+  return {
+    text: '',
+    imageUrl: null,
+    tables: [],
+    inlineImages: [],
+    inlineVideos: [],
+    errorCode,
+    errorMessage,
+  }
+}
+
+export function normalizeHttpFetchErrorCode(status: number): NonNullable<FetchedContent['errorCode']> {
+  if (status === 404) return 'fetch_404'
+  if (status >= 500 && status <= 599) return 'fetch_5xx'
+  if ([401, 403, 429, 451].includes(status)) return 'fetch_blocked'
+  return 'fetch_unknown'
+}
+
+export function normalizeThrownFetchErrorCode(error: unknown, timedOut: boolean): NonNullable<FetchedContent['errorCode']> {
+  if (timedOut) return 'fetch_timeout'
+  if (error instanceof Error) {
+    const name = error.name.toLowerCase()
+    const message = error.message.toLowerCase()
+    if (name.includes('timeout') || message.includes('timeout') || message.includes('timed out')) {
+      return 'fetch_timeout'
+    }
+    if (name.includes('abort') || message.includes('abort')) {
+      return 'fetch_aborted'
+    }
+  }
+  return 'fetch_unknown'
+}
+
+function looksBlocked(document: Document, html: string): boolean {
+  const title = document.querySelector('title')?.textContent ?? ''
+  const bodyText = document.body?.textContent ?? ''
+  const sample = `${title}\n${bodyText}`.slice(0, 3_000)
+  return /cloudflare|just a moment|attention required|access denied|captcha|checking your browser|enable javascript|unusual traffic/i.test(sample) ||
+    /cf-browser-verification|cf-challenge|g-recaptcha|hcaptcha/i.test(html.slice(0, 20_000))
+}
+
 export async function fetchArticleContent(
   url: string,
   options: FetchArticleOptions = {},
 ): Promise<FetchedContent> {
   const { includeText = true } = options
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+  let timedOut = false
+  const timeoutId = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, FETCH_TIMEOUT_MS)
 
   try {
     const response = await fetch(url, {
@@ -340,58 +450,53 @@ export async function fetchArticleContent(
     if (!response.ok) {
       const message = `HTTP ${response.status} for ${url}`
       console.log(`[${ts()}] fetchArticleContent: ${message}`)
-      return {
-        text: '',
-        imageUrl: null,
-        tables: [],
-        inlineImages: [],
-        inlineVideos: [],
-        errorCode: 'fetch_failed',
-        errorMessage: message,
-      }
+      return emptyFetchResult(normalizeHttpFetchErrorCode(response.status), message)
     }
 
     const contentLength = Number(response.headers.get('content-length') ?? 0)
     if (contentLength > MAX_HTML_BYTES) {
       const message = `html too large: ${contentLength}`
       console.log(`[${ts()}] fetchArticleContent: ${message} [${url.slice(0, 60)}]`)
-      return {
-        text: '',
-        imageUrl: null,
-        tables: [],
-        inlineImages: [],
-        inlineVideos: [],
-        errorCode: 'fetch_failed',
-        errorMessage: message,
-      }
+      return emptyFetchResult('fetch_too_large', message)
     }
 
     const contentType = response.headers.get('content-type') ?? ''
     if (!contentType.includes('html') && !contentType.includes('xml')) {
       const message = `not html: ${contentType || 'missing content-type'}`
       console.log(`[${ts()}] fetchArticleContent: ${message} [${url.slice(0, 60)}]`)
-      return {
-        text: '',
-        imageUrl: null,
-        tables: [],
-        inlineImages: [],
-        inlineVideos: [],
-        errorCode: 'fetch_failed',
-        errorMessage: message,
-      }
+      return emptyFetchResult('fetch_unknown', message)
     }
 
     const html = await response.text()
+    const htmlBytes = Buffer.byteLength(html, 'utf8')
+    if (htmlBytes > MAX_HTML_BYTES) {
+      const message = `html too large: ${htmlBytes}`
+      console.log(`[${ts()}] fetchArticleContent: ${message} [${url.slice(0, 60)}]`)
+      return emptyFetchResult('fetch_too_large', message)
+    }
+
     const virtualConsole = new VirtualConsole()
     virtualConsole.on('jsdomError', () => undefined)
     const dom = new JSDOM(html, { url, virtualConsole })
     const document = dom.window.document
+
+    if (looksBlocked(document, html)) {
+      const message = `blocked or challenge page for ${url}`
+      console.log(`[${ts()}] fetchArticleContent: ${message}`)
+      return emptyFetchResult('fetch_blocked', message)
+    }
 
     const imageUrl = extractOgImage(document)
     const text = includeText ? extractReadableTextFromDocument(document) : ''
     const tables = extractTables(document)
     const inlineImages = extractInlineImages(document, url)
     const inlineVideos = extractInlineVideos(document, url)
+
+    if (includeText && !text) {
+      const message = `empty readable text for ${url}`
+      console.log(`[${ts()}] fetchArticleContent: ${message}`)
+      return emptyFetchResult('fetch_empty', message)
+    }
 
     console.log(
       `[${ts()}] fetchArticleContent: text=${text.length}ч, image=${imageUrl ? 'есть' : 'нет'}` +
@@ -402,15 +507,8 @@ export async function fetchArticleContent(
   } catch (error) {
     clearTimeout(timeoutId)
     const message = error instanceof Error ? error.message : String(error)
+    const errorCode = normalizeThrownFetchErrorCode(error, timedOut)
     console.log(`[${ts()}] fetchArticleContent: ошибка — ${message} [${url.slice(0, 60)}]`)
-    return {
-      text: '',
-      imageUrl: null,
-      tables: [],
-      inlineImages: [],
-      inlineVideos: [],
-      errorCode: message.toLowerCase().includes('abort') ? 'fetch_timeout' : 'fetch_failed',
-      errorMessage: message,
-    }
+    return emptyFetchResult(errorCode, message)
   }
 }
