@@ -36,6 +36,16 @@ const SHOWCASE_SLUG = 'sequoia-sobrala-7-mlrd-na-novyy-fond-pochti-vdvoe-bolshe-
 
 const SOURCES_WITH_TEXT_COVERS = new Set(['Habr AI', 'vc.ru', 'CNews'])
 
+function isArticleImagesStorageUrl(value: string | null): boolean {
+  if (!value) return false
+  try {
+    const url = new URL(value)
+    return url.pathname.includes('/storage/v1/object/public/article-images/')
+  } catch {
+    return false
+  }
+}
+
 function renderBodyWithAnchors(body: string, anchors: AnchorLink[]): ReactNode[] {
   const paragraphs = body.split('\n\n').filter(Boolean)
   const usedAnchors = new Set<string>()
@@ -508,7 +518,7 @@ export default async function CategoryArticlePage({
         </nav>
 
         {/* Cover image */}
-        {sanitizedMedia.coverImageUrl && !SOURCES_WITH_TEXT_COVERS.has(article.source_name) && (
+        {sanitizedMedia.coverImageUrl && (!SOURCES_WITH_TEXT_COVERS.has(article.source_name) || isArticleImagesStorageUrl(sanitizedMedia.coverImageUrl)) && (
           <div className="relative mb-10 w-full overflow-hidden rounded border border-line" style={{ maxHeight: 460 }}>
             <Image
               src={sanitizedMedia.coverImageUrl}

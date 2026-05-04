@@ -425,6 +425,17 @@ export type DigestResult =
 
 // ── Основная логика ───────────────────────────────────────────────────────────
 
+interface ClaimedContext {
+  supabase: DigestSupabase
+  runId: string
+  force: boolean
+  botToken: string
+  channelId: string
+  siteUrl: string
+  adminChatId?: string
+  digestDate: string
+}
+
 export async function runDailyDigest(): Promise<DigestResult> {
   const botToken = process.env.TELEGRAM_BOT_TOKEN
   const channelId = process.env.TELEGRAM_CHANNEL_ID
@@ -469,6 +480,26 @@ export async function runDailyDigest(): Promise<DigestResult> {
     return { status: 'skipped_already_claimed', reason: claim.reason }
   }
   const runId = claim.runId
+
+  // Safety net — любой неожиданный throw после claim переводит slot в
+  // 'failed_send', чтобы не оставить запись висящей в 'running'. Без этой
+  // обёртки CHECK violation, network glitch или function timeout оставляли
+  // slot заклиненным навсегда (incident 2026-05-03).
+  try {
+    return await runClaimedDigest({
+      supabase, runId, force, botToken, channelId, siteUrl, adminChatId, digestDate,
+    })
+  } catch (err) {
+    logError('Unhandled exception in runClaimedDigest — переводим slot в failed_send', err)
+    await finalizeDigestFailure(supabase, runId, err, 'failed_send').catch((finalizeErr) => {
+      logError('safety-net finalizeDigestFailure тоже упал', finalizeErr)
+    })
+    return { status: 'failed', error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+async function runClaimedDigest(ctx: ClaimedContext): Promise<DigestResult> {
+  const { supabase, runId, force, botToken, channelId, siteUrl, adminChatId, digestDate } = ctx
 
   // Сохраняем старый tg_sent guard как fallback, но atomic claim теперь основной lock.
   if (!force) {

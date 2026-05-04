@@ -201,6 +201,18 @@ Cover image берётся из исходника, если доступна.
 local SVG/editorial template, cover bank и AI budget cover. Это визуальный тест, а не production pipeline:
 страницы статей и карточки по-прежнему читают `cover_image_url` из `articles`.
 
+Production fallback backfill пишет обработанные WebP в Supabase Storage bucket `article-images`
+и затем обновляет `articles.cover_image_url`:
+
+- `stock-covers/<date>/...` — бесплатный stock fallback с editorial treatment;
+- `ai-covers/<date>/...` — ручной OpenAI Images fallback для верхних карточек;
+- `template-covers/<date>/...` — бесплатный локальный SVG/WebP fallback, когда API-бюджет
+  недоступен или достигнут hard limit.
+
+Источники с текстовыми обложками (`Habr AI`, `vc.ru`, `CNews`) остаются в denylist для исходных
+картинок, но карточки и страницы статей разрешают URL из нашего bucket `article-images`, потому что
+это уже нормализованный editorial treatment, а не source text-cover.
+
 ### Inline images and tables
 
 Fetcher вытаскивает релевантные inline images и таблицы из оригинального HTML и сохраняет их в structured fields статьи.

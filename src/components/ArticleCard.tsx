@@ -14,8 +14,18 @@ interface ArticleCardProps {
 // Источники, чьи og:image содержат текст заголовка — не используем их как обложку в карточках
 const SOURCES_WITH_TEXT_COVERS = new Set(['Habr AI', 'vc.ru', 'CNews'])
 
+function isArticleImagesStorageUrl(value: string | null): boolean {
+  if (!value) return false
+  try {
+    const url = new URL(value)
+    return url.pathname.includes('/storage/v1/object/public/article-images/')
+  } catch {
+    return false
+  }
+}
+
 function getCardImageUrl(article: Article): string | null {
-  if (SOURCES_WITH_TEXT_COVERS.has(article.source_name)) return null
+  if (SOURCES_WITH_TEXT_COVERS.has(article.source_name) && !isArticleImagesStorageUrl(article.cover_image_url)) return null
   return sanitizeArticleMedia({
     coverImageUrl: article.cover_image_url,
     articleImages: null,

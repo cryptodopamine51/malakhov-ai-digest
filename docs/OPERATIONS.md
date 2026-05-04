@@ -77,16 +77,20 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
 
 ## Vercel Cron
 
-Эндпоинты дёргаются Vercel-планировщиком напрямую и срабатывают с минутной точностью (в отличие от GitHub Actions cron, у которого нет SLA и задержка 1–2 часа в часы пик — норма). Расписание задано в `vercel.json`:
+Эндпоинты дёргаются Vercel-планировщиком напрямую. Расписание задано в `vercel.json`:
 
-| Path | Расписание (UTC) | МСК | Дни | Назначение |
+| Path | Расписание (UTC) | Firings (МСК) | Дни | Назначение |
 |---|---|---|---|---|
-| `/api/cron/tg-digest` | `30 6 * * 1-5` | 09:30 | Пн–Пт | daily digest в Telegram |
-| `/api/cron/tg-digest` | `30 8 * * 6,0` | 11:30 | Сб + Вс | daily digest в Telegram |
+| `/api/cron/tg-digest` | `0,30 6,7 * * 1-5` | 09:00 / 09:30 / 10:00 / 10:30 | Пн–Пт | daily digest в Telegram |
+| `/api/cron/tg-digest` | `0,30 8,9 * * 6,0` | 11:00 / 11:30 / 12:00 / 12:30 | Сб + Вс | daily digest в Telegram |
+
+**Hobby plan caveat:** проект на Hobby тарифе. Vercel Cron на Hobby выполняется на best-effort schedule — каждый firing может задержаться до часа от запланированного времени. Поэтому **четыре firing slots** в каждом расписании компенсируют throttling: один из них с большой вероятностью попадёт близко к целевым 09:30 / 11:30 МСК. UNIQUE-claim в `digest_runs (digest_date+channel_id)` гарантирует, что отправится **ровно один** пост — остальные firings вернут 200 с `status: 'skipped_already_claimed'`.
+
+Чтобы получить строгую минутную точность ±1 мин — нужен Vercel Pro tier ($20/мес) либо внешний планировщик (Cloudflare Workers cron, GitHub Actions с агрессивными окнами), дёргающий тот же endpoint.
 
 Реализация: `app/api/cron/tg-digest/route.ts` → `runDailyDigest()` из `bot/daily-digest-core.ts`. Авторизация через `Authorization: Bearer ${CRON_SECRET}` (Vercel подставляет заголовок автоматически, если `CRON_SECRET` задан в Project Settings → Environment Variables).
 
-Idempotency сохранена: UNIQUE-claim в `digest_runs (digest_date+channel_id)` гарантирует, что повторный вызов (ручной курлом или backfill workflow) не отправит дубль — второй вызов отвечает 200 с `status: 'skipped_already_claimed'`.
+**Safety-net против stuck-running:** `runDailyDigest()` оборачивает `runClaimedDigest()` в top-level try/catch. Любой неожиданный throw после успешного `claimDigestSlot` (CHECK violation на статус, network glitch, function timeout не успевший добежать до finalize) переводит slot в `failed_send` через safety-net catch. До этого фикса incident 2026-05-03 оставил slot в `running` навсегда из-за того, что миграция 015 не была применена в проде, а код пытался писать новый статус.
 
 Ручной триггер: `curl -H "Authorization: Bearer $CRON_SECRET" https://news.malakhovai.ru/api/cron/tg-digest`. Для force-режима (обход даты) — запустить локально `FORCE_DIGEST=1 FORCE_DIGEST_CONFIRM_DATE=YYYY-MM-DD npm run tg-digest`; роут force-режим не поддерживает специально, чтобы случайный курл не пробил guard.
 
@@ -140,6 +144,60 @@ npx tsx scripts/sanitize-existing-article-media.ts --apply --limit=50
 - скрипт обновляет только `cover_image_url` и `article_images`;
 - перед apply нужно просмотреть summary `changed`, `by_reason`, `by_source` и examples;
 - apply пишет rollback-audit в `tmp/media-sanitizer-audit-*.jsonl`.
+
+### Stock cover backfill
+
+Для тестового или ручного заполнения обложек у live-статей без usable cover используется
+`scripts/backfill-stock-covers.ts`.
+
+Команды:
+
+```bash
+npx tsx scripts/backfill-stock-covers.ts --date=YYYY-MM-DD --limit=12
+npx tsx scripts/backfill-stock-covers.ts --date=YYYY-MM-DD --limit=12 --apply
+npx tsx scripts/backfill-stock-covers.ts --latest-day --limit=12
+```
+
+Правила:
+
+- default mode — dry-run, без DB writes и Storage upload;
+- `--apply` скачивает stock image, накладывает editorial treatment через `sharp`, загружает WebP в Supabase Storage bucket `article-images` и обновляет только `articles.cover_image_url`;
+- дата трактуется как календарный день по МСК;
+- если `--date` не задан, скрипт берёт последний день по `created_at` среди опубликованных статей;
+- для ключей поддерживаются `.env.local` и `malakhov-ai-keys.env` (включая RTF-файл через `textutil`);
+- primary provider — Pexels; Unsplash и Pixabay используются как fallback, если ключи заданы и Pexels не дал кандидатов.
+
+### AI cover backfill
+
+Для ручного улучшения верхних карточек используется `scripts/generate-ai-covers.ts`.
+Скрипт генерирует 1536x1024 WebP через OpenAI Images, сжимает до `1400x788`,
+кладёт результат в Supabase Storage `article-images/ai-covers/<date>/...` и обновляет
+только `articles.cover_image_url`.
+
+```bash
+npx tsx scripts/generate-ai-covers.ts --category=ai-russia --limit=8
+npx tsx scripts/generate-ai-covers.ts --category=ai-russia --limit=8 --apply --quality=medium
+```
+
+Правила:
+
+- default mode — dry-run, без OpenAI вызовов, DB writes и Storage upload;
+- default model — `gpt-image-1.5`, потому что `gpt-image-2` требует verified organization;
+- `--model=gpt-image-2` можно использовать только после проверки доступа; при 403 списания нет;
+- `--apply` пишет локальные копии и `report.json` в `tmp/ai-covers-*`;
+- стоимость для `gpt-image-1.5` считается по model-page per-image цене для `1536x1024`
+  (`medium` = `$0.05/image` на момент ручного прогона 2026-05-03);
+- при `Billing hard limit has been reached` остановить OpenAI backfill и закрывать только самые
+  видимые пустые карточки бесплатным `scripts/replace-test-covers-with-editorial-templates.ts`.
+
+Локальный fallback:
+
+```bash
+npx tsx scripts/replace-test-covers-with-editorial-templates.ts --top-russia=30 --apply
+```
+
+Скрипт не должен перезаписывать URL из `article-images/ai-covers/` и выбирает статьи в порядке
+production category page (`pub_date`, `created_at`, `score`, `id`).
 
 ## Batch enrich runtime
 
