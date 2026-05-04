@@ -75,21 +75,53 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
 > **Telegram-дайджест с 2026-05-02 ушёл из GitHub Actions в Vercel Cron** —
 > см. ниже. `tg-digest.yml` удалён.
 
-## Vercel Cron
+## Cron-расписание Telegram-дайджеста
 
-Эндпоинты дёргаются Vercel-планировщиком напрямую. Расписание задано в `vercel.json`:
+Дайджест дёргается **двумя независимыми планировщиками одновременно**. UNIQUE-claim в `digest_runs (digest_date+channel_id)` гарантирует, что отправится **ровно один** пост — кто пришёл первым, тот и отправил, остальные ответят 200 с `status: 'skipped_already_claimed'`.
 
-| Path | Расписание (UTC) | МСК | Дни | Назначение |
-|---|---|---|---|---|
-| `/api/cron/tg-digest` | `30 6 * * 1-5` | 09:30 | Пн–Пт | daily digest в Telegram |
-| `/api/cron/tg-digest` | `30 8 * * 6,0` | 11:30 | Сб + Вс | daily digest в Telegram |
+### Primary — Supabase pg_cron + pg_net (минутная точность)
 
-**Hobby plan caveat:** проект на Hobby тарифе. Vercel Cron на Hobby имеет **жёсткий лимит — один firing в день** на entry (multi-firing expression вроде `0,30 6,7 * * 1-5` отклоняется при deploy с ошибкой `deploy_failed: Hobby accounts are limited to daily cron jobs`). При этом каждый firing выполняется на best-effort schedule — задержка до часа от запланированного времени.
+| Job | Расписание (UTC) | МСК | Дни |
+|---|---|---|---|
+| `tg-digest-weekday` | `30 6 * * 1-5` | 09:30 | Пн–Пт |
+| `tg-digest-weekend` | `30 8 * * 6,0` | 11:30 | Сб + Вс |
 
-Это значит: на Hobby плане **строгий 09:30 ± 1 мин невозможен** в принципе. Реалистичное окно — 09:30–10:30 МСК. Чтобы получить строгую точность нужен один из:
+`pg_cron` работает внутри Supabase Postgres, расписания исполняются с точностью до секунд. `pg_net.http_get` дёргает `https://news.malakhovai.ru/api/cron/tg-digest` с заголовком `Authorization: Bearer <secret>`, секрет хранится в `vault.secrets` под именем `cron_bearer_token` и читается через `vault.decrypted_secrets`.
 
-- **Vercel Pro** ($20/мес) — снимает оба лимита (multi-firing schedule + минутная точность);
-- **Внешний планировщик** (Cloudflare Workers cron — бесплатно, ~30 сек точность; GitHub Actions cron — 1–2ч задержка), дёргающий тот же `/api/cron/tg-digest` с агрессивным окном.
+Конфигурация — в `supabase/migrations/016_pg_cron_tg_digest.sql`. Секрет в Vault создаётся **один раз** руками:
+
+```sql
+SELECT vault.create_secret('Bearer <CRON_SECRET>', 'cron_bearer_token', '...');
+```
+
+Диагностика:
+
+```sql
+SELECT jobid, jobname, schedule, active FROM cron.job WHERE jobname LIKE 'tg-digest-%';
+SELECT jobid, runid, start_time, status, return_message
+  FROM cron.job_run_details
+ WHERE jobid IN (SELECT jobid FROM cron.job WHERE jobname LIKE 'tg-digest-%')
+ ORDER BY runid DESC LIMIT 10;
+SELECT id, status_code, content::text, created FROM net._http_response ORDER BY id DESC LIMIT 5;
+```
+
+### Fallback — Vercel Cron (best-effort)
+
+`vercel.json` содержит резервные cron-entries — на случай, если Supabase pg_cron не сработает (outage, миграция вылетела, секрет ротировали и забыли):
+
+| Path | Расписание (UTC) | МСК | Дни |
+|---|---|---|---|
+| `/api/cron/tg-digest` | `30 6 * * 1-5` | 09:30 (best-effort) | Пн–Пт |
+| `/api/cron/tg-digest` | `30 8 * * 6,0` | 11:30 (best-effort) | Сб + Вс |
+
+Vercel Cron на Hobby plan имеет два жёстких ограничения:
+
+1. **Один firing в день** на entry. Multi-firing expression вроде `0,30 6,7 * * 1-5` отклоняется при deploy с ошибкой `deploy_failed: Hobby accounts are limited to daily cron jobs`.
+2. **Best-effort timing** — задержка до часа от запланированного времени.
+
+То есть Vercel в одиночку не даёт «строгий 09:30 ± 1 мин» на Hobby. С pg_cron как primary это уже не проблема — Vercel практически всегда стучится постфактум и получает `skipped_already_claimed` (это нормально, не алёрт).
+
+Если когда-нибудь решим уйти от Vercel Cron совсем — просто убрать `crons` из `vercel.json`. Если хотим, наоборот, сделать Vercel primary — нужен Pro tier ($20/мес), снимающий оба лимита.
 
 Реализация: `app/api/cron/tg-digest/route.ts` → `runDailyDigest()` из `bot/daily-digest-core.ts`. Авторизация через `Authorization: Bearer ${CRON_SECRET}` (Vercel подставляет заголовок автоматически, если `CRON_SECRET` задан в Project Settings → Environment Variables).
 

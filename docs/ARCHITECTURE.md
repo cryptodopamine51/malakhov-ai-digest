@@ -83,6 +83,8 @@ RLS contract:
 - `digest_runs_status_check_v2` — расширен надмножеством, легаси значения (`running/success/skipped/low_articles/error/failed`) сохранены, добавлены точные коды для веток `main()` дайджеста (см. `docs/OPERATIONS.md`);
 - `idx_articles_published_at` — partial index `WHERE publish_status='live'` под `published_low_window` мониторинг и health endpoint.
 
+Миграция 016 (2026-05-04) добавляет primary cron для Telegram-дайджеста через `pg_cron` + `pg_net` внутри Postgres — расписания исполняются с минутной точностью и дёргают Vercel-route с bearer-токеном из `vault.secrets`. Vercel Cron остаётся как fallback. См. `docs/OPERATIONS.md` секцию «Cron-расписание Telegram-дайджеста».
+
 ## Основные модули
 
 | Зона | Ответственность |
