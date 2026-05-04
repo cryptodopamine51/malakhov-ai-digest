@@ -79,14 +79,17 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
 
 Эндпоинты дёргаются Vercel-планировщиком напрямую. Расписание задано в `vercel.json`:
 
-| Path | Расписание (UTC) | Firings (МСК) | Дни | Назначение |
+| Path | Расписание (UTC) | МСК | Дни | Назначение |
 |---|---|---|---|---|
-| `/api/cron/tg-digest` | `0,30 6,7 * * 1-5` | 09:00 / 09:30 / 10:00 / 10:30 | Пн–Пт | daily digest в Telegram |
-| `/api/cron/tg-digest` | `0,30 8,9 * * 6,0` | 11:00 / 11:30 / 12:00 / 12:30 | Сб + Вс | daily digest в Telegram |
+| `/api/cron/tg-digest` | `30 6 * * 1-5` | 09:30 | Пн–Пт | daily digest в Telegram |
+| `/api/cron/tg-digest` | `30 8 * * 6,0` | 11:30 | Сб + Вс | daily digest в Telegram |
 
-**Hobby plan caveat:** проект на Hobby тарифе. Vercel Cron на Hobby выполняется на best-effort schedule — каждый firing может задержаться до часа от запланированного времени. Поэтому **четыре firing slots** в каждом расписании компенсируют throttling: один из них с большой вероятностью попадёт близко к целевым 09:30 / 11:30 МСК. UNIQUE-claim в `digest_runs (digest_date+channel_id)` гарантирует, что отправится **ровно один** пост — остальные firings вернут 200 с `status: 'skipped_already_claimed'`.
+**Hobby plan caveat:** проект на Hobby тарифе. Vercel Cron на Hobby имеет **жёсткий лимит — один firing в день** на entry (multi-firing expression вроде `0,30 6,7 * * 1-5` отклоняется при deploy с ошибкой `deploy_failed: Hobby accounts are limited to daily cron jobs`). При этом каждый firing выполняется на best-effort schedule — задержка до часа от запланированного времени.
 
-Чтобы получить строгую минутную точность ±1 мин — нужен Vercel Pro tier ($20/мес) либо внешний планировщик (Cloudflare Workers cron, GitHub Actions с агрессивными окнами), дёргающий тот же endpoint.
+Это значит: на Hobby плане **строгий 09:30 ± 1 мин невозможен** в принципе. Реалистичное окно — 09:30–10:30 МСК. Чтобы получить строгую точность нужен один из:
+
+- **Vercel Pro** ($20/мес) — снимает оба лимита (multi-firing schedule + минутная точность);
+- **Внешний планировщик** (Cloudflare Workers cron — бесплатно, ~30 сек точность; GitHub Actions cron — 1–2ч задержка), дёргающий тот же `/api/cron/tg-digest` с агрессивным окном.
 
 Реализация: `app/api/cron/tg-digest/route.ts` → `runDailyDigest()` из `bot/daily-digest-core.ts`. Авторизация через `Authorization: Bearer ${CRON_SECRET}` (Vercel подставляет заголовок автоматически, если `CRON_SECRET` задан в Project Settings → Environment Variables).
 
