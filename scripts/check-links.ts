@@ -10,6 +10,7 @@ import { resolve } from 'path'
 config({ path: resolve(process.cwd(), '.env.local') })
 
 import { getAllSlugs } from '../lib/articles'
+import { readSiteUrlFromEnv } from '../lib/site'
 
 async function checkLink(url: string): Promise<boolean> {
   try {
@@ -21,7 +22,13 @@ async function checkLink(url: string): Promise<boolean> {
 }
 
 async function main() {
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? '').replace(/\/$/, '')
+  let siteUrl: string
+  try {
+    siteUrl = readSiteUrlFromEnv(process.env.NEXT_PUBLIC_SITE_URL)
+  } catch (err) {
+    console.error(`NEXT_PUBLIC_SITE_URL невалиден: ${err instanceof Error ? err.message : String(err)}`)
+    process.exit(1)
+  }
   if (!siteUrl) {
     console.error('Не задан NEXT_PUBLIC_SITE_URL')
     process.exit(1)

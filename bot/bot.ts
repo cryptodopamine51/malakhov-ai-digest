@@ -14,8 +14,10 @@ config({ path: resolve(process.cwd(), '.env.local') })
 
 import { Telegraf, Markup, type Context } from 'telegraf'
 
+import { readSiteUrlFromEnv } from '../lib/site'
+
 const botToken = process.env.TELEGRAM_BOT_TOKEN
-const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://news.malakhovai.ru').replace(/\/$/, '')
+const siteUrl = readSiteUrlFromEnv(process.env.NEXT_PUBLIC_SITE_URL) || 'https://news.malakhovai.ru'
 
 if (!botToken) {
   console.error('Не задан TELEGRAM_BOT_TOKEN')

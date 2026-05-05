@@ -17,6 +17,7 @@ import { createClient } from '@supabase/supabase-js'
 import { generateImagePrompt } from './image-director'
 import { generateAndStoreImage } from './image-generator'
 import { getArticleUrl } from '../lib/article-slugs'
+import { readSiteUrlFromEnv } from '../lib/site'
 
 // Лимит по умолчанию — 3 статьи для теста
 const DEFAULT_LIMIT = 3
@@ -69,7 +70,7 @@ async function main() {
     return
   }
 
-  const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://news.malakhovai.ru'
+  const SITE_URL = readSiteUrlFromEnv(process.env.NEXT_PUBLIC_SITE_URL) || 'https://news.malakhovai.ru'
   const results: { title: string; url: string; imageUrl: string }[] = []
 
   for (const article of articles as ArticleRow[]) {

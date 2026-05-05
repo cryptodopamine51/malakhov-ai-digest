@@ -15,6 +15,7 @@ import { resolve } from 'path'
 config({ path: resolve(process.cwd(), '.env.local') })
 
 import { getServerClient, type Article, type PublishArticleResult } from '../lib/supabase'
+import { readSiteUrlFromEnv } from '../lib/site'
 import { fireAlert, resolveAlert } from './alerts'
 import { buildVerifyUrl, getVerifyCandidateKind } from './publish-verify-utils'
 
@@ -244,7 +245,13 @@ async function handlePublishTransitionFailure(
 async function publishVerify(): Promise<void> {
   log('=== Запуск publish-verify.ts ===')
 
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? '').replace(/\/$/, '')
+  let siteUrl: string
+  try {
+    siteUrl = readSiteUrlFromEnv(process.env.NEXT_PUBLIC_SITE_URL)
+  } catch (err) {
+    log(`NEXT_PUBLIC_SITE_URL невалиден — пропускаем verify: ${err instanceof Error ? err.message : String(err)}`)
+    process.exit(0)
+  }
   if (!siteUrl) {
     log('NEXT_PUBLIC_SITE_URL не задан — пропускаем verify')
     process.exit(0)

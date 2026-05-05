@@ -59,6 +59,12 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
 
 - `PUBLISH_RPC_DISABLED=1` — только emergency bypass для `publish-verify`: временно возвращает legacy update вместо RPC `publish_article` и поднимает warning alert `publish_rpc_bypass_active`.
 
+### Инвариант для URL-переменных
+
+`NEXT_PUBLIC_SITE_URL` (и любые другие host-env) **обязательно** читать через `readSiteUrlFromEnv()` из `lib/site.ts`. Helper делает `trim()`, срезает trailing `/`, и валидирует формат `^https?://[^\s]+$`. Сырое чтение `process.env.NEXT_PUBLIC_SITE_URL` запрещено.
+
+Почему: 2026-05-04 в Vercel UI значение `NEXT_PUBLIC_SITE_URL` сохранилось с trailing `\n` (вероятно, при сохранении ввели Enter в поле значения). Старая нормализация `(env ?? '').replace(/\/$/, '')` срезала только slash, `\n` доезжал до `<a href="...">` в Telegram-дайджесте, ссылка переставала быть кликабельной (HTML parse ломался на whitespace внутри атрибута). Helper кидает на любой невалидный формат — preflight дайджеста после этого вернёт `preflight_failed` вместо тихой отправки битой разметки.
+
 ## GitHub Actions
 
 | Workflow | Расписание | Назначение |

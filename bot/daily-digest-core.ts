@@ -13,6 +13,7 @@ import { createHash } from 'crypto'
 import { getServerClient } from '../lib/supabase'
 import type { Article } from '../lib/supabase'
 import { getArticleUrl } from '../lib/article-slugs'
+import { readSiteUrlFromEnv } from '../lib/site'
 import { getMoscowDateKey } from '../lib/utils'
 import { fireAlert } from '../pipeline/alerts'
 
@@ -439,7 +440,13 @@ interface ClaimedContext {
 export async function runDailyDigest(): Promise<DigestResult> {
   const botToken = process.env.TELEGRAM_BOT_TOKEN
   const channelId = process.env.TELEGRAM_CHANNEL_ID
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? '').replace(/\/$/, '')
+  let siteUrl: string
+  try {
+    siteUrl = readSiteUrlFromEnv(process.env.NEXT_PUBLIC_SITE_URL)
+  } catch (err) {
+    logError('NEXT_PUBLIC_SITE_URL невалиден', err)
+    return { status: 'preflight_failed', reason: err instanceof Error ? err.message : 'NEXT_PUBLIC_SITE_URL malformed' }
+  }
   const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID
 
   if (!botToken)  { logError('Не задан TELEGRAM_BOT_TOKEN');   return { status: 'preflight_failed', reason: 'TELEGRAM_BOT_TOKEN missing' } }
