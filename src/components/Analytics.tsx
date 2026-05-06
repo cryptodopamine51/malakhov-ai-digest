@@ -14,8 +14,7 @@ interface AnalyticsProps {
 }
 
 /**
- * Подгружает Яндекс Метрику по умолчанию для РФ-модели уведомления.
- * Если пользователь отозвал согласие на /consent, сохранённый opt-out блокирует загрузку.
+ * Подгружает Яндекс Метрику по default-on notice model.
  */
 export default function Analytics({ metrikaId }: AnalyticsProps) {
   const [allowed, setAllowed] = useState(false)

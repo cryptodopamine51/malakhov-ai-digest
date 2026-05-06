@@ -1,5 +1,5 @@
 /**
- * Cookie consent — модель решения пользователя по 152-ФЗ.
+ * Cookie notice — модель уведомления пользователя по cookies/Метрике.
  *
  * Версия в имени ключа (`consent_v1`) позволяет при изменении политики
  * сбросить согласие у всех посетителей: достаточно бамкнуть на `consent_v2`
@@ -9,7 +9,7 @@
 export const CONSENT_STORAGE_KEY = 'consent_v1'
 export const CONSENT_CHANGED_EVENT = 'consent-changed'
 
-export type ConsentDecision = 'accept_all' | 'necessary_only' | 'custom' | 'notice_ok'
+export type ConsentDecision = 'notice_ok'
 
 export interface ConsentRecord {
   version: 1
@@ -52,5 +52,5 @@ export function writeConsent(record: Omit<ConsentRecord, 'version' | 'decidedAt'
 }
 
 export function hasAnalyticsConsent(record: ConsentRecord | null): boolean {
-  return record ? record.categories.analytics === true : true
+  return record === null || record.categories.analytics === true
 }

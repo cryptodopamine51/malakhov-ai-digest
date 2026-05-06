@@ -1,4 +1,4 @@
-import { getServerClient } from '../../lib/supabase'
+import { getPublicReadClient } from '../../lib/supabase'
 import { getArticleUrl } from '../../lib/article-slugs'
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from '../../lib/site'
 
@@ -14,7 +14,7 @@ function escapeXml(value: string): string {
 }
 
 export async function GET() {
-  const client = getServerClient()
+  const client = getPublicReadClient()
   const { data, error } = await client
     .from('articles')
     .select('slug, ru_title, original_title, lead, card_teaser, source_name, topics, primary_category, pub_date, created_at, updated_at')

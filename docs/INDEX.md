@@ -73,7 +73,7 @@ npm run context
 | Кодовая зона | Канонический doc |
 |---|---|
 | `pipeline/ingest.ts`, `pipeline/rss-parser.ts`, `pipeline/feeds.config.ts`, `pipeline/enricher.ts`, `pipeline/fetcher.ts`, `pipeline/scorer.ts`, `pipeline/slug.ts`, `pipeline/claude.ts`, `pipeline/deepl.ts`, `pipeline/generate-images.ts`, `pipeline/image-*` | `docs/ARTICLE_SYSTEM.md` |
-| `app/articles/**`, `app/archive/**`, `app/topics/**`, `app/sources/**`, `bot/daily-digest.ts`, `lib/articles.ts`, `lib/article-slugs.ts`, `app/sitemap.ts`, `src/components/ArticleCard.tsx` | `docs/ARTICLE_SYSTEM.md` |
+| `app/articles/**`, `app/archive/**`, `app/topics/**`, `app/sources/**`, `app/rss.xml/route.ts`, `app/llms.txt/route.ts`, `app/api/categories/**`, `bot/daily-digest.ts`, `lib/articles.ts`, `lib/article-slugs.ts`, `app/sitemap.ts`, `src/components/ArticleCard.tsx` | `docs/ARTICLE_SYSTEM.md` |
 | `lib/supabase.ts`, `supabase/**`, `app/internal/**` | `docs/ARCHITECTURE.md` |
 | `.github/workflows/**`, `vercel.json`, `package.json`, runtime scripts в `scripts/`, recovery/health/publish verification в `pipeline/` | `docs/OPERATIONS.md` |
 | `app/page.tsx`, `app/layout.tsx`, `src/components/Header.tsx` | `docs/PROJECT.md` |

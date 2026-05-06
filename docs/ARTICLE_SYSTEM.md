@@ -265,6 +265,8 @@ Broad RSS feeds допускаются только с keyword filters:
 - `parseFeed` возвращает rejected summary: `keyword_filter` для items без нужных keyword-групп и
   `requireDateInUrl` для ru-feeds, где включён URL-date gate. `ingest` дополняет этот breakdown
   причиной `dedup`, когда item уже есть по `dedup_hash`, и пишет счётчики в `source_runs`.
+- `parseFeedWithRetry` повторяет fetch фида один раз, если первый проход вернул
+  `sourceResult.status='failed'`; `empty` считается успешным ответом без свежих материалов и не ретраится.
 - `Google DeepMind Blog` добавлен как официальный research/labs RSS. Проверенные стандартные RSS
   endpoints `anthropic.com` на момент проверки отвечали 404, поэтому Anthropic остаётся источником
   через broad AI feeds и keyword filters, а не через неофициальный агрегатор.

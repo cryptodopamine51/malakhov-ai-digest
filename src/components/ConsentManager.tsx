@@ -11,7 +11,7 @@ export default function ConsentManager() {
     setVisible(readConsent() === null)
   }, [])
 
-  const accept = () => {
+  const acknowledge = () => {
     writeConsent({
       decision: 'notice_ok',
       categories: { necessary: true, analytics: true, marketing: false },
@@ -30,15 +30,16 @@ export default function ConsentManager() {
     >
       <div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="max-w-3xl text-sm leading-relaxed text-muted">
-          Пользуясь нашим сайтом, вы соглашаетесь с тем, что мы используем{' '}
+          Мы используем cookies для работы сайта и аналитику Яндекс Метрики, чтобы понимать,
+          какие материалы читают. Подробнее — в{' '}
           <Link href="/cookie-policy" className="underline hover:text-ink">
-            cookies
+            политике cookies
           </Link>
           .
         </p>
         <button
           type="button"
-          onClick={accept}
+          onClick={acknowledge}
           className="inline-flex shrink-0 items-center justify-center rounded border border-ink bg-ink px-5 py-2 text-sm font-medium text-base transition-opacity hover:opacity-90"
         >
           OK
