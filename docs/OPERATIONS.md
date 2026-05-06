@@ -10,6 +10,9 @@
 
 ```bash
 npm run context
+npm run lint
+npm run typecheck
+npm run test:node
 npm run build
 npm run ingest
 npm run enrich
@@ -48,6 +51,8 @@ PUBLISH_VERIFY_SECRET
 HEALTH_TOKEN
 NEXT_PUBLIC_METRIKA_ID
 CRON_SECRET
+CLAUDE_DAILY_BUDGET_USD
+OPENAI_API_KEY
 ```
 
 `CRON_SECRET` обязателен для эндпоинтов под Vercel Cron (см. `vercel.json`):
@@ -58,6 +63,8 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
 Аварийные/настроечные переменные:
 
 - `PUBLISH_RPC_DISABLED=1` — только emergency bypass для `publish-verify`: временно возвращает legacy update вместо RPC `publish_article` и поднимает warning alert `publish_rpc_bypass_active`.
+- `CLAUDE_DAILY_BUDGET_USD` — дневной лимит Claude по Москве для `cost:guard` и hard-stop в `enrich-submit-batch`.
+- `OPENAI_API_KEY` — только для ручных image backfill-скриптов, не нужен базовому pipeline.
 
 ### Инвариант для URL-переменных
 
@@ -331,20 +338,22 @@ Operational правило:
     `/internal/`, `/api/`, `/_next/`.
 12. Canonical и `og:url` на главной, категории, статье, источниках и архиве начинаются с
     `https://news.malakhovai.ru`.
-13. Cookie-баннер показывается в инкогнито. Выбор «Только необходимые» — Яндекс Метрика
-   не появляется в Network. Выбор «Принять все» — `mc.yandex.ru/metrika/tag.js` грузится.
+13. Cookie-баннер показывается в инкогнито. Яндекс Метрика грузится по default-on notice
+   model: `mc.yandex.ru/metrika/tag.js` появляется без предварительного выбора пользователя,
+   если задан `NEXT_PUBLIC_METRIKA_ID`.
 14. `/consent` открывается как страница согласия на обработку персональных данных и не содержит
    видимой кнопки «Отозвать согласие».
 
 ## Аналитика (Яндекс Метрика) и согласие
 
-Метрика загружается только после явного согласия пользователя на аналитические cookies.
+Метрика загружается по default-on notice model: пользователь видит уведомление о cookies,
+а аналитика включена уже на первом визите, если задан `NEXT_PUBLIC_METRIKA_ID`.
 
 - Решение хранится в `localStorage.consent_v1` (см. `lib/consent.ts`).
 - Скрипт инжектится `src/components/Analytics.tsx` через `next/script` `strategy="lazyOnload"`,
-  только если в согласии `categories.analytics === true`.
+  если сохранённого решения ещё нет или если в решении `categories.analytics === true`.
 - ID счётчика берётся из `NEXT_PUBLIC_METRIKA_ID`; без переменной аналитика выключена даже
-  при наличии согласия (deploy без секрета не должен внезапно начать слать события).
+  при default-on модели (deploy без секрета не должен внезапно начать слать события).
 - При смене политики безопасно бамкать ключ: `consent_v1` → `consent_v2`. Старое решение
   будет проигнорировано, баннер появится у всех заново.
 

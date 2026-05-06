@@ -13,7 +13,7 @@
 - **Сайт:** Next.js 15, Tailwind CSS → Vercel
 - **БД:** Supabase (PostgreSQL, таблица `articles`)
 - **Пайплайн:** GitHub Actions → `pipeline/*.ts` → Supabase
-- **Telegram:** GitHub Actions (cron 06:00 UTC) → `bot/daily-digest.ts`
+- **Telegram:** Supabase `pg_cron` + Vercel Cron fallback → `/api/cron/tg-digest`
 - **Редактор:** Claude Sonnet 4.6 (один вызов = заголовок + лид + тезисы + тело + TG-тизер)
 
 ## Структура
@@ -43,6 +43,10 @@ ANTHROPIC_API_KEY=
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHANNEL_ID=
 TELEGRAM_ADMIN_CHAT_ID=   # опционально
+CRON_SECRET=
+HEALTH_TOKEN=
+PUBLISH_VERIFY_SECRET=
+CLAUDE_DAILY_BUDGET_USD=2
 NEXT_PUBLIC_SITE_URL=https://news.malakhovai.ru
 ```
 
@@ -51,9 +55,13 @@ NEXT_PUBLIC_SITE_URL=https://news.malakhovai.ru
 ```bash
 npm run context      # показать управляющий контекст проекта
 npm run dev          # локальная разработка
+npm run lint         # ESLint для актуального TS/Next runtime
+npm run typecheck    # TypeScript без emit
 npm run build        # сборка
 npm run docs:check   # проверить, что code/doc изменения синхронизированы
-npm run enrich       # запустить enricher (обогащение статей)
+npm run test:node    # все node:test проверки актуального runtime
+npm run enrich-submit-batch    # отправить pending-статьи в Anthropic Batch
+npm run enrich-collect-batch   # собрать/apply результаты Anthropic Batch
 npm run tg-digest    # отправить дайджест в Telegram
 
 npx tsx scripts/reenrich-all.ts   # backfill за 14 дней
@@ -80,12 +88,17 @@ npx tsx scripts/check-links.ts   # проверка всех ссылок
 | Workflow | Расписание | Действие |
 |---|---|---|
 | `rss-parse.yml` | каждые 30 мин | парсит RSS, пишет в Supabase |
-| `enrich.yml` | каждые 2 часа | recover stuck + обогащение статей через Claude |
-| `publish-verify.yml` | каждый час | проверяет, что опубликованные статьи реально открываются на сайте |
+| `enrich.yml` | каждые 30 мин | recover stuck + cost guard + submit в Anthropic Batch |
+| `enrich-collect-batch.yml` | каждые 15 мин | poll/import/apply результатов Anthropic Batch |
+| `recover-batch-stuck.yml` | каждые 30 мин | восстанавливает stuck batch poll/apply |
+| `publish-verify.yml` | каждый час, на 20 минуте | проверяет, что опубликованные статьи реально открываются на сайте |
 | `retry-failed.yml` | каждые 4 часа | возвращает retryable статьи в обработку |
 | `pipeline-health.yml` | каждые 2 часа | health-check источников и пайплайна |
 | `docs-guard.yml` | push / pull request | проверяет синхронность code/doc изменений |
-| `tg-digest.yml` | 06:00 UTC ежедневно | отправляет дайджест в TG |
+
+Telegram-дайджест не запускается из GitHub Actions: primary scheduler — Supabase `pg_cron`,
+fallback — Vercel Cron из `vercel.json`. Оба дергают `/api/cron/tg-digest`, а `digest_runs`
+защищает от дублей.
 
 ## Применить миграцию БД
 

@@ -7,7 +7,7 @@ import { getArticleBySlug, getRelatedArticles, resolveAnchorLinks } from '../../
 import { getArticlePath, toPublicArticleSlug } from '../../../../lib/article-slugs'
 import { getCategoryMeta } from '../../../../lib/category-meta'
 import { isKnownCategory, DEFAULT_CATEGORY } from '../../../../lib/categories'
-import { SITE_URL, absoluteUrl } from '../../../../lib/site'
+import { SITE_LOGO_URL, SITE_URL, absoluteUrl } from '../../../../lib/site'
 import { formatRelativeTime } from '../../../../lib/utils'
 import TopicBadge from '../../../../src/components/TopicBadge'
 import ArticleCard from '../../../../src/components/ArticleCard'
@@ -488,7 +488,7 @@ export default async function CategoryArticlePage({
       '@type': 'Organization',
       name: 'Malakhov AI Дайджест',
       url: SITE_URL,
-      logo: { '@type': 'ImageObject', url: `${SITE_URL}/og-default.png` },
+      logo: { '@type': 'ImageObject', url: SITE_LOGO_URL },
     },
   }
 

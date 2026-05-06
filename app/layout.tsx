@@ -5,7 +5,7 @@ import Header from '../src/components/Header'
 import Footer from '../src/components/Footer'
 import Analytics from '../src/components/Analytics'
 import ConsentManager from '../src/components/ConsentManager'
-import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from '../lib/site'
+import { SITE_DESCRIPTION, SITE_LOGO_URL, SITE_NAME, SITE_URL } from '../lib/site'
 
 const onest = Onest({
   subsets: ['latin', 'cyrillic'],
@@ -29,6 +29,7 @@ const ibmMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
+  applicationName: SITE_NAME,
   title: {
     default: SITE_NAME,
     template: `%s | ${SITE_NAME}`,
@@ -37,6 +38,23 @@ export const metadata: Metadata = {
   verification: {
     yandex: '6b43a6ebf41ca61b',
   },
+  icons: {
+    icon: [
+      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png', media: '(prefers-color-scheme: light)' },
+      { url: '/favicon-dark-32x32.png', sizes: '32x32', type: 'image/png', media: '(prefers-color-scheme: dark)' },
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+      { url: '/icon-192x192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512x512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [
+      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
+    shortcut: [
+      { url: '/favicon.ico' },
+    ],
+  },
+  manifest: '/site.webmanifest',
   alternates: {
     canonical: SITE_URL,
     types: {
@@ -91,7 +109,7 @@ export default function RootLayout({
       '@type': 'Organization',
       name: SITE_NAME,
       url: SITE_URL,
-      logo: `${SITE_URL}/og-default.png`,
+      logo: SITE_LOGO_URL,
     },
     {
       '@context': 'https://schema.org',

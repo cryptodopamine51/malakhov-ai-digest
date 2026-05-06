@@ -27,6 +27,11 @@ const RULES: Rule[] = [
       /^(app\/articles\/|app\/archive\/|app\/topics\/|app\/sources\/|bot\/daily-digest\.ts$|bot\/daily-digest-core\.ts$|lib\/articles\.ts$|lib\/article-slugs\.ts$|app\/sitemap\.ts$|src\/components\/ArticleCard\.tsx$)/.test(file),
   },
   {
+    doc: 'docs/ARTICLE_SYSTEM.md',
+    matches: (file) =>
+      /^(app\/rss\.xml\/route\.ts$|app\/llms\.txt\/route\.ts$|app\/api\/categories\/)/.test(file),
+  },
+  {
     doc: 'docs/ARCHITECTURE.md',
     matches: (file) =>
       /^(lib\/supabase\.ts$|supabase\/|app\/internal\/)/.test(file),

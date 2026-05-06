@@ -16,6 +16,8 @@
 - Читает данные из Supabase.
 - Не использует `SUPABASE_SERVICE_KEY` на клиентской стороне.
 - Рендерит опубликованные статьи, topic pages, sources, archive и SEO-артефакты.
+- Публичные SEO/feed surfaces (`sitemap`, RSS, `llms.txt`) должны читать только live-данные;
+  RSS использует anon/public-read client, чтобы RLS оставался defense-in-depth даже при ошибке фильтра.
 
 `app/internal/dashboard` — исключение только по аудитории, не по runtime: это server-only
 operator page. Он использует `SUPABASE_SERVICE_KEY` через `getAdminClient()` только на сервере,

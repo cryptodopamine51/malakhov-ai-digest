@@ -176,17 +176,19 @@ export async function fetchAllFeeds(maxAgeMinutes = 60): Promise<FetchAllFeedsRe
 /**
  * Парсит фид с одним retry при ошибке.
  */
-async function parseFeedWithRetry(
+export async function parseFeedWithRetry(
   parser: RSSParser,
   feed: FeedConfig,
-  cutoff: Date
+  cutoff: Date,
+  retryDelayMs = 3_000,
 ): Promise<{ items: ParsedItem[]; rejected: RssRejectedSummary[]; sourceResult: SourceFeedResult }> {
-  try {
-    return await parseFeed(parser, feed, cutoff)
-  } catch {
-    await new Promise(r => setTimeout(r, 3_000))
-    return parseFeed(parser, feed, cutoff)
+  const first = await parseFeed(parser, feed, cutoff)
+  if (first.sourceResult.status !== 'failed') return first
+
+  if (retryDelayMs > 0) {
+    await new Promise(r => setTimeout(r, retryDelayMs))
   }
+  return parseFeed(parser, feed, cutoff)
 }
 
 /**
