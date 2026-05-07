@@ -36,6 +36,7 @@ export const metadata: Metadata = {
   description: SITE_DESCRIPTION,
   verification: {
     yandex: '6b43a6ebf41ca61b',
+    google: '0Q7qJiU0oCtMHji26UTP1LT-6wj0JRrHjDHVTBedpms',
   },
   alternates: {
     canonical: SITE_URL,
