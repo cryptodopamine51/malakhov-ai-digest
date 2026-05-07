@@ -72,9 +72,28 @@ function ts(): string {
   return new Date().toTimeString().slice(0, 8)
 }
 
-function extractOgImage(document: Document): string | null {
+export function extractOgImage(document: Document, baseUrl: string): string | null {
   try {
-    return document.querySelector('meta[property="og:image"]')?.getAttribute('content')?.trim() || null
+    const candidates = [
+      'meta[property="og:image:secure_url"]',
+      'meta[property="og:image:url"]',
+      'meta[property="og:image"]',
+      'meta[name="og:image"]',
+      'meta[name="twitter:image"]',
+      'meta[name="twitter:image:src"]',
+      'link[rel="image_src"]',
+    ]
+
+    for (const selector of candidates) {
+      const element = document.querySelector(selector)
+      const value = (element?.getAttribute('content') ?? element?.getAttribute('href'))?.trim()
+      if (!value) continue
+
+      const absolute = absolutizeUrl(value, baseUrl)
+      if (absolute) return absolute
+    }
+
+    return null
   } catch {
     return null
   }
@@ -113,6 +132,70 @@ function absolutizeUrl(rawUrl: string, baseUrl: string): string | null {
   }
 }
 
+function imageValueToUrl(value: unknown, baseUrl: string): string | null {
+  if (!value) return null
+  if (typeof value === 'string') return absolutizeUrl(value, baseUrl)
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const url = imageValueToUrl(item, baseUrl)
+      if (url) return url
+    }
+    return null
+  }
+  if (typeof value === 'object') {
+    const object = value as Record<string, unknown>
+    return imageValueToUrl(object.url ?? object.contentUrl ?? object['@id'], baseUrl)
+  }
+  return null
+}
+
+function findJsonLdImage(value: unknown, baseUrl: string, depth = 0): string | null {
+  if (!value || depth > 4) return null
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const url = findJsonLdImage(item, baseUrl, depth + 1)
+      if (url) return url
+    }
+    return null
+  }
+  if (typeof value !== 'object') return null
+
+  const object = value as Record<string, unknown>
+  const direct = imageValueToUrl(object.image, baseUrl)
+  if (direct) return direct
+
+  return findJsonLdImage(object['@graph'], baseUrl, depth + 1)
+}
+
+export function extractJsonLdImage(document: Document, baseUrl: string): string | null {
+  try {
+    const scripts = document.querySelectorAll('script[type="application/ld+json"]')
+    for (const script of scripts) {
+      const raw = script.textContent?.trim()
+      if (!raw) continue
+
+      try {
+        const parsed = JSON.parse(raw)
+        const url = findJsonLdImage(parsed, baseUrl)
+        if (url) return url
+      } catch {
+        continue
+      }
+    }
+  } catch {
+    return null
+  }
+
+  return null
+}
+
+function firstSrcFromSrcset(srcset: string): string | null {
+  return srcset
+    .split(',')
+    .map((part) => part.trim().split(/\s+/)[0])
+    .find(Boolean) ?? null
+}
+
 function pickImageSrc(img: Element): string {
   const direct =
     img.getAttribute('src') ??
@@ -123,12 +206,13 @@ function pickImageSrc(img: Element): string {
   if (direct.trim()) return direct
 
   const srcset = img.getAttribute('srcset') ?? img.getAttribute('data-srcset') ?? ''
-  const firstSrc = srcset
-    .split(',')
-    .map((part) => part.trim().split(/\s+/)[0])
-    .find(Boolean)
+  const firstSrc = firstSrcFromSrcset(srcset)
+  if (firstSrc) return firstSrc
 
-  return firstSrc ?? ''
+  const pictureSource = img.closest('picture')?.querySelector('source[srcset], source[data-srcset]')
+  const pictureSrcset = pictureSource?.getAttribute('srcset') ?? pictureSource?.getAttribute('data-srcset') ?? ''
+
+  return firstSrcFromSrcset(pictureSrcset) ?? ''
 }
 
 function extractTables(document: Document): ExtractedTable[] {
@@ -165,6 +249,7 @@ function extractInlineImages(document: Document, baseUrl: string): ExtractedImag
 
     imgs.forEach((img) => {
       if (isInsideExcludedRegion(img)) return
+      if (img.closest('button, [role="button"], a[class*="share" i], a[class*="social" i], [class*="share" i], [class*="social" i]')) return
 
       const src = pickImageSrc(img)
       const alt = img.getAttribute('alt')?.trim() ?? ''
@@ -172,11 +257,12 @@ function extractInlineImages(document: Document, baseUrl: string): ExtractedImag
 
       if (!src) return
       if (src.startsWith('data:')) return
+      if (/\.svg(?:[?#]|$)/i.test(src)) return
 
       const w = parseInt(img.getAttribute('width') ?? '0', 10)
       const h = parseInt(img.getAttribute('height') ?? '0', 10)
       if ((w > 0 && w < 50) || (h > 0 && h < 50)) return
-      if (/pixel|tracking|beacon|logo|icon|avatar|badge/i.test(src)) return
+      if (/pixel|tracking|beacon|logo|icon|avatar|badge|sprite|share[-_.]|social[-_.]|arrow[-_.]|button[-_.]/i.test(src)) return
 
       const absoluteSrc = absolutizeUrl(src, baseUrl)
       if (!absoluteSrc) return
@@ -205,6 +291,20 @@ function extractInlineImages(document: Document, baseUrl: string): ExtractedImag
     })
   } catch { /* некритично */ }
   return images.slice(0, 5)
+}
+
+function pickFallbackCoverFromInlineImages(inlineImages: ExtractedImage[]): string | null {
+  for (const image of inlineImages) {
+    const width = Number(image.width ?? 0)
+    const height = Number(image.height ?? 0)
+
+    if ((width > 0 && width < 80) || (height > 0 && height < 80)) continue
+    if (width > 0 && height > 0 && width / height >= 2.8) continue
+
+    return image.src
+  }
+
+  return null
 }
 
 function normalizeVideo(rawUrl: string, baseUrl: string): Omit<ExtractedVideo, 'title' | 'poster'> | null {
@@ -480,17 +580,20 @@ export async function fetchArticleContent(
     const dom = new JSDOM(html, { url, virtualConsole })
     const document = dom.window.document
 
-    if (looksBlocked(document, html)) {
+    const tables = extractTables(document)
+    const inlineImages = extractInlineImages(document, url)
+    const inlineVideos = extractInlineVideos(document, url)
+    const imageUrl = extractOgImage(document, url) ??
+      extractJsonLdImage(document, url) ??
+      pickFallbackCoverFromInlineImages(inlineImages)
+
+    if (looksBlocked(document, html) && (includeText || (!imageUrl && inlineImages.length === 0))) {
       const message = `blocked or challenge page for ${url}`
       console.log(`[${ts()}] fetchArticleContent: ${message}`)
       return emptyFetchResult('fetch_blocked', message)
     }
 
-    const imageUrl = extractOgImage(document)
     const text = includeText ? extractReadableTextFromDocument(document) : ''
-    const tables = extractTables(document)
-    const inlineImages = extractInlineImages(document, url)
-    const inlineVideos = extractInlineVideos(document, url)
 
     if (includeText && !text) {
       const message = `empty readable text for ${url}`

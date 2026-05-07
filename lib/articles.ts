@@ -40,8 +40,9 @@ export async function getLatestArticles(limit = 20): Promise<Article[]> {
     .eq('quality_ok', true)
     .eq('verified_live', true)
     .eq('publish_status', 'live')
-    .order('score', { ascending: false })
     .order('created_at', { ascending: false })
+    .order('score', { ascending: false })
+    .order('id', { ascending: false })
     .limit(limit)
 
   if (error) {
@@ -111,8 +112,9 @@ export async function getArticlesByTopic(topic: string, limit = 20): Promise<Art
     .eq('verified_live', true)
     .eq('publish_status', 'live')
     .contains('topics', [topic])
-    .order('score', { ascending: false })
     .order('created_at', { ascending: false })
+    .order('score', { ascending: false })
+    .order('id', { ascending: false })
     .limit(limit)
 
   if (error) {
@@ -155,8 +157,8 @@ export async function getArticlesByCategoryPage(
     .eq('verified_live', true)
     .eq('publish_status', 'live')
     .or(`primary_category.eq.${categorySlug},secondary_categories.cs.{${categorySlug}}`)
-    .order('pub_date', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })
+    .order('pub_date', { ascending: false, nullsFirst: false })
     .order('score', { ascending: false })
     .order('id', { ascending: false })
     .range(offset, offset + safePerPage - 1)
@@ -204,9 +206,9 @@ export async function getInterestingArticlesByCategory(
   excludeIds: string[] = [],
 ): Promise<Article[]> {
   const now = new Date()
-  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+  const seventyTwoHoursAgo = new Date(now.getTime() - 72 * 60 * 60 * 1000)
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-  const primaryCandidates = await getInterestingCandidatesByCategory(categorySlug, sevenDaysAgo, 48)
+  const primaryCandidates = await getInterestingCandidatesByCategory(categorySlug, seventyTwoHoursAgo, 48)
   const rankingOptions = {
     limit,
     excludeIds,
@@ -274,7 +276,7 @@ export async function getTopTodayArticles(limit = 7): Promise<Article[]> {
 
 /**
  * Свежие заголовки для левой колонки VC-блока на главной — чисто хронологически.
- * Используется отдельно от `getLatestArticles`, который сортирует по score.
+ * Используется отдельно от `getLatestArticles`, который возвращает свежую ленту.
  */
 export async function getRecentHeadlines(limit = 8, excludeIds: string[] = []): Promise<Article[]> {
   let query = client()
@@ -381,8 +383,9 @@ export async function getArticlesFeed(page = 1, perPage = 12): Promise<{ article
       .eq('quality_ok', true)
       .eq('verified_live', true)
       .eq('publish_status', 'live')
-      .order('score', { ascending: false })
       .order('created_at', { ascending: false })
+      .order('score', { ascending: false })
+      .order('id', { ascending: false })
       .range(offset, offset + perPage - 1),
   ])
 
@@ -467,6 +470,8 @@ export async function getArticlesBySource(sourceName: string, limit = 20, offset
     .eq('publish_status', 'live')
     .eq('source_name', sourceName)
     .order('created_at', { ascending: false })
+    .order('score', { ascending: false })
+    .order('id', { ascending: false })
     .range(offset, offset + limit - 1)
 
   if (error) {

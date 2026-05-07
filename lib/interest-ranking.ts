@@ -37,10 +37,9 @@ function timestamp(value: string | null | undefined): number | null {
 }
 
 function freshnessTimestamp(article: Article): number {
-  const pub = timestamp(article.pub_date)
   const created = timestamp(article.created_at)
-  if (pub !== null && created !== null) return Math.max(pub, created)
-  return pub ?? created ?? 0
+  const pub = timestamp(article.pub_date)
+  return created ?? pub ?? 0
 }
 
 export function compareArticlesByFreshness(a: Article, b: Article): number {
@@ -92,7 +91,7 @@ export function scoreInterestingArticle(article: Article, now = new Date()): Ran
   const editorialScore = clamp(Number(article.score ?? 0), 0, 10)
   const ageMs = Math.max(0, now.getTime() - freshnessTimestamp(article))
   const ageHours = ageMs / (60 * 60 * 1000)
-  const freshnessScore = Math.exp(-ageHours / 48) * 10
+  const freshnessScore = Math.exp(-ageHours / 24) * 10
   const sourceWeight = getSourceWeight(article.source_name)
   const contentQualityBonus = getContentQualityBonus(article)
   const mediaQualityBonus = getMediaQualityBonus(article)

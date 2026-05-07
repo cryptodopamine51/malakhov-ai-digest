@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import RSSParser from 'rss-parser'
 
-import { parseFeed } from '../../pipeline/rss-parser'
+import { keywordMatches, parseFeed, parseFeedWithRetry } from '../../pipeline/rss-parser'
 import { buildSourceRejectedStats, writeSourceRun } from '../../pipeline/ingest'
 import type { FeedConfig } from '../../pipeline/feeds.config'
 import type { SourceFeedResult } from '../../pipeline/rss-parser'
@@ -65,6 +65,47 @@ test('parseFeed returns rejected breakdown for keyword and URL-date filters', as
     global.fetch = originalFetch
   }
 })
+
+test('parseFeedWithRetry retries failed feed responses before returning source result', async () => {
+  const originalFetch = global.fetch
+  let calls = 0
+  global.fetch = (async () => {
+    calls++
+    if (calls === 1) return new Response('temporary error', { status: 503 })
+    return new Response(`
+      <rss version="2.0">
+        <channel>
+          <item>
+            <title>ИИ запускает новый сервис</title>
+            <link>https://example.com/2026/05/ai-service</link>
+            <pubDate>Sat, 02 May 2026 10:20:00 GMT</pubDate>
+            <description>ИИ и агенты.</description>
+          </item>
+        </channel>
+      </rss>
+    `, { status: 200 })
+  }) as typeof fetch
+
+  try {
+    const parser = new RSSParser()
+    const result = await parseFeedWithRetry(parser, feed, new Date('2026-05-02T09:00:00.000Z'), 0)
+
+    assert.equal(calls, 2)
+    assert.equal(result.sourceResult.status, 'ok')
+    assert.equal(result.items.length, 1)
+  } finally {
+    global.fetch = originalFetch
+  }
+})
+
+test('keywordMatches keeps short ии boundary-safe and supports vc.ru variants', () => {
+  assert.equal(keywordMatches('Проверка инициативы в ритейле', 'ии'), false)
+  assert.equal(keywordMatches('Юрист OpenAI рассказал о переходе компании', 'openai'), true)
+  assert.equal(keywordMatches('ИИ-агент помогает аналитикам', 'ии'), true)
+  assert.equal(keywordMatches('Нейронка автоматизировала отчёты', 'нейронк'), true)
+  assert.equal(keywordMatches('Новый ИИ-ассистент для бизнеса', 'ии-ассистент'), true)
+})
+
 
 test('buildSourceRejectedStats adds ingest dedup to parser rejects', () => {
   const stats = buildSourceRejectedStats({

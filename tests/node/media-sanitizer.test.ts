@@ -48,6 +48,55 @@ test('sanitizeArticleMedia rejects generic ad URLs', () => {
   assert.equal(result.rejects[0]?.reason, 'ad_url')
 })
 
+test('sanitizeArticleMedia rejects UI icon SVGs and placeholder text covers', () => {
+  const result = sanitizeArticleMedia({
+    coverImageUrl: 'https://www.cnews.ru/img/design2008/placeholderimage.jpg',
+    articleImages: [
+      { src: 'https://example.com/assets/icons/share.svg', alt: '', width: 320, height: 320 },
+      { src: 'https://example.com/sprite.svg#arrow', alt: '', width: 320, height: 320 },
+      { src: 'https://example.com/static/arrow.svg', alt: '', width: 320, height: 320 },
+      { src: 'https://filearchive.cnews.ru/img/cnews/2021/02/03/path7204.svg', alt: '', parentClassName: 'article-btn' },
+    ],
+    context: {
+      ...context,
+      sourceName: 'CNews',
+      originalUrl: 'https://www.cnews.ru/news/line/2026-05-05_ii_dlya_hr_biznes-partnerov',
+    },
+  })
+
+  assert.equal(result.coverImageUrl, null)
+  assert.equal(result.articleImages.length, 0)
+  assert.deepEqual(result.rejects.map((reject) => reject.reason), [
+    'text_cover',
+    'ui_icon',
+    'ui_icon',
+    'ui_icon',
+    'ui_icon',
+  ])
+})
+
+test('sanitizeArticleMedia rejects SVG cover even outside text-cover sources', () => {
+  const result = sanitizeArticleMedia({
+    coverImageUrl: 'https://example.com/article/share-image.svg?ver=1',
+    articleImages: null,
+    context,
+  })
+
+  assert.equal(result.coverImageUrl, null)
+  assert.equal(result.rejects[0]?.reason, 'svg_cover')
+})
+
+test('sanitizeArticleMedia rejects default cover for text-cover sources', () => {
+  const result = sanitizeArticleMedia({
+    coverImageUrl: 'https://static.cnews.ru/img/default-cover.png',
+    articleImages: null,
+    context: { ...context, sourceName: 'CNews' },
+  })
+
+  assert.equal(result.coverImageUrl, null)
+  assert.equal(result.rejects[0]?.reason, 'text_cover')
+})
+
 test('sanitizeArticleMedia rejects Ars Technica author portraits', () => {
   const result = sanitizeArticleMedia({
     coverImageUrl: null,
@@ -159,6 +208,22 @@ test('sanitizeArticleMedia keeps Habr inline images without captions', () => {
 
   assert.equal(result.articleImages.length, 1)
   assert.equal(result.rejects.length, 0)
+})
+
+test('sanitizeArticleMedia rejects Habr branding assets', () => {
+  const result = sanitizeArticleMedia({
+    coverImageUrl: null,
+    articleImages: [{
+      src: 'https://habrastorage.org/getpro/habr/branding/02f/e1d/532/02fe1d532ddc779057189ddbf73a3fbe.png',
+      alt: '',
+      width: 1200,
+      height: 630,
+    }],
+    context: { ...context, sourceName: 'Habr AI', originalUrl: 'https://habr.com/ru/articles/1/' },
+  })
+
+  assert.equal(result.articleImages.length, 0)
+  assert.equal(result.rejects[0]?.reason, 'ui_icon')
 })
 
 test('sanitizeArticleMedia does not treat model training copy as promo text', () => {

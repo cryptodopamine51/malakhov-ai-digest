@@ -76,6 +76,7 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
 | `publish-verify.yml` | каждый час, на 20 минуте | проверка live-публикации |
 | `retry-failed.yml` | каждые 4 часа, на 30 минуте | возврат retryable статей |
 | `pipeline-health.yml` | каждые 2 часа, на 45 минуте | source health, backlog, provider guard, cost guard |
+| `ai-covers.yml` | каждые 2 часа, на 10 минуте | дешёвые OpenAI Images low cover для live-статей без обложки |
 | `docs-guard.yml` | push/pull request | проверка doc-impact |
 
 > **Telegram-дайджест с 2026-05-02 ушёл из GitHub Actions в Vercel Cron** —
@@ -186,6 +187,31 @@ npx tsx scripts/sanitize-existing-article-media.ts --apply --limit=50
 - перед apply нужно просмотреть summary `changed`, `by_reason`, `by_source` и examples;
 - apply пишет rollback-audit в `tmp/media-sanitizer-audit-*.jsonl`.
 
+### Source cover backfill
+
+Для восстановления отсутствующих source cover и удаления плохих SVG/placeholder cover используется
+`scripts/backfill-cover-images.ts`. Скрипт не вызывает Claude и не меняет editorial text: он фетчит
+исходную страницу через `pipeline/fetcher.ts` с `includeText=false`, применяет media sanitizer и
+обновляет только `cover_image_url` / `article_images`.
+
+Команды:
+
+```bash
+npx tsx scripts/backfill-cover-images.ts --dry-run
+npx tsx scripts/backfill-cover-images.ts --dry-run --limit=50
+npx tsx scripts/backfill-cover-images.ts --dry-run --slug=<slug>
+npx tsx scripts/backfill-cover-images.ts --apply --limit=50
+```
+
+Правила:
+
+- default mode — dry-run, без DB writes;
+- `--apply` обязателен для записи;
+- перед apply нужно просмотреть `processed`, `updated`, `still_empty`, `fetch_failed`, `by_source` и examples;
+- скрипт обрабатывает live-статьи за последние 30 дней, где текущий cover отсутствует или отбрасывается sanitizer-ом;
+- при массовом `--apply` перед запуском сделать SQL-снапшот `cover_image_url` / `article_images`;
+- apply пишет rollback-audit в `tmp/cover-backfill-audit-*.jsonl`.
+
 ### Stock cover backfill
 
 Для тестового или ручного заполнения обложек у live-статей без usable cover используется
@@ -217,6 +243,7 @@ npx tsx scripts/backfill-stock-covers.ts --latest-day --limit=12
 
 ```bash
 npx tsx scripts/generate-ai-covers.ts --category=ai-russia --limit=8
+npm run covers:ai-low -- --category=all --latest-day --limit=8
 npx tsx scripts/generate-ai-covers.ts --category=ai-russia --limit=8 --apply --quality=medium
 ```
 
@@ -224,10 +251,15 @@ npx tsx scripts/generate-ai-covers.ts --category=ai-russia --limit=8 --apply --q
 
 - default mode — dry-run, без OpenAI вызовов, DB writes и Storage upload;
 - default model — `gpt-image-1.5`, потому что `gpt-image-2` требует verified organization;
+- default quality — `low` для автоматического дешёвого cover fallback; `medium`/`high` остаются ручным override для важных карточек;
+- `--category=all` отключает category filter и используется в автоматическом workflow `ai-covers.yml`;
+- `--daily-budget=N` / `OPENAI_IMAGE_DAILY_BUDGET_USD` ограничивает дневной расход OpenAI Images по Москве;
 - `--model=gpt-image-2` можно использовать только после проверки доступа; при 403 списания нет;
 - `--apply` пишет локальные копии и `report.json` в `tmp/ai-covers-*`;
+- успешные и failed image attempts пишутся в `llm_usage_logs` как
+  `provider='openai'`, `operation='image_cover_generation'`, `run_kind='image_backfill'`;
 - стоимость для `gpt-image-1.5` считается по model-page per-image цене для `1536x1024`
-  (`medium` = `$0.05/image` на момент ручного прогона 2026-05-03);
+  (`low` = `$0.013/image`, `medium` = `$0.05/image` на момент проверки 2026-05-07);
 - при `Billing hard limit has been reached` остановить OpenAI backfill и закрывать только самые
   видимые пустые карточки бесплатным `scripts/replace-test-covers-with-editorial-templates.ts`.
 
@@ -383,6 +415,10 @@ Operational scripts и workflows отвечают за:
 ## Claude Cost Observability
 
 - `npm run cost:report` печатает сводку по расходу Claude за окно, по умолчанию за последние 2 дня.
+- `npm run cost:articles -- --days=2 --limit=40` печатает per-article расход:
+  input/output/cache tokens, text cost, image cost и total cost по `llm_usage_logs`.
+- `npm run routing:lab -- --limit=3` готовит dry-run сравнение
+  `claude-full`, `deepseek-full`, `hybrid`; `--apply` реально вызывает API и пишет результаты в `tmp/model-routing-lab-*`.
 - `npm run cost:guard` проверяет расход Claude за текущий день по Москве и поднимает alert, если превышен бюджет.
 - Порог budget guard задаётся через `CLAUDE_DAILY_BUDGET_USD`; в workflow `enrich.yml` и `pipeline-health.yml` стоит `$2` (с 2026-05-05 — фактический расход 1.0–1.4/день при прежнем `$1` стабильно резал submit). Default в коде остаётся `$1`. Перед повышением свериться с `npm run cost:report`.
 - Источник истины после миграции:

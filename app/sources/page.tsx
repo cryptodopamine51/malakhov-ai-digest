@@ -27,6 +27,7 @@ const SOURCE_DOMAINS: Record<string, string> = {
   'The Decoder': 'the-decoder.com',
   'TechCrunch AI': 'techcrunch.com',
   'TechCrunch Venture': 'techcrunch.com',
+  'TechCrunch Startups': 'techcrunch.com',
   'ZDNet AI': 'zdnet.com',
   'Wired AI': 'wired.com',
   'Ars Technica': 'arstechnica.com',
@@ -36,26 +37,25 @@ const SOURCE_DOMAINS: Record<string, string> = {
   'Microsoft Blogs': 'blogs.microsoft.com',
   'NVIDIA Blog': 'blogs.nvidia.com',
   'Google Research Blog': 'research.google',
+  'Google DeepMind Blog': 'deepmind.google',
   'Hugging Face Blog': 'huggingface.co',
   '404 Media': '404media.co',
-  'Axios Pro Rata': 'axios.com',
   'YC Blog': 'ycombinator.com',
-  'a16z Blog': 'a16z.com',
   'Crunchbase News': 'news.crunchbase.com',
   'Sequoia Capital': 'sequoiacap.com',
   'Habr AI': 'habr.com',
+  'Habr Startups': 'habr.com',
   'CNews': 'cnews.ru',
-  'vc.ru': 'vc.ru',
-  'vc.ru Финансы': 'vc.ru',
-  'vc.ru Стартапы': 'vc.ru',
+  'RB.ru': 'rb.ru',
+  'vc.ru AI/стартапы': 'vc.ru',
 }
 
 const SOURCE_LANG: Record<string, 'EN' | 'RU'> = {
   'Habr AI': 'RU',
+  'Habr Startups': 'RU',
   'CNews': 'RU',
-  'vc.ru': 'RU',
-  'vc.ru Финансы': 'RU',
-  'vc.ru Стартапы': 'RU',
+  'RB.ru': 'RU',
+  'vc.ru AI/стартапы': 'RU',
 }
 
 

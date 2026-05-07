@@ -88,6 +88,26 @@ test('category freshness comparator keeps newer article above older high-score a
   assert.equal(sorted[1].id, 'older-high-score')
 })
 
+test('category freshness comparator prefers created_at over newer source pub_date', () => {
+  const olderIngestedLater = article({
+    id: 'older-source-newer-ingest',
+    score: 2,
+    pub_date: '2026-04-01T12:00:00.000Z',
+    created_at: '2026-05-01T11:00:00.000Z',
+  })
+  const newerSourceIngestedEarlier = article({
+    id: 'newer-source-older-ingest',
+    score: 9,
+    pub_date: '2026-04-30T12:00:00.000Z',
+    created_at: '2026-05-01T10:00:00.000Z',
+  })
+
+  const sorted = [newerSourceIngestedEarlier, olderIngestedLater].sort(compareArticlesByFreshness)
+
+  assert.equal(sorted[0].id, 'older-source-newer-ingest')
+  assert.equal(sorted[1].id, 'newer-source-older-ingest')
+})
+
 test('category freshness comparator uses score and id only as tie-breakers', () => {
   const lowerScore = article({
     id: 'a-lower-score',
