@@ -44,6 +44,9 @@ export interface SanitizeArticleMediaInput {
 const HARD_URL_RE =
   /(?:adfox|doubleclick|googlesyndication|yabs|yandex\/direct|career\.habr\.com|habr\.com\/ru\/companies\/habr_career|\/ads?\/|\/advert|\/banner|\/promo)/i
 
+const UI_ICON_URL_RE =
+  /(?:\/icons?\/|\/sprites?\/|\/share[-_]?icon|\/social[-_]?icon|\/arrow[-_.]|\/btn[-_]|\/button[-_]|share[-_.]svg|social[-_.]svg|arrow[-_.]svg|(?:^|[\/_.-])btn(?:[\/_.-]|$)|(?:^|[\/_.-])button(?:[\/_.-]|$))/i
+
 const PROMO_TEXT_RE =
   /(?:\bads?\b|\badvert(?:isement|ising)?\b|\bbanner\b|\bpromo(?:ted|tion)?\b|\bsponsor(?:ed)?\b|\bpartner\b|\bcareer\b|\bjobs?\b|\bvacanc(?:y|ies)\b|\bcourses?\b|реклама|промо|партн[её]рск|карьер|ваканси|(?:^|[^а-яё])работа(?:$|[^а-яё])|(?:^|[^а-яё])курс(?:ы|а|ов)?(?:$|[^а-яё]))/i
 
@@ -55,7 +58,7 @@ const GENERIC_CAPTION_RE =
 
 const IMAGE_FILE_RE = /^[\w./:%-]+\.(?:png|jpe?g|webp|gif|svg)(?:[?#].*)?$/i
 
-const TEXT_COVER_SOURCE_NAMES = new Set(['Habr AI', 'vc.ru', 'CNews'])
+const TEXT_COVER_SOURCE_NAMES = new Set(['Habr AI', 'vc.ru', 'vc.ru AI/стартапы', 'CNews'])
 
 const CONTEXTUAL_IMAGE_SOURCE_RE =
   /(?:404 media|ars technica|aws machine learning blog|cnet|mit technology review|the verge|techcrunch|venturebeat|wired|zdnet|openai|anthropic|google deepmind|deepmind|nvidia|microsoft|google|meta|habr|the decoder)/i
@@ -69,6 +72,8 @@ const STOP_WORDS = new Set([
   'для', 'или', 'как', 'что', 'это', 'его', 'она', 'они', 'при', 'над', 'под', 'после', 'пока', 'уже',
   'об', 'про', 'без', 'все', 'всё', 'новый', 'новая', 'новые', 'который', 'которая', 'которые',
   'компания', 'рынок', 'модель', 'модели', 'искусственный', 'интеллект',
+  'image', 'images', 'photo', 'static', 'assets', 'upload', 'uploads', 'filearchive', 'cnews', 'habr',
+  'jpg', 'jpeg', 'webp', 'png', 'svg',
 ])
 
 function normalizeText(value: string | null | undefined): string {
@@ -104,7 +109,7 @@ function normalizedUrl(value: string | null | undefined): string {
 
 function looksLikeTextCover(url: string, sourceName: string): boolean {
   if (!TEXT_COVER_SOURCE_NAMES.has(sourceName)) return false
-  return /(?:\/share\/|\/social\/|\/cover\/|\/covers\/|og[-_]?image|share[-_]?image|card[-_]?image)/i.test(url)
+  return /(?:\/share\/|\/social\/|\/cover\/|\/covers\/|og[-_]?image|share[-_]?image|card[-_]?image|default[-_]?cover|placeholder|no[-_]?image|noimage)/i.test(url)
 }
 
 function getDisplayAlt(candidate: ArticleImageCandidate): string {
@@ -158,9 +163,18 @@ function hasArticleToken(value: string, articleTokens: Set<string>): boolean {
   return false
 }
 
+function hasUrlArticleToken(value: string, articleTokens: Set<string>): boolean {
+  if (articleTokens.size === 0) return false
+  for (const token of tokenize(value)) {
+    if (/^\d+$/.test(token)) continue
+    if (/[a-zа-яё]/i.test(token) && articleTokens.has(token)) return true
+  }
+  return false
+}
+
 function hasStrongSubjectMatch(candidate: ArticleImageCandidate, articleTokens: Set<string>): boolean {
   return hasArticleToken(getCaptionForRelevance(candidate), articleTokens) ||
-    hasArticleToken(candidate.src, articleTokens)
+    hasUrlArticleToken(candidate.src, articleTokens)
 }
 
 function getAspectRatio(candidate: ArticleImageCandidate): number | null {
@@ -191,19 +205,25 @@ function rejectReasonForCandidate(
   const normalizedCandidateText = normalizeText(candidateText)
   const caption = getCaptionForRelevance(candidate)
   const ratio = getAspectRatio(candidate)
+  const isSvg = /\.svg(?:[?#]|$)/i.test(src)
 
   if (!src || /^data:/i.test(src) || /^javascript:/i.test(src)) return 'invalid_url'
   if (HARD_URL_RE.test(urlText)) return 'ad_url'
+  if (UI_ICON_URL_RE.test(urlText) || UI_ICON_URL_RE.test(normalizedCandidateText)) return 'ui_icon'
   if (PROMO_TEXT_RE.test(normalizedCandidateText)) return 'promo_text'
   if (AUTHOR_TEXT_RE.test(normalizedCandidateText) || AUTHOR_URL_RE.test(urlText)) return 'author_photo'
   if (/ars technica/i.test(context.sourceName) && /^photo of\s+[A-ZА-Я]/.test(caption) && !hasArticleToken(caption, articleTokens)) {
     return 'author_photo'
+  }
+  if (/habr/i.test(context.sourceName) && /habrastorage\.org\/getpro\/habr\/branding\//i.test(urlText)) {
+    return 'ui_icon'
   }
   if (/habr/i.test(context.sourceName) && /(?:career|courses?|карьера|курсы|вакансии)/i.test(urlText + ' ' + normalizedCandidateText)) {
     return 'promo_text'
   }
 
   if (mode === 'cover') {
+    if (isSvg) return 'svg_cover'
     if (looksLikeTextCover(src, context.sourceName)) return 'text_cover'
     if (ratio !== null && ratio >= 2.8 && !hasStrongSubjectMatch(candidate, articleTokens)) return 'banner_ratio'
     return null
@@ -212,6 +232,7 @@ function rejectReasonForCandidate(
   const width = Number(candidate.width ?? 0)
   const height = Number(candidate.height ?? 0)
   if ((width > 0 && width < 80) || (height > 0 && height < 80)) return 'small_image'
+  if (isSvg && !hasArticleToken(getCaptionForRelevance(candidate), articleTokens)) return 'ui_icon'
   if (ratio !== null && ratio >= 2.8 && !hasStrongSubjectMatch(candidate, articleTokens)) return 'banner_ratio'
   if (ratio !== null && ratio <= 0.6 && AUTHOR_TEXT_RE.test(normalizedCandidateText)) return 'author_photo'
 

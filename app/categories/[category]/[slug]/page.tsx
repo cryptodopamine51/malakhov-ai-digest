@@ -12,7 +12,6 @@ import { formatRelativeTime } from '../../../../lib/utils'
 import TopicBadge from '../../../../src/components/TopicBadge'
 import ArticleCard from '../../../../src/components/ArticleCard'
 import ReadingProgress from '../../../../src/components/ReadingProgress'
-import StickyArticleTitle from '../../../../src/components/StickyArticleTitle'
 import TelegramCTA from '../../../../src/components/TelegramCTA'
 import {
   EditorialEntityGrid,
@@ -43,6 +42,15 @@ function isArticleImagesStorageUrl(value: string | null): boolean {
     return url.pathname.includes('/storage/v1/object/public/article-images/')
   } catch {
     return false
+  }
+}
+
+function isSvgUrl(value: string | null): boolean {
+  if (!value) return false
+  try {
+    return new URL(value).pathname.toLowerCase().endsWith('.svg')
+  } catch {
+    return value.split(/[?#]/, 1)[0]?.toLowerCase().endsWith('.svg') ?? false
   }
 }
 
@@ -495,7 +503,6 @@ export default async function CategoryArticlePage({
   return (
     <>
       <ReadingProgress />
-      <StickyArticleTitle title={title} />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
@@ -518,7 +525,7 @@ export default async function CategoryArticlePage({
         </nav>
 
         {/* Cover image */}
-        {sanitizedMedia.coverImageUrl && (!SOURCES_WITH_TEXT_COVERS.has(article.source_name) || isArticleImagesStorageUrl(sanitizedMedia.coverImageUrl)) && (
+        {sanitizedMedia.coverImageUrl && !isSvgUrl(sanitizedMedia.coverImageUrl) && (!SOURCES_WITH_TEXT_COVERS.has(article.source_name) || isArticleImagesStorageUrl(sanitizedMedia.coverImageUrl)) && (
           <div className="relative mb-10 w-full overflow-hidden rounded border border-line" style={{ maxHeight: 460 }}>
             <Image
               src={sanitizedMedia.coverImageUrl}
@@ -545,7 +552,7 @@ export default async function CategoryArticlePage({
                   href={article.original_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[13px] font-medium text-ink transition-colors hover:text-accent"
+                  className="text-[13px] font-medium text-accent transition-colors hover:underline"
                 >
                   {article.source_name}
                 </a>
@@ -596,7 +603,14 @@ export default async function CategoryArticlePage({
             </h1>
 
             <div className="mb-6 flex flex-wrap items-center gap-x-2 gap-y-2 text-[13px] text-muted lg:hidden">
-              <span>{article.source_name}</span>
+              <a
+                href={article.original_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-accent transition-colors hover:underline"
+              >
+                {article.source_name}
+              </a>
               <span>·</span>
               <span>{time}</span>
               <span>·</span>

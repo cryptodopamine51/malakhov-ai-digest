@@ -70,13 +70,13 @@
 - Decision: настоящие маршруты — `app/categories/[category]/page.tsx` (лента) и `app/categories/[category]/[slug]/page.tsx` (статья). Старые `app/articles/[slug]` и `app/topics/[topic]` стали тонкими server-side редирект-обёртками (`permanentRedirect`, 308). URL builder централизован в `lib/article-slugs.ts::getArticlePath(slug, primaryCategory)`; все потребители (sitemap, RSS, llms.txt, ArticleCard, PulseList, демо-страницы, Telegram digest, publish-verify, generate-images) переключены через него. Лента раздела включает статью, если её `primary_category` совпадает с категорией ИЛИ категория есть в `secondary_categories` — но canonical статьи всегда строится по primary, поэтому SEO-ценность не размывается.
 - Consequences: Telegram digest и publish-verify теперь стучатся на канонический URL, а не на legacy. Sitemap и RSS отдают только новые URL. Любая поверхность, которая будет добавлять ссылку на статью, обязана получать `primary_category` (через `Article.primary_category` или явный аргумент) — иначе TS не пропустит вызов `getArticlePath`. Legacy URL остаются индексируемыми только в форме 308-редиректа; через ~30 дней Search Console должен показать переезд. Если потребуется ещё раз поменять схему slug — это уже scope волны 3.4 (рейминг slug-ов категорий) и обязательно с цепочкой редиректов.
 
-## ADR-008 · Основная лента раздела сортируется по свежести, интересность вынесена в отдельный блок
+## ADR-008 · Основные ленты сортируются по времени добавления, интересность вынесена в отдельный блок
 
 - Status: accepted
 - Date: 2026-05-01
 - Context: сортировка category pages по `score desc` поднимала старые высокоскоринговые материалы выше новых статей. Это конфликтует с ожиданием читателя от раздела как свежей ленты, но полностью убирать редакционный score нельзя: он нужен для отдельной поверхности «что стоит прочитать».
-- Decision: `getArticlesByCategoryPage()` и API load-more сортируют обычную ленту по свежести (`pub_date desc nulls last`, затем `created_at desc`, `score desc`, `id desc`). «Самое интересное» считается отдельно в `lib/interest-ranking.ts`: deterministic formula без ML-персонализации и без пользовательских профилей.
-- Consequences: основной список раздела объясняется как fresh feed, а score участвует только как tie-breaker. Interest ranking можно менять и тестировать независимо от пагинации свежей ленты. Если позже появятся anonymous aggregate events, они должны добавляться в отдельную формулу/предвычисление, а не ломать порядок основной ленты.
+- Decision: `getArticlesFeed()`, `getArticlesByCategoryPage()` и API load-more сортируют обычные ленты по времени добавления в наш каталог: `created_at desc`, затем `pub_date desc nulls last`, `score desc`, `id desc` там, где поле используется как tie-breaker. «Самое интересное» считается отдельно в `lib/interest-ranking.ts`: deterministic formula без ML-персонализации и без пользовательских профилей, primary-окно 72 часа и freshness decay 24 часа.
+- Consequences: основной список раздела объясняется как fresh feed по времени появления на сайте, а score участвует только как tie-breaker. Interest ranking можно менять и тестировать независимо от пагинации свежей ленты. Если позже появятся anonymous aggregate events, они должны добавляться в отдельную формулу/предвычисление, а не ломать порядок основной ленты.
 
 ## ADR-009 · Публикация live выполняется через RPC `publish_article`
 
@@ -85,3 +85,31 @@
 - Context: прямой client-side update `articles.publish_status='live'` в `publish-verify` мог обойти инварианты текущей строки (`quality_ok`, актуальный `publish_status`, audit verifier) и оставить частично опубликованное состояние.
 - Decision: normal path `pipeline/publish-verify.ts` после успешного HEAD-check вызывает `public.publish_article(article_id, 'publish-verify')`. RPC возвращает typed result code, а код пишет `article_attempts.stage='verify'` для неуспешных `publish_rpc_*` исходов. Единственный разрешённый прямой update в `live` остаётся emergency bypass `PUBLISH_RPC_DISABLED=1`, который поднимает warning alert `publish_rpc_bypass_active`.
 - Consequences: переход в `live` стал атомарным и аудируемым через `last_publish_verifier`; операторы получают ранний сигнал, если bypass включён. Перед production smoke нужно убедиться, что текущая БД действительно имеет RPC: безопасный вызов с несуществующим UUID должен вернуть `not_eligible`.
+
+## Cost optimization options 2026-05-06
+
+- Status: research draft
+- Date: 2026-05-06
+- Context: enrichment всё ещё использует Claude Sonnet 4.6; цель — снизить стоимость без немедленного переключения модели и без риска для редакционного качества.
+
+Текущий замер `llm_usage_logs` за 7 дней на 2026-05-06:
+
+| Metric | Value |
+|---|---:|
+| Rows | 268 |
+| Input tokens | 473872 |
+| Cache read tokens | 314662 |
+| Cache creation tokens | 329074 |
+| Cache hit rate | 66.4% |
+
+| Вариант | Цена (~) | Качество | Риски |
+|---|---|---|---|
+| Anthropic Batch API | в ~2× дешевле текущего | то же качество | задержка до 24 ч; для суточного дайджеста допустимо |
+| Claude Haiku 4.5 на не-research категориях, Sonnet 4.6 только на `ai-research` | ~5–7× дешевле на основной массе | вероятно приемлемо для коротких новостей | нужен A/B на 50+ статьях |
+| OpenAI GPT-5 Mini | сравнимо с Haiku | потенциально сопоставимо | нужна адаптация промпта и JSON-mode validator |
+| Gemini 2.5 Flash | дешевле всех | слабее на русском editorial | риск другого стиля и больше постпроцессинга |
+| Локальная LLM / hosted open model | переменная себестоимость | ниже Sonnet на русском editorial | инфраструктура, latency, поддержка |
+| Haiku draft → Sonnet validate/fix только при провале gate | ~3× дешевле | может сохранить качество | pipeline сложнее, quality-gate должен быть строже |
+| Агрессивнее использовать prompt caching | до 90% off на input-токены при cache hit | без потерь | текущий hit rate уже 66.4%, нужно сначала понять ceiling |
+
+- Recommendation: не выбирать новую модель сейчас. Сначала использовать Batch API как независимый рычаг, продолжить замер cache hit rate и через 2 недели вернуться к A/B Sonnet vs Haiku/OpenAI Mini на сохранённых исходниках.

@@ -1,9 +1,11 @@
 ---
 title: vc.ru — фид настроен, статьи не доходят
 date: 2026-05-02
-status: proposed
+status: closed
 owner: malast
 canonical_doc: docs/ARTICLE_SYSTEM.md
+closed_at: 2026-05-06
+summary: "Discovery showed live RSS but no rows in articles; keyword matching stayed title-only and was hardened with boundary-safe `ии`, `ё→е` normalization, and vc.ru variants `нейронк`, `ии-`, `ии-агент`, `ии-ассистент`. `/sources` mapping now matches `vc.ru AI/стартапы`."
 ---
 
 # Цель

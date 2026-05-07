@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { rankInterestingArticles, rankInterestingArticlesWithFallback } from '../../lib/interest-ranking'
+import { rankInterestingArticles, rankInterestingArticlesWithFallback, scoreInterestingArticle } from '../../lib/interest-ranking'
 import type { Article } from '../../lib/supabase'
 
 function article(overrides: Partial<Article>): Article {
@@ -70,13 +70,13 @@ function article(overrides: Partial<Article>): Article {
 
 const fixedNow = new Date('2026-05-01T12:00:00.000Z')
 
-test('rankInterestingArticles can pick older high-quality article within window', () => {
+test('rankInterestingArticles freshness can beat older high-score article', () => {
   const olderHighQuality = article({
     id: 'old-high',
     source_name: 'OpenAI',
     score: 10,
-    created_at: '2026-05-01T00:00:00.000Z',
-    pub_date: '2026-05-01T00:00:00.000Z',
+    created_at: '2026-04-29T12:00:00.000Z',
+    pub_date: '2026-04-29T12:00:00.000Z',
   })
   const newerMedium = article({
     id: 'new-medium',
@@ -107,7 +107,23 @@ test('rankInterestingArticles can pick older high-quality article within window'
     limit: 4,
   })
 
-  assert.equal(ranked[0].article.id, 'old-high')
+  assert.equal(ranked[0].article.id, 'new-medium')
+})
+
+test('scoreInterestingArticle uses 24h freshness decay', () => {
+  const twelveHoursOld = scoreInterestingArticle(article({
+    id: 'twelve-hours',
+    created_at: '2026-05-01T00:00:00.000Z',
+    pub_date: '2026-05-01T00:00:00.000Z',
+  }), fixedNow)
+  const seventyTwoHoursOld = scoreInterestingArticle(article({
+    id: 'seventy-two-hours',
+    created_at: '2026-04-28T12:00:00.000Z',
+    pub_date: '2026-04-28T12:00:00.000Z',
+  }), fixedNow)
+
+  assert.ok(Math.abs(twelveHoursOld.components.freshnessScore - 6.07) < 0.05)
+  assert.ok(seventyTwoHoursOld.components.freshnessScore < 1)
 })
 
 test('rankInterestingArticles limits same-source dominance when alternatives exist', () => {

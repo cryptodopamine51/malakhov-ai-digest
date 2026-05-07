@@ -5,6 +5,8 @@ import { config as loadDotenv, parse as parseDotenv } from 'dotenv'
 import OpenAI from 'openai'
 import { createClient } from '@supabase/supabase-js'
 import sharp from 'sharp'
+import { writeLlmUsageLog } from '../pipeline/llm-usage'
+import { estimateOpenAiImageCostUsd, type ImageQuality, type ImageSize } from '../pipeline/model-pricing'
 
 loadDotenv({ path: resolve(process.cwd(), '.env.local') })
 loadDotenv({ path: resolve(process.cwd(), '.env') })
@@ -74,7 +76,9 @@ const apply = args.has('apply')
 const limit = numberArg('limit', 8)
 const category = stringArg('category', 'ai-russia')
 const model = stringArg('model', 'gpt-image-1.5')
-const quality = qualityArg('quality', 'medium')
+const quality = qualityArg('quality', 'low')
+const imageSize: ImageSize = '1536x1024'
+const dailyBudgetUsd = numberArg('daily-budget', Number(process.env.OPENAI_IMAGE_DAILY_BUDGET_USD ?? 0))
 const date = stringArg('date', '')
 const latestDay = args.has('latest-day') || Boolean(date)
 const onlyGenerated = !args.has('include-source-covers')
@@ -97,12 +101,15 @@ async function main() {
   const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
   const openai = new OpenAI({ apiKey: openaiApiKey })
   const articles = await selectArticles(supabase)
+  let spentTodayUsd = dailyBudgetUsd > 0 ? await getTodayOpenAiImageSpend(supabase) : 0
 
   console.log(JSON.stringify({
     mode: apply ? 'apply' : 'dry-run',
     model,
     quality,
-    size: '1536x1024',
+    size: imageSize,
+    daily_budget_usd: dailyBudgetUsd || null,
+    spent_today_usd: spentTodayUsd,
     limit,
     category,
     latest_day: latestDay,
@@ -124,9 +131,19 @@ async function main() {
   for (const [index, article] of articles.entries()) {
     const scene = chooseScene(article, index)
     const prompt = buildPrompt(article, scene, index)
+    const estimatedUnitCost = estimateCostUsd(model, quality, null) ?? 0
 
     console.log(`\nGENERATE ${index + 1}/${articles.length} ${article.slug}`)
     console.log(`  scene: ${scene}`)
+
+    if (dailyBudgetUsd > 0 && spentTodayUsd + estimatedUnitCost > dailyBudgetUsd) {
+      const message =
+        `OpenAI image daily budget exceeded: spent=$${spentTodayUsd.toFixed(4)} ` +
+        `next=$${estimatedUnitCost.toFixed(4)} budget=$${dailyBudgetUsd.toFixed(2)}`
+      failures.push({ slug: article.slug, title: article.ru_title, error: message })
+      console.warn(JSON.stringify({ skipped: article.slug, reason: message }))
+      break
+    }
 
     try {
       const response = await generateWithRetry(openai, prompt)
@@ -170,19 +187,71 @@ async function main() {
         scene,
         model,
         quality,
-        size: '1536x1024',
+        size: imageSize,
         usage,
         estimated_cost_usd: cost,
         storage_path: storagePath,
         public_url: publicUrl,
         local_path: localPath,
       }
+      await writeLlmUsageLog({
+        supabase,
+        provider: 'openai',
+        model,
+        operation: 'image_cover_generation',
+        runKind: 'image_backfill',
+        articleId: article.id,
+        sourceName: article.source_name,
+        originalTitle: article.ru_title,
+        resultStatus: 'ok',
+        metadata: {
+          quality,
+          size: imageSize,
+          scene,
+          storage_path: storagePath,
+          public_url: publicUrl,
+          local_path: localPath,
+          prompt_chars: prompt.length,
+        },
+        usage: {
+          inputTokens: usage?.input_tokens ?? 0,
+          outputTokens: usage?.output_tokens ?? 0,
+          cacheReadTokens: 0,
+          cacheCreateTokens: 0,
+          estimatedCostUsd: cost ?? 0,
+        },
+      })
       results.push(result)
+      spentTodayUsd += cost ?? estimatedUnitCost
       console.log(JSON.stringify(result))
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       const failure = { slug: article.slug, title: article.ru_title, error: message }
       failures.push(failure)
+      await writeLlmUsageLog({
+        supabase,
+        provider: 'openai',
+        model,
+        operation: 'image_cover_generation',
+        runKind: 'image_backfill',
+        articleId: article.id,
+        sourceName: article.source_name,
+        originalTitle: article.ru_title,
+        resultStatus: 'failed',
+        metadata: {
+          quality,
+          size: imageSize,
+          scene,
+          error: message,
+        },
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreateTokens: 0,
+          estimatedCostUsd: 0,
+        },
+      })
       console.warn(JSON.stringify({ failed: failure }))
     }
   }
@@ -192,7 +261,7 @@ async function main() {
     generated_at: new Date().toISOString(),
     model,
     quality,
-    size: '1536x1024',
+    size: imageSize,
     count: results.length,
     failed_count: failures.length,
     estimated_total_cost_usd: Number(total.toFixed(6)),
@@ -221,7 +290,7 @@ async function selectArticles(supabase: any): Promise<ArticleRow[]> {
 
   if (slugs.length) {
     query = query.in('slug', slugs)
-  } else {
+  } else if (category !== 'all') {
     query = query.or(`primary_category.eq.${category},secondary_categories.cs.{${category}}`)
   }
 
@@ -413,7 +482,7 @@ async function generateWithRetry(openai: OpenAI, prompt: string): Promise<any> {
       return await openai.images.generate({
         model: model as any,
         prompt,
-        size: '1536x1024' as any,
+        size: imageSize as any,
         quality,
         output_format: 'webp' as any,
         output_compression: WEBP_QUALITY,
@@ -442,21 +511,12 @@ function normalizeUsage(value: unknown): ImageUsage | null {
 }
 
 function estimateCostUsd(currentModel: string, currentQuality: Quality, usage: ImageUsage | null): number | null {
-  if (currentModel === 'gpt-image-2') {
-    if (!usage) return null
-    const textInput = usage.input_tokens_details?.text_tokens ?? usage.input_tokens ?? 0
-    const imageInput = usage.input_tokens_details?.image_tokens ?? 0
-    const imageOutput = usage.output_tokens ?? 0
-    return roundUsd((textInput * 5 + imageInput * 8 + imageOutput * 30) / 1_000_000)
-  }
-
-  const perImage: Record<string, Record<Quality, number>> = {
-    'gpt-image-1.5': { low: 0.013, medium: 0.05, high: 0.20 },
-    'chatgpt-image-latest': { low: 0.013, medium: 0.05, high: 0.20 },
-    'gpt-image-1': { low: 0.016, medium: 0.063, high: 0.25 },
-  }
-  if (perImage[currentModel]) return perImage[currentModel][currentQuality]
-  return null
+  return estimateOpenAiImageCostUsd({
+    model: currentModel,
+    quality: currentQuality as ImageQuality,
+    size: imageSize,
+    usage,
+  })
 }
 
 function pricingNote(currentModel: string): string {
@@ -464,10 +524,6 @@ function pricingNote(currentModel: string): string {
     return 'Estimated from OpenAI GPT-image-2 pricing: text input $5/1M tokens, image input $8/1M tokens, image output $30/1M tokens, using response usage.'
   }
   return 'Estimated from OpenAI model-page per-image price for 1536x1024.'
-}
-
-function roundUsd(value: number): number {
-  return Number(value.toFixed(6))
 }
 
 async function getLatestLiveCreatedDateMsk(supabase: any): Promise<string> {
@@ -482,6 +538,28 @@ async function getLatestLiveCreatedDateMsk(supabase: any): Promise<string> {
   if (error) throw error
   if (!data?.created_at) throw new Error('No published articles found')
   return toMoscowDate(data.created_at)
+}
+
+async function getTodayOpenAiImageSpend(supabase: any): Promise<number> {
+  const today = toMoscowDate(new Date().toISOString())
+  const { startIso, endIso } = getMoscowDayBounds(today)
+  const { data, error } = await supabase
+    .from('llm_usage_logs')
+    .select('estimated_cost_usd')
+    .eq('provider', 'openai')
+    .eq('operation', 'image_cover_generation')
+    .gte('created_at', startIso)
+    .lt('created_at', endIso)
+    .limit(10_000)
+
+  if (error) {
+    console.warn(`OpenAI image spend check failed: ${error.message}`)
+    return 0
+  }
+
+  return Number(((data ?? []) as Array<{ estimated_cost_usd: number | string | null }>)
+    .reduce((sum, row) => sum + Number(row.estimated_cost_usd ?? 0), 0)
+    .toFixed(6))
 }
 
 function getMoscowDayBounds(targetDate: string) {

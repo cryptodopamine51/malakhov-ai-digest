@@ -34,12 +34,16 @@ export const RU_AI_CORE_KEYWORDS: string[] = [
   'gpt',
   'llm',
   'ии',
+  'ии-',
+  'ии-агент',
+  'ии-ассистент',
   'openai',
   'anthropic',
   'mistral',
   'claude',
   'gemini',
   'gigachat',
+  'нейронк',
 ]
 
 export const RU_STARTUP_DEAL_KEYWORDS: string[] = [

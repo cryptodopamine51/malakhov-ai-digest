@@ -66,6 +66,14 @@ export function normalizeTitle(title: string): string {
     .trim()
 }
 
+export function normalizeKeywordText(text: string): string {
+  return text
+    .normalize('NFKC')
+    .replace(/ё/g, 'е')
+    .replace(/Ё/g, 'Е')
+    .toLowerCase()
+}
+
 /**
  * Канонизирует URL: убирает tracking-параметры, нормализует trailing slash.
  */
@@ -127,11 +135,12 @@ export function summarizeRejected(rejected: Iterable<RssRejectedSummary>): RssRe
 }
 
 export function keywordMatches(searchText: string, keyword: string): boolean {
-  const normalized = keyword.trim().toLowerCase()
+  const haystack = normalizeKeywordText(searchText)
+  const normalized = normalizeKeywordText(keyword.trim())
   if (normalized === 'ии' || normalized === 'ai') {
-    return new RegExp(`(^|[^\\p{L}\\p{N}])${normalized}([^\\p{L}\\p{N}]|$)`, 'iu').test(searchText)
+    return new RegExp(`(^|[^\\p{L}\\p{N}])${normalized}([^\\p{L}\\p{N}]|$)`, 'iu').test(haystack)
   }
-  return searchText.includes(normalized)
+  return haystack.includes(normalized)
 }
 
 /**
@@ -176,15 +185,19 @@ export async function fetchAllFeeds(maxAgeMinutes = 60): Promise<FetchAllFeedsRe
 /**
  * Парсит фид с одним retry при ошибке.
  */
-async function parseFeedWithRetry(
+export async function parseFeedWithRetry(
   parser: RSSParser,
   feed: FeedConfig,
-  cutoff: Date
+  cutoff: Date,
+  retryDelayMs = 3_000,
 ): Promise<{ items: ParsedItem[]; rejected: RssRejectedSummary[]; sourceResult: SourceFeedResult }> {
   try {
+    const first = await parseFeed(parser, feed, cutoff)
+    if (first.sourceResult.status !== 'failed') return first
+    if (retryDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
     return await parseFeed(parser, feed, cutoff)
   } catch {
-    await new Promise(r => setTimeout(r, 3_000))
+    if (retryDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
     return parseFeed(parser, feed, cutoff)
   }
 }
@@ -255,9 +268,7 @@ export async function parseFeed(
         const fields = feed.keywordSearchFields === 'title'
           ? [item.title ?? '']
           : [item.title ?? '', item.contentSnippet ?? item.content ?? '']
-        const searchText = fields
-          .join(' ')
-          .toLowerCase()
+        const searchText = normalizeKeywordText(fields.join(' '))
 
         const keywordList = feed.keywords ?? RU_AI_KEYWORDS
         const hasKeyword = feed.keywordGroups?.length
