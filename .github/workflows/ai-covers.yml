@@ -1,0 +1,35 @@
+name: Generate AI Covers
+
+# Schedule disabled until owner approves the OpenAI Images budget for editorial covers.
+# Wave 2026-05-06 explicitly required zero API spend; re-enable by adding the schedule
+# trigger back (e.g. `- cron: '10 */2 * * *'`) and bumping `OPENAI_IMAGE_DAILY_BUDGET_USD`.
+on:
+  workflow_dispatch:
+
+jobs:
+  covers:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate missing AI covers
+        run: npm run covers:ai-low -- --category=all --latest-day --limit=12 --apply --daily-budget=1
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_IMAGE_DAILY_BUDGET_USD: '1'
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
