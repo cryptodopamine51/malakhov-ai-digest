@@ -2,9 +2,9 @@
 
 > Главный управляющий файл проекта.
 > Он не подгружается автоматически “из памяти” между сессиями: в начале каждой новой работы его нужно открыть явно или запустить `npm run context`.
-> Последнее обновление: 2026-05-02
+> Последнее обновление: 2026-05-07
 
-Последняя закрытая инициатива: **Observability и публикация (2026-05-01)** — см. `docs/ORCHESTRATOR_observability_publication_2026-05-01.md`.
+Последняя закрытая инициатива: **Site improvements wave (2026-05-06)** — см. `docs/spec_2026-05-06_site_improvements.md` и `docs/execution_plan_2026-05-06_site_improvements.md`. Включает: cover cascade и UI-icon sanitizer без API spend, sort by `created_at desc` в основных лентах, окно «Самого интересного» 72ч, удаление sticky-заголовка, accent-ссылка на источник, vc.ru keyword variants, editorial clarity rule. Backfill 21 cover применён 2026-05-07 через `scripts/backfill-cover-images.ts --apply`; rollback-snapshot — `articles_cover_snapshot_20260507`.
 
 ## Как читать проект
 
