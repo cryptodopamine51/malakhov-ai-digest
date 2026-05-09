@@ -3,6 +3,12 @@ import { getArticleUrl } from '../lib/article-slugs'
 import { getAllArticlesForSitemap } from '../lib/articles'
 import { SITE_URL } from '../lib/site'
 
+// ISR: re-generate the sitemap every 30 minutes so newly published articles
+// land in the search engines' next crawl window. Without this, Next.js
+// renders sitemap.ts statically at build time and freshly published
+// articles are invisible to Yandex / Google until the next deploy.
+export const revalidate = 1800
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const articles = await getAllArticlesForSitemap()
 
