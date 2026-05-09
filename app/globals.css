@@ -43,6 +43,18 @@ a:focus-visible {
   border-radius: 2px;
 }
 
+.site-logo-mark--dark {
+  display: none;
+}
+
+[data-theme="dark"] .site-logo-mark--light {
+  display: none;
+}
+
+[data-theme="dark"] .site-logo-mark--dark {
+  display: block;
+}
+
 /* ─── Article typography ─── */
 .article-body {
   color: var(--ink);

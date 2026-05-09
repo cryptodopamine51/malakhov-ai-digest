@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState, useEffect } from 'react'
@@ -36,12 +37,32 @@ export default function Header() {
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4">
 
         {/* Логотип */}
-        <Link href="/" className="flex items-center gap-1.5 flex-shrink-0">
-          <span className="font-serif font-bold text-[16px] text-ink tracking-tight lg:text-[17px]">
-            Malakhov AI
+        <Link href="/" className="flex items-center gap-2 flex-shrink-0" aria-label="Malakhov AI Дайджест">
+          <span className="relative block h-7 w-7 shrink-0" aria-hidden="true">
+            <Image
+              src="/brand-mark-light.png"
+              alt=""
+              width={28}
+              height={28}
+              priority
+              className="site-logo-mark site-logo-mark--light h-7 w-7 object-contain"
+            />
+            <Image
+              src="/brand-mark-dark.png"
+              alt=""
+              width={28}
+              height={28}
+              priority
+              className="site-logo-mark site-logo-mark--dark h-7 w-7 object-contain"
+            />
           </span>
-          <span className="text-muted text-[13px] font-sans hidden sm:inline">
-            Дайджест
+          <span className="flex items-baseline gap-1.5">
+            <span className="font-serif font-bold text-[16px] text-ink tracking-tight lg:text-[17px]">
+              Malakhov AI
+            </span>
+            <span className="text-muted text-[13px] font-sans hidden sm:inline">
+              Дайджест
+            </span>
           </span>
         </Link>
 

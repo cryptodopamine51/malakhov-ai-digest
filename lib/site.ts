@@ -3,6 +3,8 @@ export const SITE_HOST = 'news.malakhovai.ru'
 export const SITE_NAME = 'Malakhov AI Дайджест'
 export const SITE_DESCRIPTION =
   'Русскоязычный редакционный дайджест об искусственном интеллекте: релизы, исследования, продукты, инвестиции и AI-рынок.'
+export const SITE_LOGO_PATH = '/icon-512x512.png'
+export const SITE_LOGO_URL = `${SITE_URL}${SITE_LOGO_PATH}`
 
 export function absoluteUrl(path = '/'): string {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
