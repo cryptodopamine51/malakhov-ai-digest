@@ -323,6 +323,7 @@ Broad RSS feeds допускаются только с keyword filters:
 - sitemap, RSS, llms.txt, Telegram digest, internal-ссылки и related — все используют новый URL через `getArticlePath(slug, primary_category)` / `getArticleUrl(siteUrl, slug, primary_category)` из `lib/article-slugs.ts`;
 - sitemap, RSS и `llms.txt` не берут canonical-домен из env: все публичные URL в этих поверхностях должны оставаться на `news.malakhovai.ru`;
 - `app/sitemap.ts` использует ISR (`export const revalidate = 1800`), чтобы пересобираться каждые 30 минут из live-выборки и не зависать на состоянии последнего деплоя — без этого свежие статьи невидимы для Яндекс/Google до следующего билда;
+- `pipeline/publish-verify.ts` после успешного перехода статьи в `live` вызывает `pingIndexNow()` (`lib/indexnow.ts`) на `https://api.indexnow.org/indexnow`, чтобы Yandex / Bing узнали о новом URL за минуты, а не за дни. Ключ — env `INDEXNOW_KEY`, проверочный файл — `app/indexnow.txt/route.ts`. Без env-переменной ping молча no-op'ится, publish-path не ломается. Google не участвует в IndexNow и продолжает индексировать через sitemap;
 - публичные листинги (`/archive/[date]`, `/sources`, `/sources/[source]`, `/categories/[category]`, `/russia`) задают canonical / `og:url` на news-домен через `lib/site.ts::absoluteUrl`;
 - новые slug создаются без случайных hex/uuid-хвостов; при коллизии используются понятные суффиксы `-2`, `-3`, ...;
 - slug назначается только в apply path, а не в submit phase;

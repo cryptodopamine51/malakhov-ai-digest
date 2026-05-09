@@ -48,7 +48,15 @@ PUBLISH_VERIFY_SECRET
 HEALTH_TOKEN
 NEXT_PUBLIC_METRIKA_ID
 CRON_SECRET
+INDEXNOW_KEY
 ```
+
+`INDEXNOW_KEY` — ключ протокола IndexNow для ускорения индексации Yandex / Bing.
+Значение публичное (это не секрет, а доказательство владения доменом). Используется
+двумя местами: `app/indexnow.txt/route.ts` отдаёт его как тело файла,
+`lib/indexnow.ts::pingIndexNow` подставляет в payload. Без переменной `pipeline/publish-verify.ts`
+no-op-ит ping и логирует `INDEXNOW_KEY not set`. Файл `https://news.malakhovai.ru/indexnow.txt`
+должен возвращать ровно содержимое env (IndexNow проверяет совпадение при каждом запросе).
 
 `CRON_SECRET` обязателен для эндпоинтов под Vercel Cron (см. `vercel.json`):
 Vercel автоматически добавляет `Authorization: Bearer ${CRON_SECRET}` к
