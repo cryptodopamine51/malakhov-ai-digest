@@ -322,6 +322,7 @@ Broad RSS feeds допускаются только с keyword filters:
 - production canonical-домен news-сайта задан в `lib/site.ts` как `https://news.malakhovai.ru`;
 - sitemap, RSS, llms.txt, Telegram digest, internal-ссылки и related — все используют новый URL через `getArticlePath(slug, primary_category)` / `getArticleUrl(siteUrl, slug, primary_category)` из `lib/article-slugs.ts`;
 - sitemap, RSS и `llms.txt` не берут canonical-домен из env: все публичные URL в этих поверхностях должны оставаться на `news.malakhovai.ru`;
+- `app/sitemap.ts` использует ISR (`export const revalidate = 1800`), чтобы пересобираться каждые 30 минут из live-выборки и не зависать на состоянии последнего деплоя — без этого свежие статьи невидимы для Яндекс/Google до следующего билда;
 - публичные листинги (`/archive/[date]`, `/sources`, `/sources/[source]`, `/categories/[category]`, `/russia`) задают canonical / `og:url` на news-домен через `lib/site.ts::absoluteUrl`;
 - новые slug создаются без случайных hex/uuid-хвостов; при коллизии используются понятные суффиксы `-2`, `-3`, ...;
 - slug назначается только в apply path, а не в submit phase;
