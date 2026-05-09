@@ -16,6 +16,8 @@ config({ path: resolve(process.cwd(), '.env.local') })
 
 import { getServerClient, type Article, type PublishArticleResult } from '../lib/supabase'
 import { readSiteUrlFromEnv } from '../lib/site'
+import { getArticleUrl } from '../lib/article-slugs'
+import { pingIndexNow } from '../lib/indexnow'
 import { fireAlert, resolveAlert } from './alerts'
 import { buildVerifyUrl, getVerifyCandidateKind } from './publish-verify-utils'
 
@@ -328,6 +330,7 @@ async function publishVerify(): Promise<void> {
   let resetToReady = 0
   let markedFailed = 0
   let regressions = 0
+  const indexNowUrls: string[] = []
 
   for (let i = 0; i < toVerify.length; i += CONCURRENCY) {
     const chunk = toVerify.slice(i, i + CONCURRENCY)
@@ -390,6 +393,9 @@ async function publishVerify(): Promise<void> {
             await resolveAlert(supabase, 'publish_verify_failed_warn', article.slug ?? article.id)
             if (transitionResult === 'published_live') {
               await resolveAlert(supabase, 'publish_rpc_bypass_active')
+              if (article.slug) {
+                indexNowUrls.push(getArticleUrl(siteUrl, article.slug, article.primary_category))
+              }
             }
             verifiedLive++
             log(`✓ ${transitionResult}: /articles/${article.slug}`)
@@ -523,6 +529,17 @@ async function publishVerify(): Promise<void> {
           log(`✗ verification_failed (exhausted): /articles/${article.slug}`)
         }
       }
+    }
+  }
+
+  if (indexNowUrls.length > 0) {
+    const indexNow = await pingIndexNow(indexNowUrls)
+    if (indexNow.skipped === 'no_key') {
+      log(`IndexNow: skipped (INDEXNOW_KEY not set, ${indexNowUrls.length} url(s) would have been pinged)`)
+    } else if (indexNow.ok) {
+      log(`IndexNow: pinged ${indexNow.pinged} url(s), status=${indexNow.status}`)
+    } else {
+      log(`IndexNow: ping failed status=${indexNow.status} error=${indexNow.errorMessage ?? 'n/a'}`)
     }
   }
 
