@@ -45,6 +45,10 @@ Malakhov AI Digest — русскоязычное AI-медиа, которое 
 - На news-сайте не использовать `malakhovai.ru` в canonical, `og:url`, sitemap или RSS links.
 - `lib/site.ts` содержит жёсткий production `SITE_URL = https://news.malakhovai.ru`; SEO-файлы
   не берут домен из env, чтобы preview/staging env не мог случайно заменить canonical.
+- Site identity ассеты лежат в `public/`: favicon/app icons, `brand-mark-light.png`,
+  `brand-mark-dark.png` и `og-default.png`. Metadata в `app/layout.tsx` должна ссылаться
+  на эти файлы напрямую, а JSON-LD Organization logo должен использовать
+  `SITE_LOGO_URL = https://news.malakhovai.ru/icon-512x512.png`.
 
 ## Что обязательно для продукта
 
