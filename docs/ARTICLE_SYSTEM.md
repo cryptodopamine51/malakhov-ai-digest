@@ -101,6 +101,37 @@ Batch-specific lifecycle не хранится в `articles.enrich_status`.
 - Ошибка записи `llm_usage_logs` больше не роняет collect/apply path: `writeLlmUsageLog`
   логирует проблему и поднимает warning alert `llm_usage_log_write_failed`.
 
+### Editorial validation and routing experiments
+
+`pipeline/claude.ts` содержит provider-neutral validator surface:
+
+- `validateEditorialDetailed()` возвращает `{ ok, errors, warnings, riskFlags }`;
+- `validateEditorial()` остаётся compatibility-wrapper-ом для существующего collect/apply path.
+
+Validator дополнительно проверяет:
+
+- каждый `link_anchor` должен присутствовать в `editorial_body` дословно;
+- banned phrases из editorial prompt across title/lead/summary/teasers/body;
+- standalone `AI` в русском тексте, кроме известных product/institution names;
+- basic body/teaser/summary shape.
+
+`pipeline/editorial-routing.ts` добавляет experimental routing policy для будущего cutover:
+
+- default config без env остаётся `premium` + `anthropic`;
+- `cheap/balanced` выбирают DeepSeek writer и selective compact Claude reviewer;
+- `buildDeterministicEditorialBrief()` заменяет дорогой Claude-orchestrator на code/template brief;
+- `shouldReviewWithClaude()` включает reviewer только на validator failure, high score или high-risk topics.
+
+`pipeline/editorial-repair.ts` выполняет дешёвые deterministic fixes перед reviewer:
+
+- safe replacement `AI` -> `ИИ` в русском тексте;
+- удаление invalid `link_anchors`;
+- сохранение/восстановление paragraph breaks для DeepSeek outputs;
+- безопасное сокращение слишком длинного `ru_title`.
+
+Это пока routing/lab surface, а не production enrich cutover. Current production enrich остаётся Anthropic Batch,
+пока 20-article lab и manual review не подтвердят качество cheap/balanced mode.
+
 ## Score и publish gate
 
 - Статья сначала оценивается scorer-ом.

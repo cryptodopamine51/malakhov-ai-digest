@@ -20,6 +20,8 @@ npm run publish-verify
 npm run recover-batch-stuck
 npm run cost:report
 npm run cost:guard
+npm run routing:lab
+npm run image:style-lab
 npm run tg-digest
 npm run docs:check
 ```
@@ -41,6 +43,8 @@ NEXT_PUBLIC_SITE_URL
 
 ```bash
 DEEPL_API_KEY
+DEEPSEEK_API_KEY
+OPENAI_API_KEY
 TELEGRAM_BOT_TOKEN
 TELEGRAM_CHANNEL_ID
 TELEGRAM_ADMIN_CHAT_ID
@@ -69,6 +73,9 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
 Аварийные/настроечные переменные:
 
 - `PUBLISH_RPC_DISABLED=1` — только emergency bypass для `publish-verify`: временно возвращает legacy update вместо RPC `publish_article` и поднимает warning alert `publish_rpc_bypass_active`.
+- `EDITORIAL_ROUTING_MODE=cheap|balanced|premium` — experimental multi-provider routing surface. Default должен оставаться `premium`, то есть текущий Claude Batch path.
+- `EDITORIAL_WRITER_PROVIDER=deepseek|anthropic` — override writer provider для routing lab/будущего worker-а. Для production без явного cutover не задавать.
+- `EDITORIAL_REVIEW_POLICY=none|selective|always` — политика compact Claude reviewer. Default для `cheap/balanced` — selective; для `premium` — none.
 
 ### Инвариант для URL-переменных
 
@@ -282,6 +289,53 @@ npx tsx scripts/replace-test-covers-with-editorial-templates.ts --top-russia=30 
 
 Скрипт не должен перезаписывать URL из `article-images/ai-covers/` и выбирает статьи в порядке
 production category page (`pub_date`, `created_at`, `score`, `id`).
+
+### Image style lab
+
+Для выбора визуального направления OpenAI Images до production backfill используется
+`scripts/image-style-lab.ts`. В отличие от `generate-ai-covers`, lab по умолчанию не пишет
+в Supabase и не обновляет `articles.cover_image_url`: даже в `--apply` он сохраняет варианты
+локально в `tmp/image-style-lab-*` и пишет `report.json`.
+
+```bash
+npm run image:style-lab -- --limit=5 --per-article=3 --category=all
+npm run image:style-lab -- --limit=1 --per-article=2 --apply --budget=0.03
+```
+
+Стили: `editorial-photographic`, `tech-still-life`, `abstract-infrastructure`,
+`documentary-collage`, `minimal-object-metaphor`.
+
+Правила:
+
+- default mode — dry-run, без OpenAI вызовов;
+- `--apply` генерирует локальные WebP для ручного сравнения, но не делает Storage upload;
+- `--budget=N` ограничивает суммарную оценочную стоимость прогона;
+- production-кандидат после smoke 2026-05-09 — `tech-still-life`;
+- если вариант содержит псевдотекст, fake UI или product screens, стиль/prompt нужно исправлять до массового backfill.
+
+### Model routing lab
+
+Для сравнения моделей на реальных статьях используется `scripts/model-routing-lab.ts`.
+
+```bash
+npm run routing:lab -- --limit=3 --missing-cover-only
+npm run routing:lab -- --limit=2 --missing-cover-only --modes=deepseek-full,balanced-review --apply
+```
+
+Modes:
+
+- `claude-full` — текущий Claude-style full article;
+- `deepseek-full` — DeepSeek writer, strict validator и deterministic repair;
+- `balanced-review` — deterministic brief -> DeepSeek writer -> deterministic repair -> strict validator -> selective compact Claude reviewer;
+- `hybrid` — старый дорогой Claude brief -> DeepSeek -> Claude full polish, оставлен только для сравнения.
+
+Правила:
+
+- default mode без `--apply` не тратит API budget и пишет только dry-run estimate;
+- `--apply` требует `DEEPSEEK_API_KEY` для DeepSeek modes и `ANTHROPIC_API_KEY` для reviewer/Claude modes;
+- результаты пишутся в `tmp/model-routing-lab-*`;
+- production default не переключать на DeepSeek, пока 20-article lab не даст приемлемый manual acceptance rate;
+- `hybrid` не использовать как default: paid lab 2026-05-07 показал, что он дороже текущего Claude baseline.
 
 ## Batch enrich runtime
 

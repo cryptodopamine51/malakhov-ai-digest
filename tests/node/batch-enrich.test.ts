@@ -9,6 +9,7 @@ import {
   MAX_TOKENS,
   parseEditorialJson,
   validateEditorial,
+  validateEditorialDetailed,
 } from '../../pipeline/claude'
 import {
   buildBatchCustomId,
@@ -31,9 +32,9 @@ const VALID_EDITORIAL_JSON = JSON.stringify({
   ],
   card_teaser: 'Batch-режим снижает стоимость enrich, но требует отдельного контроля за submit, collect и apply.',
   tg_teaser: 'Batch-обработка помогает экономить на enrich, но только если source of truth вынесен в batch tables, а apply сделан идемпотентным.',
-  editorial_body: 'OpenAI 21 апреля представила новый batch-режим для редакционных задач, который позволяет отправлять несколько запросов за один submit и позже забирать результаты отдельным collector-процессом. Такой режим особенно полезен для новостного pipeline, где десятки похожих задач появляются пакетно и не требуют ответа за секунды.\n\nДля контентного pipeline это важно не только из-за цены, но и из-за смены operational ownership. Пока sync worker держит lease на статье, риск смешения статусов ниже, но стоимость одной генерации выше. В batch-flow статья быстро отдаётся под ownership batch item, а значит recovery должен смотреть уже не на lease статьи, а на state конкретного item. Это меняет и observability: оператору нужно видеть не просто количество processing-статей, а сколько item уже submitted, сколько дошли до result import и сколько застряли перед final apply.\n\nПрактический эффект зависит от того, насколько аккуратно реализован apply. Если duplicate collect может второй раз записать article_attempts или переопределить slug, экономия на модели быстро теряется на эксплуатационных сбоях. Поэтому batch API стоит внедрять только вместе с идемпотентным apply, отдельным retry accounting, явным cutover-планом и batch-oriented recovery script. Иначе более дешёвый inference быстро оборачивается дорогой эксплуатацией.\n\nОтдельный вопрос — continuity метрик. Если baseline до миграции считался через enrich_runs, после перехода на batch нужно сохранить сопоставимость cost per claimed article, cost per enriched_ok и latency до publish_ready. Без этого команда увидит снижение счёта за модель, но не поймёт, действительно ли система стала эффективнее в терминах опубликованных материалов.',
+  editorial_body: 'OpenAI 21 апреля представила новый batch-режим для редакционных задач, который позволяет отправлять несколько запросов за один submit и позже забирать результаты отдельным collector-процессом. Такой режим особенно полезен для новостного pipeline, где десятки похожих задач появляются пакетно и не требуют ответа за секунды.\n\nДля контентного pipeline это важно не только из-за цены, но и из-за смены operational ownership. Пока sync worker держит lease на статье, риск смешения статусов ниже, но стоимость одной генерации выше. В batch-flow статья быстро отдаётся под ownership batch item, а значит recovery должен смотреть уже не на lease статьи, а на state конкретного item. Это меняет и observability: оператору нужно видеть не просто количество processing-статей, а сколько item уже submitted, сколько дошли до result import и сколько застряли перед final apply.\n\nПрактический эффект зависит от того, насколько аккуратно реализован apply. Если duplicate collect может второй раз записать article_attempts или переопределить slug, экономия на модели быстро теряется на эксплуатационных сбоях. Поэтому batch API стоит внедрять только вместе с идемпотентным apply, отдельным retry accounting, явным cutover-планом и batch-oriented recovery script. Иначе более дешёвый inference быстро оборачивается дорогой эксплуатацией.\n\nОтдельный вопрос — continuity метрик. Если baseline до миграции считался через enrich_runs, после перехода на batch нужно сохранить сопоставимость cost per claimed article, cost per enriched_ok и latency до publish_ready. Без этого команда увидит снижение счёта за модель, но не поймёт, стала ли система эффективнее в терминах опубликованных материалов.',
   glossary: [{ term: 'batch item', definition: 'Отдельный запрос внутри общего batch job, который имеет собственный lifecycle и результат.' }],
-  link_anchors: ['идемпотентным apply', 'batch item', 'операционных сбоев'],
+  link_anchors: ['идемпотентным apply', 'batch item', 'эксплуатационных сбоях'],
   quality_ok: true,
   quality_reason: '',
 })
@@ -121,6 +122,33 @@ test('parseEditorialJson and validateEditorial accept valid output contract', ()
   const parsed = parseEditorialJson(VALID_EDITORIAL_JSON)
   assert.ok(parsed)
   assert.equal(validateEditorial(parsed!), null)
+})
+
+test('validateEditorial rejects link anchors that are not present verbatim', () => {
+  const parsed = parseEditorialJson(VALID_EDITORIAL_JSON)!
+  parsed.link_anchors = ['не существующий анкор']
+
+  const detailed = validateEditorialDetailed(parsed)
+  assert.equal(detailed.ok, false)
+  assert.match(validateEditorial(parsed) ?? '', /link_anchor отсутствует/)
+})
+
+test('validateEditorial rejects banned editorial phrases', () => {
+  const parsed = parseEditorialJson(VALID_EDITORIAL_JSON)!
+  parsed.editorial_body = parsed.editorial_body.replace('Для контентного pipeline', 'В рамках контентного pipeline')
+
+  const detailed = validateEditorialDetailed(parsed)
+  assert.equal(detailed.ok, false)
+  assert.ok(detailed.errors.some((error) => error.includes('запрещённая фраза: "в рамках"')))
+})
+
+test('validateEditorial rejects standalone AI in Russian copy', () => {
+  const parsed = parseEditorialJson(VALID_EDITORIAL_JSON)!
+  parsed.editorial_body = parsed.editorial_body.replace('редакционных задач', 'AI-агентов')
+
+  const detailed = validateEditorialDetailed(parsed)
+  assert.equal(detailed.ok, false)
+  assert.ok(detailed.errors.includes('standalone AI в русском тексте'))
 })
 
 test('normalizeBatchResult extracts text and usage for succeeded item', () => {

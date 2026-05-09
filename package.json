@@ -24,6 +24,7 @@
     "cost:articles": "tsx scripts/article-cost-report.ts",
     "cost:guard": "tsx pipeline/cost-guard.ts",
     "routing:lab": "tsx scripts/model-routing-lab.ts",
+    "image:style-lab": "tsx scripts/image-style-lab.ts",
     "covers:ai-low": "tsx scripts/generate-ai-covers.ts --quality=low",
     "publish-verify": "tsx pipeline/publish-verify.ts",
     "tg-digest": "tsx bot/daily-digest.ts",

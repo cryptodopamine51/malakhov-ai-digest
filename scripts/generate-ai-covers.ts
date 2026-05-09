@@ -363,7 +363,7 @@ Palette:
 Off-white paper, graphite, warm gray, muted coral, salmon, mustard, ochre, teal, dusty blue. Keep contrast strong enough for a news-card thumbnail.
 
 Strict avoid list:
-No readable text, no letters, no numbers, no words, no Russian text, no logos, no trademarks, no watermarks. No generic code screen as the main subject. No glowing AI brain, no glowing network sphere, no centered business person, no handshake, no browser-window stack, no crypto coin, no robot mascot, no corporate stock-photo look, no beige symmetrical template.
+No readable text, no pseudo-text, no letters, no numbers, no words, no Russian text, no logos, no trademarks, no watermarks. No smartphones or laptops showing app UI, fake dashboards, charts with numbers, browser windows, login screens, or product comparison screens. No generic code screen as the main subject. No glowing AI brain, no glowing network sphere, no centered business person, no handshake, no browser-window stack, no crypto coin, no robot mascot, no corporate stock-photo look, no beige symmetrical template.
 
 Output:
 16:9 landscape editorial cover, sophisticated, memorable, varied from other covers in the same publication series.`
