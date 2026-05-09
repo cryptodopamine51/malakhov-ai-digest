@@ -57,6 +57,9 @@ INDEXNOW_KEY
 `lib/indexnow.ts::pingIndexNow` подставляет в payload. Без переменной `pipeline/publish-verify.ts`
 no-op-ит ping и логирует `INDEXNOW_KEY not set`. Файл `https://news.malakhovai.ru/indexnow.txt`
 должен возвращать ровно содержимое env (IndexNow проверяет совпадение при каждом запросе).
+Хранить ключ нужно одновременно в Vercel Project Settings (для рендера `/indexnow.txt`) и в
+GitHub Actions secrets (для cron `publish-verify.yml`, который читает env и вызывает
+`pingIndexNow` после каждого `published_live` перехода).
 
 `CRON_SECRET` обязателен для эндпоинтов под Vercel Cron (см. `vercel.json`):
 Vercel автоматически добавляет `Authorization: Bearer ${CRON_SECRET}` к
