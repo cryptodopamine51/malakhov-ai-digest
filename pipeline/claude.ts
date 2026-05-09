@@ -168,6 +168,13 @@ export interface EditorialGenerationResult {
   errorMessage?: string
 }
 
+export interface EditorialValidationResult {
+  ok: boolean
+  errors: string[]
+  warnings: string[]
+  riskFlags: string[]
+}
+
 export const ZERO_USAGE: TokenUsage = {
   inputTokens: 0,
   outputTokens: 0,
@@ -274,24 +281,172 @@ export function parseEditorialJson(raw: string): EditorialOutput | null {
   }
 }
 
-export function validateEditorial(out: EditorialOutput): string | null {
-  if (!out || typeof out !== 'object') return 'не объект'
-  if (out.ru_title.length < 20 || out.ru_title.length > 90) return `ru_title длина ${out.ru_title.length}`
-  if (out.lead.length < 100 || out.lead.length > 400) return `lead длина ${out.lead.length}`
-  if (!Array.isArray(out.summary) || out.summary.length < 3 || out.summary.length > 5) return `summary length ${out.summary?.length}`
-  if (out.summary.some((s) => s.length < 40 || s.length > 200)) return 'summary элемент вне диапазона'
-  if (out.card_teaser.length < 60 || out.card_teaser.length > 160) return `card_teaser длина ${out.card_teaser.length}`
-  if (out.tg_teaser.length < 120 || out.tg_teaser.length > 300) return `tg_teaser длина ${out.tg_teaser.length}`
-  if (out.editorial_body.length < 1200) return `editorial_body слишком короткий: ${out.editorial_body.length}`
-  if (out.editorial_body.split('\n\n').length < 3) return 'editorial_body меньше 3 абзацев'
-  if (!Array.isArray(out.glossary)) return 'glossary не массив'
-  if (!Array.isArray(out.link_anchors)) return 'link_anchors не массив'
-  if (out.article_tables && !Array.isArray(out.article_tables)) return 'article_tables не массив'
-  if (out.article_tables?.some((table) => !Array.isArray(table.headers) || !Array.isArray(table.rows))) {
-    return 'article_tables некорректный формат'
+export const EDITORIAL_BANNED_PHRASES = [
+  'важно отметить',
+  'стоит обратить внимание',
+  'в мире ИИ',
+  'эта новость важна',
+  'как известно',
+  'поистине',
+  'впервые в истории',
+  'это меняет всё',
+  'прорыв',
+  'революция',
+  'настоящий',
+  'невероятный',
+  'потрясающий',
+  'осуществлять',
+  'в рамках',
+  'что касается',
+  'на сегодняшний день',
+  'что ж',
+  'итак',
+  'действительно',
+]
+
+const ALLOWED_AI_NAME_PATTERNS = [
+  /\bOpenAI\b/i,
+  /\bHugging\s+Face\s+AI\b/i,
+  /\bGoogle\s+AI\b/i,
+  /\bMeta\s+AI\b/i,
+  /\bMicrosoft\s+AI\b/i,
+  /\bAI\s+Index\b/i,
+  /\bAI\s+Studio\b/i,
+  /\bAI\s+Overviews\b/i,
+  /\bAI\s+Mode\b/i,
+  /\bAI\s+Act\b/i,
+  /\bAI\s+Safety\s+Institute\b/i,
+  /\bAI2\b/i,
+]
+
+function textFields(out: EditorialOutput): string {
+  return [
+    out.ru_title,
+    out.lead,
+    ...(Array.isArray(out.summary) ? out.summary : []),
+    out.card_teaser,
+    out.tg_teaser,
+    out.editorial_body,
+    ...(Array.isArray(out.glossary) ? out.glossary.flatMap((entry) => [entry.term, entry.definition]) : []),
+  ].filter((value): value is string => typeof value === 'string').join('\n')
+}
+
+function hasDisallowedStandaloneAi(text: string): boolean {
+  const matches = [...text.matchAll(/\bAI(?:-[\p{L}\p{N}]+)?\b/giu)]
+  return matches.some((match) => {
+    const index = match.index ?? 0
+    const context = text.slice(Math.max(0, index - 24), index + match[0].length + 48)
+    return !ALLOWED_AI_NAME_PATTERNS.some((pattern) => pattern.test(context))
+  })
+}
+
+function hasLeadAnchor(lead: string): boolean {
+  const firstSentence = lead.split(/[.!?]/)[0] ?? lead
+  const russianNumberWord = /\b(один|одна|одно|два|две|три|четыре|пять|шесть|семь|восемь|девять|десять|месяц|месяца|месяцев|год|года|лет)\b/i
+  return (
+    /\d/.test(firstSentence) ||
+    russianNumberWord.test(firstSentence) ||
+    /\b[A-ZА-ЯЁ][A-Za-zА-Яа-яЁё0-9.-]{2,}/.test(firstSentence) ||
+    /\b[A-Z][A-Za-z0-9.-]*(?:GPT|AI|LLM|API|ML|Cloud|Labs|Search|Studio|Claude|Gemini|Llama|DeepSeek|OpenAI)[A-Za-z0-9.-]*\b/i.test(firstSentence)
+  )
+}
+
+export function validateEditorialDetailed(out: EditorialOutput): EditorialValidationResult {
+  const errors: string[] = []
+  const warnings: string[] = []
+  const riskFlags: string[] = []
+
+  if (!out || typeof out !== 'object') {
+    return { ok: false, errors: ['не объект'], warnings, riskFlags }
   }
-  if (typeof out.quality_ok !== 'boolean') return 'quality_ok не boolean'
-  return null
+
+  if (typeof out.ru_title !== 'string') errors.push('ru_title не string')
+  else if (out.ru_title.length < 20 || out.ru_title.length > 90) errors.push(`ru_title длина ${out.ru_title.length}`)
+
+  if (typeof out.lead !== 'string') errors.push('lead не string')
+  else {
+    if (out.lead.length < 100 || out.lead.length > 400) errors.push(`lead длина ${out.lead.length}`)
+    if (!hasLeadAnchor(out.lead)) errors.push('lead без конкретного якоря в первом предложении')
+  }
+
+  if (!Array.isArray(out.summary) || out.summary.length < 3 || out.summary.length > 5) {
+    errors.push(`summary length ${Array.isArray(out.summary) ? out.summary.length : 'not_array'}`)
+  } else if (out.summary.some((s) => typeof s !== 'string' || s.length < 40 || s.length > 200)) {
+    errors.push('summary элемент вне диапазона')
+  }
+
+  if (typeof out.card_teaser !== 'string') errors.push('card_teaser не string')
+  else if (out.card_teaser.length < 60 || out.card_teaser.length > 160) {
+    errors.push(`card_teaser длина ${out.card_teaser.length}`)
+  }
+
+  if (typeof out.tg_teaser !== 'string') errors.push('tg_teaser не string')
+  else if (out.tg_teaser.length < 120 || out.tg_teaser.length > 300) {
+    errors.push(`tg_teaser длина ${out.tg_teaser.length}`)
+  }
+
+  if (typeof out.editorial_body !== 'string') {
+    errors.push('editorial_body не string')
+  } else {
+    if (out.editorial_body.length < 1200) errors.push(`editorial_body слишком короткий: ${out.editorial_body.length}`)
+    if (out.editorial_body.split('\n\n').filter((paragraph) => paragraph.trim()).length < 3) {
+      errors.push('editorial_body меньше 3 абзацев')
+    }
+  }
+
+  if (!Array.isArray(out.glossary)) errors.push('glossary не массив')
+  if (!Array.isArray(out.link_anchors)) {
+    errors.push('link_anchors не массив')
+  } else if (typeof out.editorial_body === 'string') {
+    for (const anchor of out.link_anchors) {
+      if (typeof anchor !== 'string') {
+        errors.push('link_anchors содержит не string')
+        continue
+      }
+      const words = anchor.trim().split(/\s+/).filter(Boolean)
+      if (words.length < 2 || words.length > 8) warnings.push(`link_anchor length suspicious: "${anchor}"`)
+      if (!out.editorial_body.includes(anchor)) errors.push(`link_anchor отсутствует в editorial_body: "${anchor}"`)
+    }
+  }
+
+  if (out.article_tables && !Array.isArray(out.article_tables)) errors.push('article_tables не массив')
+  if (out.article_tables?.some((table) => !Array.isArray(table.headers) || !Array.isArray(table.rows))) {
+    errors.push('article_tables некорректный формат')
+  }
+
+  if (typeof out.quality_ok !== 'boolean') {
+    errors.push('quality_ok не boolean')
+  }
+  if (out.quality_ok === false && (typeof out.quality_reason !== 'string' || out.quality_reason.trim().length < 10)) {
+    errors.push('quality_reason пустой при quality_ok=false')
+  }
+
+  const fullText = textFields(out)
+  const lowerText = fullText.toLowerCase()
+  for (const phrase of EDITORIAL_BANNED_PHRASES) {
+    if (lowerText.includes(phrase.toLowerCase())) errors.push(`запрещённая фраза: "${phrase}"`)
+  }
+
+  if (hasDisallowedStandaloneAi(fullText)) errors.push('standalone AI в русском тексте')
+
+  if (/\$|млн|млрд|оценк[аиу]|инвестиц|раунд/i.test(fullText)) riskFlags.push('money')
+  if (/регулирован|закон|иск|судебн|правов|санкци|конфиденциальн|персональн|авторск|EU AI Act|AI Act/i.test(fullText)) {
+    riskFlags.push('legal_regulation')
+  }
+  if (/медицин|диагноз|пациент|лекарств|клиник/i.test(fullText)) riskFlags.push('medical')
+  if (/войн|геополит|выбор|государств|разведк/i.test(fullText)) riskFlags.push('geopolitics')
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    riskFlags: [...new Set(riskFlags)],
+  }
+}
+
+export function validateEditorial(out: EditorialOutput): string | null {
+  const result = validateEditorialDetailed(out)
+  return result.ok ? null : result.errors[0] ?? 'validation failed'
 }
 
 export function usageFromMessage(message: Pick<Message, 'usage'>): TokenUsage {

@@ -16,13 +16,24 @@ import {
   buildEditorialUserMessage,
   parseEditorialJson,
   validateEditorial,
+  validateEditorialDetailed,
   type EditorialOutput,
   type EditorialRequest,
 } from '../pipeline/claude'
+import {
+  buildClaudeReviewerPrompt,
+  buildDeterministicEditorialBrief,
+  getEditorialRoutingConfig,
+  parseClaudeReviewerResult,
+  shouldReviewWithClaude,
+  type ClaudeReviewerResult,
+  type ArticleRoutingContext,
+} from '../pipeline/editorial-routing'
+import { repairEditorialOutput } from '../pipeline/editorial-repair'
 import { fetchArticleContent } from '../pipeline/fetcher'
 import { estimateTextCostUsd, type TextProvider, type TextUsageForCost } from '../pipeline/model-pricing'
 
-type Mode = 'claude-full' | 'deepseek-full' | 'hybrid'
+type Mode = 'claude-full' | 'deepseek-full' | 'balanced-review' | 'hybrid'
 
 interface Args {
   apply: boolean
@@ -67,6 +78,18 @@ interface ModeResult {
   mode: Mode
   status: 'planned' | 'ok' | 'failed'
   validationError: string | null
+  validation?: {
+    ok: boolean
+    errors: string[]
+    warnings: string[]
+    riskFlags: string[]
+  }
+  review?: {
+    required: boolean
+    reasons: string[]
+    result: ClaudeReviewerResult | null
+  }
+  repairs?: string[]
   qualityOk: boolean | null
   outputPath: string | null
   totalCostUsd: number
@@ -136,7 +159,12 @@ function parseArgs(): Args {
   const modes = String(flags.get('modes') ?? 'claude-full,deepseek-full,hybrid')
     .split(',')
     .map((mode) => mode.trim())
-    .filter((mode): mode is Mode => mode === 'claude-full' || mode === 'deepseek-full' || mode === 'hybrid')
+    .filter((mode): mode is Mode =>
+      mode === 'claude-full' ||
+      mode === 'deepseek-full' ||
+      mode === 'balanced-review' ||
+      mode === 'hybrid'
+    )
 
   return {
     apply: flags.has('apply'),
@@ -251,6 +279,19 @@ function requestFor(article: ArticleRow, originalText: string): EditorialRequest
   }
 }
 
+function routingContextFor(article: ArticleRow, originalText: string): ArticleRoutingContext {
+  return {
+    sourceName: article.source_name,
+    originalTitle: article.original_title,
+    originalText,
+    topics: article.topics ?? [],
+    primaryCategory: article.primary_category,
+    secondaryCategories: article.secondary_categories ?? [],
+    score: article.score,
+    hasCover: Boolean(article.cover_image_url),
+  }
+}
+
 async function selectArticles(): Promise<ArticleRow[]> {
   const supabase = getServerClient()
   let query = supabase
@@ -286,7 +327,9 @@ function outputResult(
   mode: Mode,
   output: EditorialOutput | null,
   steps: StepResult[],
+  extras?: Pick<ModeResult, 'review' | 'repairs'>,
 ): ModeResult {
+  const validation = output ? validateEditorialDetailed(output) : null
   const validationError = output ? validateEditorial(output) : 'missing output'
   const filename = `${safeName(article.slug, article.id)}-${mode}.json`
   const outputPath = output ? join(args.outDir, filename) : null
@@ -296,6 +339,9 @@ function outputResult(
     mode,
     status: validationError ? 'failed' : 'ok',
     validationError,
+    validation: validation ?? undefined,
+    review: extras?.review,
+    repairs: extras?.repairs,
     qualityOk: output?.quality_ok ?? null,
     outputPath,
     totalCostUsd: roundUsd(steps.reduce((sum, step) => sum + step.estimatedCostUsd, 0)),
@@ -339,14 +385,25 @@ function deepSeekClient(): OpenAI {
   return new OpenAI({
     apiKey,
     baseURL: process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com',
+    timeout: numberEnv('DEEPSEEK_TIMEOUT_MS', 180_000),
+    maxRetries: numberEnv('DEEPSEEK_MAX_RETRIES', 2),
   })
+}
+
+function numberEnv(name: string, fallback: number): number {
+  const value = Number(process.env[name])
+  return Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function validateApplyEnv(): void {
   if (!args.apply) return
 
-  const needsDeepSeek = args.modes.some((mode) => mode === 'deepseek-full' || mode === 'hybrid')
-  const needsAnthropic = args.modes.some((mode) => mode === 'claude-full' || mode === 'hybrid')
+  const needsDeepSeek = args.modes.some((mode) => mode === 'deepseek-full' || mode === 'balanced-review' || mode === 'hybrid')
+  const needsAnthropic = args.modes.some((mode) => mode === 'claude-full' || mode === 'balanced-review' || mode === 'hybrid')
 
   if (needsDeepSeek && !process.env.DEEPSEEK_API_KEY) {
     throw new Error('DEEPSEEK_API_KEY is missing')
@@ -363,29 +420,58 @@ async function deepSeekJson(params: {
   maxTokens: number
 }): Promise<{ text: string; step: StepResult }> {
   const client = deepSeekClient()
-  const response = await client.chat.completions.create({
-    model: args.deepseekModel,
-    temperature: 0.4,
-    max_tokens: params.maxTokens,
-    response_format: { type: 'json_object' },
-    messages: [
-      { role: 'system', content: params.system },
-      { role: 'user', content: params.user },
-    ],
-  } as any)
+  let lastError: string | undefined
 
-  const usage = deepSeekUsage(response.usage)
-  const text = response.choices[0]?.message?.content ?? ''
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const response = await client.chat.completions.create({
+        model: args.deepseekModel,
+        temperature: 0.4,
+        max_tokens: params.maxTokens,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: params.system },
+          { role: 'user', content: params.user },
+        ],
+      } as any)
+
+      const usage = deepSeekUsage(response.usage)
+      const text = response.choices[0]?.message?.content ?? ''
+      if (!text && attempt < 2) {
+        lastError = 'empty response'
+        continue
+      }
+      return {
+        text,
+        step: {
+          provider: 'deepseek',
+          model: args.deepseekModel,
+          operation: params.operation,
+          usage,
+          estimatedCostUsd: usageCost('deepseek', args.deepseekModel, usage),
+          status: text ? 'ok' : 'failed',
+          error: text ? undefined : 'empty response',
+        },
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error)
+      if (attempt < 2) {
+        await sleep(1500 * attempt)
+        continue
+      }
+    }
+  }
+
   return {
-    text,
+    text: '',
     step: {
       provider: 'deepseek',
       model: args.deepseekModel,
       operation: params.operation,
-      usage,
-      estimatedCostUsd: usageCost('deepseek', args.deepseekModel, usage),
-      status: text ? 'ok' : 'failed',
-      error: text ? undefined : 'empty response',
+      usage: { inputTokens: 0, outputTokens: 0 },
+      estimatedCostUsd: 0,
+      status: 'failed',
+      error: lastError ?? 'deepseek request failed',
     },
   }
 }
@@ -408,7 +494,97 @@ async function runDeepSeekFull(article: ArticleRow, originalText: string): Promi
     maxTokens: 4000,
   })
 
-  return outputResult(article, 'deepseek-full', parseEditorialJson(text), [step])
+  const output = parseEditorialJson(text)
+  if (!output) return outputResult(article, 'deepseek-full', null, [step])
+  const repaired = repairEditorialOutput(output)
+  return outputResult(article, 'deepseek-full', repaired.output, [step], { repairs: repaired.fixes })
+}
+
+async function runBalancedReview(article: ArticleRow, originalText: string): Promise<ModeResult> {
+  const context = routingContextFor(article, originalText)
+  const config = getEditorialRoutingConfig({
+    EDITORIAL_ROUTING_MODE: 'balanced',
+    EDITORIAL_WRITER_PROVIDER: 'deepseek',
+    EDITORIAL_REVIEW_POLICY: 'selective',
+  })
+  const system = buildEditorialSystemPrompt()
+  const user =
+    'Use this deterministic editorial brief as planning context, but preserve the required final JSON schema.\n\n' +
+    buildDeterministicEditorialBrief(context)
+
+  if (!args.apply) {
+    const draftStep = plannedStep('deepseek', args.deepseekModel, 'deepseek_balanced_article', `${system}\n${user}`, 2800)
+    const reviewStep = plannedStep(
+      'anthropic',
+      args.claudeModel,
+      'claude_selective_reviewer',
+      `${article.original_title}\n${originalText.slice(0, 5000)}`,
+      450,
+    )
+    return plannedResult('balanced-review', [draftStep, reviewStep])
+  }
+
+  const draft = await deepSeekJson({
+    operation: 'deepseek_balanced_article',
+    system,
+    user,
+    maxTokens: 4000,
+  })
+  const steps: StepResult[] = [draft.step]
+  const output = parseEditorialJson(draft.text)
+  if (!output) return outputResult(article, 'balanced-review', null, steps)
+
+  const repaired = repairEditorialOutput(output)
+  const validation = validateEditorialDetailed(repaired.output)
+  const reviewDecision = shouldReviewWithClaude({ config, context, validation, output: repaired.output })
+  let reviewResult: ClaudeReviewerResult | null = null
+
+  if (reviewDecision.shouldReview) {
+    const reviewPrompt = buildClaudeReviewerPrompt({
+      context,
+      output: repaired.output,
+      validation,
+      reasons: reviewDecision.reasons,
+    })
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+    const reviewMessage = await anthropic.messages.create({
+      model: args.claudeModel,
+      max_tokens: 900,
+      temperature: 0.1,
+      system: reviewPrompt.system,
+      messages: [{ role: 'user', content: reviewPrompt.user }],
+    } as any) as Message
+    const reviewUsage = anthropicUsage(reviewMessage)
+    const reviewText = extractAnthropicText(reviewMessage)
+    reviewResult = parseClaudeReviewerResult(reviewText)
+    steps.push({
+      provider: 'anthropic',
+      model: args.claudeModel,
+      operation: 'claude_selective_reviewer',
+      usage: reviewUsage,
+      estimatedCostUsd: usageCost('anthropic', args.claudeModel, reviewUsage),
+      status: reviewResult ? 'ok' : 'failed',
+      error: reviewResult ? undefined : 'review parse failed',
+    })
+  }
+
+  const result = outputResult(article, 'balanced-review', repaired.output, steps, {
+    review: {
+      required: reviewDecision.shouldReview,
+      reasons: reviewDecision.reasons,
+      result: reviewResult,
+    },
+    repairs: repaired.fixes,
+  })
+  if (reviewResult && (!reviewResult.pass || reviewResult.publish_recommendation !== 'publish')) {
+    return {
+      ...result,
+      status: 'failed',
+      validationError: result.validationError ?? `review_${reviewResult.publish_recommendation}`,
+      error: reviewResult.blocking_issues[0] ?? `review_${reviewResult.publish_recommendation}`,
+    }
+  }
+  return result
 }
 
 function orchestratorPrompt(article: ArticleRow, originalText: string): { system: string; user: string } {
@@ -512,6 +688,7 @@ async function runMode(article: ArticleRow, originalText: string, mode: Mode): P
   try {
     if (mode === 'claude-full') return await runClaudeFull(article, originalText)
     if (mode === 'deepseek-full') return await runDeepSeekFull(article, originalText)
+    if (mode === 'balanced-review') return await runBalancedReview(article, originalText)
     return await runHybrid(article, originalText)
   } catch (error) {
     return {
