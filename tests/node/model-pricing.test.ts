@@ -47,7 +47,7 @@ test('estimateTextCostUsd uses DeepSeek cache split when present', () => {
     },
   })
 
-  assert.equal(cost, 0.000426)
+  assert.equal(cost, 0.000476)
 })
 
 test('estimateOpenAiImageCostUsd returns low 1536x1024 cover price', () => {

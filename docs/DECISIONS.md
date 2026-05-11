@@ -114,10 +114,10 @@
 
 - Recommendation: не выбирать новую модель сейчас. Сначала использовать Batch API как независимый рычаг, продолжить замер cache hit rate и через 2 недели вернуться к A/B Sonnet vs Haiku/OpenAI Mini на сохранённых исходниках.
 
-## ADR-010 · DeepSeek routing запускается только fallback-first и вручную
+## ADR-010 · DeepSeek routing запускается только fallback-first
 
 - Status: accepted
 - Date: 2026-05-11
 - Context: model-routing lab показал, что DeepSeek может дать cheap editorial draft примерно за `$0.001` на статью, но production path не должен рисковать публикацией validator-failed или редакционно слабого материала.
-- Decision: scheduled production enrich остаётся Anthropic Batch. DeepSeek доступен только через manual `npm run editorial:routing` runner: dry-run по умолчанию, `--apply` обязателен для записи, low-risk output проходит deterministic repair + strict validator + provider-neutral apply gate. Любая provider/API/parse/validator/quality/reviewer проблема маршрутизируется в текущий Claude Batch fallback как `editorial_premium_fallback`.
-- Consequences: стоимость можно снижать постепенно и измеримо, не меняя cron default. Fallback rate и провайдерские попытки видны в `llm_usage_logs`; live-публикация остаётся за `publish-verify` RPC. Cutover в cron запрещён до 20 manually reviewed articles и понятного fallback accounting.
+- Decision: production `enrich.yml` запускает `npm run editorial:routing -- --mode=cheap --limit=15 --apply --deepseek-daily-budget=0.25`. Low-risk output проходит deterministic repair + strict validator + provider-neutral apply gate. Любая provider/API/parse/validator/quality/reviewer проблема маршрутизируется в текущий Claude Batch fallback как `editorial_premium_fallback`.
+- Consequences: стоимость снижается на обычных low-risk статьях, но high-risk и failed cheap attempts остаются на Anthropic Batch. Fallback rate и провайдерские попытки видны в `llm_usage_logs`; live-публикация остаётся за `publish-verify` RPC. Если manual review покажет просадку качества, откат — вернуть `enrich.yml` на `npm run enrich-submit-batch`.

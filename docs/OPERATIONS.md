@@ -81,7 +81,7 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
 - `EDITORIAL_ROUTING_MODE=cheap|balanced|premium` — experimental multi-provider routing surface. Default должен оставаться `premium`, то есть текущий Claude Batch path.
 - `EDITORIAL_WRITER_PROVIDER=deepseek|anthropic` — override writer provider для routing lab/будущего worker-а. Для production без явного cutover не задавать.
 - `EDITORIAL_REVIEW_POLICY=none|selective|always` — политика compact Claude reviewer. Default для `cheap/balanced` — selective; для `premium` — none.
-- `DEEPSEEK_DAILY_BUDGET_USD` — hard logical cap для manual `editorial:routing --apply`; default в скрипте `$0.10`.
+- `DEEPSEEK_DAILY_BUDGET_USD` — hard logical cap для `editorial:routing --apply`; default в workflow `$0.25`.
 - `OPENAI_IMAGE_DAILY_BUDGET_USD` — hard logical cap для AI cover workflow/ручного backfill; текущий workflow задаёт `$1`.
 
 ### Инвариант для URL-переменных
@@ -95,7 +95,7 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
 | Workflow | Расписание | Назначение |
 |---|---|---|
 | `rss-parse.yml` | каждые 30 минут | ingest RSS-источников |
-| `enrich.yml` | каждые 30 минут | recover + cost-guard pre-check + batch submit |
+| `enrich.yml` | каждые 30 минут | recover + cost-guard pre-check + fallback-first editorial routing |
 | `enrich-collect-batch.yml` | каждые 15 минут | collect/apply готовых batch results |
 | `recover-batch-stuck.yml` | каждые 30 минут | recovery для stuck batch poll/apply (включая null-poll auto-rescue) |
 | `publish-verify.yml` | каждый час, на 20 минуте | проверка live-публикации |
@@ -104,8 +104,8 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
 | `ai-covers.yml` | каждые 2 часа, на 10 минуте | дешёвые OpenAI Images low cover для live-статей без обложки |
 | `docs-guard.yml` | push/pull request | проверка doc-impact |
 
-DeepSeek editorial routing intentionally has no scheduled GitHub Actions workflow. It is manual-only
-until the 20-article review gate is accepted.
+DeepSeek editorial routing runs from `enrich.yml` in `cheap` mode. Anthropic Batch remains the
+fallback path and is still collected by `enrich-collect-batch.yml`.
 
 > **Telegram-дайджест с 2026-05-02 ушёл из GitHub Actions в Vercel Cron** —
 > см. ниже. `tg-digest.yml` удалён.
@@ -350,7 +350,7 @@ Modes:
 
 ### Manual editorial routing runner
 
-Для limited rollout используется `scripts/run-editorial-routing.ts`.
+Для scheduled limited rollout используется `scripts/run-editorial-routing.ts`.
 
 ```bash
 npm run editorial:routing -- --limit=5
@@ -362,6 +362,7 @@ npm run editorial:routing -- --limit=5 --mode=balanced --apply
 
 - default mode — dry-run: выбирает eligible `pending`/`retry_wait`, fetch-ит источник и показывает план, но не вызывает провайдеров и не пишет в Supabase;
 - `--apply` claim-ит статьи через общий article lease и не берёт строки с active Anthropic Batch ownership;
+- scheduled `enrich.yml` запускает `npm run editorial:routing -- --mode=cheap --limit=15 --apply --deepseek-daily-budget=0.25` каждые 30 минут;
 - `cheap` применяет DeepSeek только после deterministic repair + strict validation; hard failures и `quality_ok=false` уходят в `editorial_premium_fallback`;
 - `balanced` добавляет compact Claude reviewer для high-score/money risk; reviewer reject или parse fail тоже уходит в `editorial_premium_fallback`;
 - high-risk rollout guards: `ai-research`, legal/regulation, medical и geopolitics не идут напрямую через DeepSeek;

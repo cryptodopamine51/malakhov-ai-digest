@@ -342,9 +342,10 @@ Implemented in production code:
 - `npm run cost:articles` now prints per-article operation breakdown, so fallback/reviewer/image
   cost is visible next to text/image/total.
 - `ai-covers.yml` is scheduled again for low-quality OpenAI Images covers with `--daily-budget=1`.
+- After owner approval on 2026-05-11, `enrich.yml` now uses fallback-first cheap routing
+  every 30 minutes instead of direct `enrich-submit-batch`.
 
 Still intentionally not done:
 
-- No scheduled DeepSeek cron cutover.
 - No schema rewrite for batch tables.
 - No medium/high mass image generation.

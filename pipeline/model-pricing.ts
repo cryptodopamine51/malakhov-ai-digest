@@ -57,24 +57,24 @@ const ANTHROPIC_RATES_USD_PER_MTOK: Record<string, AnthropicRate> = {
 
 const DEEPSEEK_RATES_USD_PER_MTOK: Record<string, DeepSeekRate> = {
   'deepseek-v4-flash': {
-    inputCacheHit: 0.0028,
+    inputCacheHit: 0.028,
     inputCacheMiss: 0.14,
     output: 0.28,
   },
   'deepseek-chat': {
-    inputCacheHit: 0.0028,
+    inputCacheHit: 0.028,
     inputCacheMiss: 0.14,
     output: 0.28,
   },
   'deepseek-reasoner': {
-    inputCacheHit: 0.0028,
+    inputCacheHit: 0.028,
     inputCacheMiss: 0.14,
     output: 0.28,
   },
   'deepseek-v4-pro': {
-    inputCacheHit: 0.003625,
-    inputCacheMiss: 0.435,
-    output: 0.87,
+    inputCacheHit: 0.145,
+    inputCacheMiss: 1.74,
+    output: 3.48,
   },
 }
 
