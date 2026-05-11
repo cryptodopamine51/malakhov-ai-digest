@@ -100,6 +100,17 @@ Docs updated:
 - Watch the first 20 DeepSeek-routed articles manually for style quality and fact discipline.
 - Check fallback rate after 1-2 days via `llm_usage_logs` operations:
   `deepseek_editorial_writer`, `editorial_premium_fallback`, `claude_selective_reviewer`.
-- Confirm GitHub repository secrets include `DEEPSEEK_API_KEY` and `OPENAI_API_KEY`.
 - If cheap acceptance falls below 70% or style quality is weak, revert `enrich.yml` to
   `npm run enrich-submit-batch` while keeping the manual routing tool for lab runs.
+
+## Follow-up audit on 2026-05-11
+
+- GitHub repository secrets now include `DEEPSEEK_API_KEY` and `OPENAI_API_KEY`.
+- `enrich.yml` and `ai-covers.yml` now have GitHub Actions concurrency groups and 90-minute
+  job timeouts, so scheduled runs do not overlap or hang indefinitely.
+- `cheap` routing config now defaults to no Claude reviewer, matching the production runner;
+  `balanced` remains the selective-review mode.
+- AI cover dry-run can inspect candidates without `OPENAI_API_KEY`; `--apply` still requires it.
+- `llm_usage_logs` after the manual cover apply currently show only
+  `image_cover_generation:ok = 4` for `$0.052`; no `deepseek_editorial_writer` rows exist yet,
+  so fallback-rate review remains pending until the first scheduled routing runs complete.

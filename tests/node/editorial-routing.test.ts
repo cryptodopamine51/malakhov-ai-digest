@@ -29,9 +29,17 @@ test('getEditorialRoutingConfig keeps current Claude path as default', () => {
   })
 })
 
-test('getEditorialRoutingConfig selects DeepSeek for cheap mode', () => {
+test('getEditorialRoutingConfig selects DeepSeek without reviewer for cheap mode', () => {
   assert.deepEqual(getEditorialRoutingConfig({ EDITORIAL_ROUTING_MODE: 'cheap' }), {
     mode: 'cheap',
+    writerProvider: 'deepseek',
+    reviewPolicy: 'none',
+  })
+})
+
+test('getEditorialRoutingConfig enables selective reviewer for balanced mode', () => {
+  assert.deepEqual(getEditorialRoutingConfig({ EDITORIAL_ROUTING_MODE: 'balanced' }), {
+    mode: 'balanced',
     writerProvider: 'deepseek',
     reviewPolicy: 'selective',
   })

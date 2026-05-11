@@ -59,7 +59,6 @@ function parseWriterProvider(value: string | undefined, mode: EditorialRoutingMo
 
 function parseReviewPolicy(value: string | undefined, mode: EditorialRoutingMode): EditorialReviewPolicy {
   if (value === 'none' || value === 'selective' || value === 'always') return value
-  if (mode === 'cheap') return 'selective'
   if (mode === 'balanced') return 'selective'
   return 'none'
 }

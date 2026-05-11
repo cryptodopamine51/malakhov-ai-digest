@@ -73,12 +73,12 @@ for (const arg of process.argv.slice(2)) {
 }
 
 const apply = args.has('apply')
-const limit = numberArg('limit', 8)
+const limit = positiveIntegerArg('limit', 8)
 const category = stringArg('category', 'ai-russia')
 const model = stringArg('model', 'gpt-image-1.5')
 const quality = qualityArg('quality', 'low')
 const imageSize: ImageSize = '1536x1024'
-const dailyBudgetUsd = numberArg('daily-budget', Number(process.env.OPENAI_IMAGE_DAILY_BUDGET_USD ?? 0))
+const dailyBudgetUsd = nonNegativeNumberArg('daily-budget', Number(process.env.OPENAI_IMAGE_DAILY_BUDGET_USD ?? 0))
 const date = stringArg('date', '')
 const latestDay = args.has('latest-day') || Boolean(date)
 const onlyGenerated = !args.has('include-source-covers')
@@ -94,12 +94,10 @@ async function main() {
   const openaiApiKey = process.env.OPENAI_API_KEY
 
   if (!supabaseUrl || !serviceKey) throw new Error('Missing Supabase env')
-  if (!openaiApiKey) throw new Error('Missing OPENAI_API_KEY')
 
   mkdirSync(outDir, { recursive: true })
 
   const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
-  const openai = new OpenAI({ apiKey: openaiApiKey })
   const articles = await selectArticles(supabase)
   let spentTodayUsd = dailyBudgetUsd > 0 ? await getTodayOpenAiImageSpend(supabase) : 0
 
@@ -125,6 +123,9 @@ async function main() {
   }, null, 2))
 
   if (!apply || !articles.length) return
+  if (!openaiApiKey) throw new Error('Missing OPENAI_API_KEY')
+
+  const openai = new OpenAI({ apiKey: openaiApiKey })
 
   const results: GenerationResult[] = []
   const failures: Array<{ slug: string; title: string; error: string }> = []
@@ -579,6 +580,18 @@ function numberArg(name: string, fallback: number): number {
   if (typeof raw !== 'string') return fallback
   const value = Number(raw)
   return Number.isFinite(value) ? value : fallback
+}
+
+function positiveIntegerArg(name: string, fallback: number): number {
+  const value = numberArg(name, fallback)
+  const sanitizedFallback = Number.isFinite(fallback) && fallback > 0 ? Math.floor(fallback) : 1
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : sanitizedFallback
+}
+
+function nonNegativeNumberArg(name: string, fallback: number): number {
+  const value = numberArg(name, fallback)
+  const sanitizedFallback = Number.isFinite(fallback) && fallback >= 0 ? fallback : 0
+  return Number.isFinite(value) && value >= 0 ? value : sanitizedFallback
 }
 
 function stringArg(name: string, fallback: string): string {

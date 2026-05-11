@@ -19,7 +19,7 @@ const RULES: Rule[] = [
   {
     doc: 'docs/ARTICLE_SYSTEM.md',
     matches: (file) =>
-      /^(pipeline\/(ingest|rss-parser|feeds\.config|enricher|fetcher|scorer|slug|claude|generate-images|image-director|image-generator)\.ts)$/.test(file),
+      /^(pipeline\/(ingest|rss-parser|feeds\.config|enricher|fetcher|scorer|slug|claude|editorial-routing|editorial-apply|editorial-repair|model-pricing|generate-images|image-director|image-generator)\.ts)$/.test(file),
   },
   {
     doc: 'docs/ARTICLE_SYSTEM.md',

@@ -80,7 +80,7 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
 - `PUBLISH_RPC_DISABLED=1` — только emergency bypass для `publish-verify`: временно возвращает legacy update вместо RPC `publish_article` и поднимает warning alert `publish_rpc_bypass_active`.
 - `EDITORIAL_ROUTING_MODE=cheap|balanced|premium` — experimental multi-provider routing surface. Default должен оставаться `premium`, то есть текущий Claude Batch path.
 - `EDITORIAL_WRITER_PROVIDER=deepseek|anthropic` — override writer provider для routing lab/будущего worker-а. Для production без явного cutover не задавать.
-- `EDITORIAL_REVIEW_POLICY=none|selective|always` — политика compact Claude reviewer. Default для `cheap/balanced` — selective; для `premium` — none.
+- `EDITORIAL_REVIEW_POLICY=none|selective|always` — политика compact Claude reviewer. Default для `cheap` и `premium` — none; для `balanced` — selective.
 - `DEEPSEEK_DAILY_BUDGET_USD` — hard logical cap для `editorial:routing --apply`; default в workflow `$0.25`.
 - `OPENAI_IMAGE_DAILY_BUDGET_USD` — hard logical cap для AI cover workflow/ручного backfill; текущий workflow задаёт `$1`.
 
@@ -106,6 +106,8 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
 
 DeepSeek editorial routing runs from `enrich.yml` in `cheap` mode. Anthropic Batch remains the
 fallback path and is still collected by `enrich-collect-batch.yml`.
+`enrich.yml` and `ai-covers.yml` use GitHub Actions concurrency groups so scheduled runs do not
+overlap when provider latency is high.
 
 > **Telegram-дайджест с 2026-05-02 ушёл из GitHub Actions в Vercel Cron** —
 > см. ниже. `tg-digest.yml` удалён.
@@ -283,6 +285,7 @@ npx tsx scripts/generate-ai-covers.ts --category=ai-russia --limit=8 --apply --q
 - default quality — `low` для автоматического дешёвого cover fallback; `medium`/`high` остаются ручным override для важных карточек;
 - `--category=all` отключает category filter и используется в автоматическом workflow `ai-covers.yml`;
 - `--daily-budget=N` / `OPENAI_IMAGE_DAILY_BUDGET_USD` ограничивает дневной расход OpenAI Images по Москве;
+- dry-run не требует `OPENAI_API_KEY`; ключ нужен только для `--apply`;
 - `--model=gpt-image-2` можно использовать только после проверки доступа; при 403 списания нет;
 - `--apply` пишет локальные копии и `report.json` в `tmp/ai-covers-*`;
 - успешные и failed image attempts пишутся в `llm_usage_logs` как
