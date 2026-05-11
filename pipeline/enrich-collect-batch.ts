@@ -6,14 +6,11 @@ config({ path: resolve(process.cwd(), '.env.local') })
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getServerClient, type AnthropicBatchItem, type Article } from '../lib/supabase'
 import { listBatchResults, parseBatchCustomId, retrieveBatch, type NormalizedBatchResult } from './anthropic-batch'
-import { assertAsciiSlug, ensureUniqueSlug } from './slug'
-import { parseEditorialJson, validateEditorial } from './claude'
-import { articleHasCategory } from './scorer.config'
-import { createEnrichRun, finishEnrichRun, getOldestPendingAgeMinutes, log, writeEnrichAttempt, writeMediaSanitizeAttempt } from './enrich-runtime'
+import { createEnrichRun, finishEnrichRun, getOldestPendingAgeMinutes, log, writeEnrichAttempt } from './enrich-runtime'
 import { fireAlert } from './alerts'
 import { isExhausted, isRetryable, nextRetryAt, type ErrorCode } from './types'
 import { addUsageTotals, formatUsageSummary, refreshAnthropicBatchUsageTotals, writeLlmUsageLog, ZERO_USAGE_TOTALS, type UsageTotals } from './llm-usage'
-import { sanitizeArticleMedia, type ArticleImageCandidate } from './media-sanitizer'
+import { parseRepairValidateEditorial, prepareEditorialApplication } from './editorial-apply'
 
 const BATCH_POLL_LIMIT = Number(process.env.ANTHROPIC_BATCH_POLL_LIMIT ?? 10)
 const APPLY_READY_LIMIT = Number(process.env.ANTHROPIC_BATCH_APPLY_LIMIT ?? 50)
@@ -230,12 +227,15 @@ async function importBatchResults(
     const requestPayload = (itemRow.request_payload ?? {}) as Record<string, unknown>
     const articleContext = ((requestPayload.article_context ?? {}) as Record<string, unknown>)
     const importedAt = itemRow.result_imported_at ?? new Date().toISOString()
+    const operation = typeof requestPayload.operation === 'string'
+      ? requestPayload.operation
+      : 'editorial_batch_result'
 
     await writeLlmUsageLog({
       supabase,
       provider: 'anthropic',
       model: 'claude-sonnet-4-6',
-      operation: 'editorial_batch_result',
+      operation,
       runKind: 'batch_collect',
       enrichRunId: runId,
       articleId: itemRow.article_id,
@@ -347,8 +347,8 @@ async function applyReadyResults(
       continue
     }
 
-    const editorial = parseEditorialJson(outputText)
-    if (!editorial) {
+    const parsedEditorial = parseRepairValidateEditorial(outputText)
+    if (!parsedEditorial.output) {
       const parseFailureReason = 'failed to parse editorial json from batch item'
       const outcome = await finalizeBatchFailure(
         supabase,
@@ -372,12 +372,8 @@ async function applyReadyResults(
       continue
     }
 
-    if (!editorial.glossary) editorial.glossary = []
-    if (!editorial.link_anchors) editorial.link_anchors = []
-
-    const validationError = validateEditorial(editorial)
-    if (validationError) {
-      const parseFailureReason = `editorial validation failed: ${validationError}`
+    if (!parsedEditorial.validation.ok) {
+      const parseFailureReason = `editorial validation failed: ${parsedEditorial.validation.errors.join('; ')}`
       const outcome = await finalizeBatchFailure(
         supabase,
         item,
@@ -402,21 +398,40 @@ async function applyReadyResults(
 
     const requestPayload = item.request_payload as Record<string, unknown>
     const articleContext = ((requestPayload.article_context ?? {}) as Record<string, unknown>)
-    const generatedTables = Array.isArray(editorial.article_tables) && editorial.article_tables.length > 0
-      ? editorial.article_tables
-      : null
-    if (articleHasCategory(article, 'ai-research') && editorial.editorial_body.length < 1500) {
-      editorial.quality_ok = false
-      editorial.quality_reason = `research_too_short: ${editorial.editorial_body.length}`
-    }
-    const slug = await ensureUniqueSlug(
-      supabase,
-      editorial.ru_title || article.original_title,
-      article.id,
-    )
+
+    let prepared
     try {
-      assertAsciiSlug(slug)
-    } catch (slugErr) {
+      prepared = await prepareEditorialApplication({
+        supabase,
+        article,
+        output: parsedEditorial.output,
+        validation: parsedEditorial.validation,
+        repairs: parsedEditorial.repairs,
+        sourceContext: {
+          originalText: typeof articleContext.original_text === 'string'
+            ? articleContext.original_text
+            : article.original_text ?? '',
+          coverImageUrl: typeof articleContext.cover_image_url === 'string'
+            ? articleContext.cover_image_url
+            : article.cover_image_url,
+          articleTables: Array.isArray(articleContext.article_tables)
+            ? articleContext.article_tables as never
+            : null,
+          articleImages: Array.isArray(articleContext.article_images)
+            ? articleContext.article_images as never
+            : article.article_images,
+          articleVideos: Array.isArray(articleContext.article_videos)
+            ? articleContext.article_videos as never
+            : null,
+          score: Number(articleContext.score ?? article.score ?? 0),
+        },
+        runId,
+        phase: 'collect',
+        attemptNo: (article.attempt_count ?? 0) + 1,
+        startedAt: new Date(item.submitted_at ?? item.created_at ?? new Date().toISOString()),
+        batchItemId: item.id,
+      })
+    } catch (applyPrepErr) {
       const outcome = await finalizeBatchFailure(
         supabase,
         item,
@@ -424,7 +439,7 @@ async function applyReadyResults(
         runId,
         {
           errorCode: 'claude_parse_failed',
-          errorMessage: slugErr instanceof Error ? slugErr.message : String(slugErr),
+          errorMessage: applyPrepErr instanceof Error ? applyPrepErr.message : String(applyPrepErr),
           itemStatus: 'apply_failed_terminal',
         },
       )
@@ -433,52 +448,14 @@ async function applyReadyResults(
       continue
     }
 
-    const mediaStartedAt = new Date()
-    const sanitizedMedia = sanitizeArticleMedia({
-      coverImageUrl: typeof articleContext.cover_image_url === 'string'
-        ? articleContext.cover_image_url
-        : article.cover_image_url,
-      articleImages: Array.isArray(articleContext.article_images)
-        ? articleContext.article_images as ArticleImageCandidate[]
-        : article.article_images,
-      context: {
-        sourceName: article.source_name,
-        originalUrl: article.original_url,
-        originalTitle: article.original_title,
-        ruTitle: editorial.ru_title,
-        lead: editorial.lead,
-        summary: editorial.summary,
-        originalText: typeof articleContext.original_text === 'string'
-          ? articleContext.original_text
-          : article.original_text,
-      },
-    })
-
-    if (sanitizedMedia.rejects.length > 0) {
-      log(`media sanitizer rejected ${sanitizedMedia.rejects.length} item(s) for ${article.id}`)
-      await writeMediaSanitizeAttempt(supabase, {
-        articleId: article.id,
-        batchItemId: item.id,
-        attemptNo: (article.attempt_count ?? 0) + 1,
-        startedAt: mediaStartedAt,
-        resultStatus: 'ok',
-        claimToken: article.claim_token,
-        runId,
-        phase: 'collect',
-        rejects: sanitizedMedia.rejects,
-        remainingMedia: {
-          coverImageUrl: Boolean(sanitizedMedia.coverImageUrl),
-          articleImages: sanitizedMedia.articleImages.length,
-        },
-      })
-    }
+    const editorial = prepared.output
 
     const rpcParams = {
       p_batch_item_id: item.id,
       p_enrich_status: editorial.quality_ok ? 'enriched_ok' : 'rejected',
       p_publish_status: editorial.quality_ok ? 'publish_ready' : 'draft',
       p_score: Number(articleContext.score ?? article.score ?? 0),
-      p_cover_image_url: sanitizedMedia.coverImageUrl,
+      p_cover_image_url: prepared.sanitizedMedia.coverImageUrl,
       p_original_text: articleContext.original_text ?? article.original_text,
       p_ru_title: editorial.ru_title,
       p_lead: editorial.lead,
@@ -489,12 +466,12 @@ async function applyReadyResults(
       p_editorial_model: 'claude-sonnet-4-6',
       p_glossary: editorial.glossary,
       p_link_anchors: editorial.link_anchors,
-      p_article_tables: generatedTables ?? articleContext.article_tables ?? null,
-      p_article_images: sanitizedMedia.articleImages.length > 0 ? sanitizedMedia.articleImages : null,
-      p_article_videos: articleContext.article_videos ?? null,
+      p_article_tables: prepared.articleTables,
+      p_article_images: prepared.sanitizedMedia.articleImages.length > 0 ? prepared.sanitizedMedia.articleImages : null,
+      p_article_videos: prepared.articleVideos,
       p_quality_ok: editorial.quality_ok,
       p_quality_reason: editorial.quality_reason || '',
-      p_slug: slug,
+      p_slug: prepared.slug,
       p_publish_ready_at: editorial.quality_ok ? new Date().toISOString() : null,
       p_result_status: editorial.quality_ok ? 'ok' : 'rejected',
       p_error_code: null,

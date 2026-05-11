@@ -43,7 +43,7 @@ export interface WriteMediaSanitizeAttemptParams {
   startedAt: Date
   resultStatus: 'ok' | 'rejected'
   runId: string
-  phase: 'submit' | 'collect'
+  phase: 'submit' | 'collect' | 'routing'
   rejects: unknown[]
   remainingMedia: {
     coverImageUrl: boolean

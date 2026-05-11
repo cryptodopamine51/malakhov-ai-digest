@@ -343,9 +343,11 @@ function hasDisallowedStandaloneAi(text: string): boolean {
 function hasLeadAnchor(lead: string): boolean {
   const firstSentence = lead.split(/[.!?]/)[0] ?? lead
   const russianNumberWord = /\b(один|одна|одно|два|две|три|четыре|пять|шесть|семь|восемь|девять|десять|месяц|месяца|месяцев|год|года|лет)\b/i
+  const latinProductName = /\b[a-z]+[A-Z][A-Za-z0-9.-]*\b|\b[A-Z][A-Za-z0-9.-]{2,}\b/
   return (
     /\d/.test(firstSentence) ||
     russianNumberWord.test(firstSentence) ||
+    latinProductName.test(firstSentence) ||
     /\b[A-ZА-ЯЁ][A-Za-zА-Яа-яЁё0-9.-]{2,}/.test(firstSentence) ||
     /\b[A-Z][A-Za-z0-9.-]*(?:GPT|AI|LLM|API|ML|Cloud|Labs|Search|Studio|Claude|Gemini|Llama|DeepSeek|OpenAI)[A-Za-z0-9.-]*\b/i.test(firstSentence)
   )
@@ -376,8 +378,10 @@ export function validateEditorialDetailed(out: EditorialOutput): EditorialValida
   }
 
   if (typeof out.card_teaser !== 'string') errors.push('card_teaser не string')
-  else if (out.card_teaser.length < 60 || out.card_teaser.length > 160) {
+  else if (out.card_teaser.length < 50 || out.card_teaser.length > 160) {
     errors.push(`card_teaser длина ${out.card_teaser.length}`)
+  } else if (out.card_teaser.length < 60) {
+    warnings.push(`card_teaser короткий: ${out.card_teaser.length}`)
   }
 
   if (typeof out.tg_teaser !== 'string') errors.push('tg_teaser не string')

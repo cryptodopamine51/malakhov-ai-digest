@@ -22,7 +22,7 @@ import { sanitizeArticleMedia } from './media-sanitizer'
 const SUBMIT_BATCH_SIZE = Number(process.env.ENRICH_SUBMIT_BATCH_SIZE ?? 15)
 const MAX_REQUESTS_PER_BATCH = Number(process.env.ANTHROPIC_BATCH_MAX_REQUESTS ?? 15)
 
-interface StagedBatchItem {
+export interface StagedBatchItem {
   id: string
   article: Article
   attemptNo: number
@@ -341,6 +341,7 @@ async function stageBatchItem(
   }))
 
   const requestPayload = {
+    operation: 'editorial_batch_result',
     params,
     article_context: {
       article_id: article.id,
@@ -406,10 +407,11 @@ export function bumpRejectedBreakdown(
   breakdown[trimmed] = (breakdown[trimmed] ?? 0) + 1
 }
 
-async function persistProviderBatch(
+export async function persistProviderBatch(
   supabase: SupabaseClient,
   runId: string,
   items: StagedBatchItem[],
+  createdBy = 'enrich-submit-batch',
 ): Promise<void> {
   const providerBatch = await createEditorialBatch(items.map((item) => ({
     articleId: item.article.id,
@@ -430,7 +432,7 @@ async function persistProviderBatch(
       processing_status: providerBatch.processing_status,
       submitted_at: insertedAt,
       expires_at: providerBatch.expires_at,
-      created_by: 'enrich-submit-batch',
+      created_by: createdBy,
       request_count: items.length,
       updated_at: insertedAt,
     })

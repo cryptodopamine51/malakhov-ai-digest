@@ -113,3 +113,11 @@
 | Агрессивнее использовать prompt caching | до 90% off на input-токены при cache hit | без потерь | текущий hit rate уже 66.4%, нужно сначала понять ceiling |
 
 - Recommendation: не выбирать новую модель сейчас. Сначала использовать Batch API как независимый рычаг, продолжить замер cache hit rate и через 2 недели вернуться к A/B Sonnet vs Haiku/OpenAI Mini на сохранённых исходниках.
+
+## ADR-010 · DeepSeek routing запускается только fallback-first и вручную
+
+- Status: accepted
+- Date: 2026-05-11
+- Context: model-routing lab показал, что DeepSeek может дать cheap editorial draft примерно за `$0.001` на статью, но production path не должен рисковать публикацией validator-failed или редакционно слабого материала.
+- Decision: scheduled production enrich остаётся Anthropic Batch. DeepSeek доступен только через manual `npm run editorial:routing` runner: dry-run по умолчанию, `--apply` обязателен для записи, low-risk output проходит deterministic repair + strict validator + provider-neutral apply gate. Любая provider/API/parse/validator/quality/reviewer проблема маршрутизируется в текущий Claude Batch fallback как `editorial_premium_fallback`.
+- Consequences: стоимость можно снижать постепенно и измеримо, не меняя cron default. Fallback rate и провайдерские попытки видны в `llm_usage_logs`; live-публикация остаётся за `publish-verify` RPC. Cutover в cron запрещён до 20 manually reviewed articles и понятного fallback accounting.

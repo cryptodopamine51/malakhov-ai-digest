@@ -115,12 +115,20 @@ Validator дополнительно проверяет:
 - standalone `AI` в русском тексте, кроме известных product/institution names;
 - basic body/teaser/summary shape.
 
-`pipeline/editorial-routing.ts` добавляет experimental routing policy для будущего cutover:
+Lead anchor check считает конкретным якорем цифры, русские числительные, имена собственные,
+латинские product/model names и camelCase identifiers вроде `openLight`. `card_teaser` 50-59
+символов считается warning (`card_teaser короткий`), а не hard reject; ниже 50 остаётся ошибкой.
+
+`pipeline/editorial-routing.ts` и `pipeline/editorial-apply.ts` задают fallback-first routing surface
+для ручного limited rollout:
 
 - default config без env остаётся `premium` + `anthropic`;
 - `cheap/balanced` выбирают DeepSeek writer и selective compact Claude reviewer;
 - `buildDeterministicEditorialBrief()` заменяет дорогой Claude-orchestrator на code/template brief;
 - `shouldReviewWithClaude()` включает reviewer только на validator failure, high score или high-risk topics.
+- `parseRepairValidateEditorial()` и `prepareEditorialApplication()` являются общим final gate:
+  provider output сначала парсится, затем проходит deterministic repair, strict validator,
+  slug guard и media sanitizer, и только потом может быть записан в `articles`.
 
 `pipeline/editorial-repair.ts` выполняет дешёвые deterministic fixes перед reviewer:
 
@@ -129,8 +137,22 @@ Validator дополнительно проверяет:
 - сохранение/восстановление paragraph breaks для DeepSeek outputs;
 - безопасное сокращение слишком длинного `ru_title`.
 
-Это пока routing/lab surface, а не production enrich cutover. Current production enrich остаётся Anthropic Batch,
-пока 20-article lab и manual review не подтвердят качество cheap/balanced mode.
+`scripts/run-editorial-routing.ts` (`npm run editorial:routing`) — opt-in production runner, не cron:
+
+- default dry-run, без API spend и DB writes; `--apply` обязателен для записи;
+- default `--limit=5`; apply-режим claim-ит только `pending`/`retry_wait` статьи без batch ownership;
+- `cheap` применяет DeepSeek только к low-risk статьям, а `ai-research`, legal/regulation,
+  medical, geopolitics и high-score отправляет в premium fallback;
+- `balanced` использует compact Claude reviewer для high-score/money risk после успешной
+  repair+validation; reviewer reject/parse fail отправляет статью в premium fallback;
+- DeepSeek API error, empty output, parse error, hard validator error или `quality_ok=false`
+  не публикуются напрямую, а ставят `anthropic_batch_items` с operation
+  `editorial_premium_fallback`;
+- successful low-risk DeepSeek output пишется прямым claim-safe update в `publish_ready`,
+  но live-публикация всё равно остаётся за `publish-verify` RPC.
+
+Current scheduled production enrich остаётся Anthropic Batch, пока 20-article manual review
+не подтвердит качество cheap/balanced mode. Глобального cron cutover на DeepSeek нет.
 
 ## Score и publish gate
 

@@ -151,6 +151,16 @@ test('validateEditorial rejects standalone AI in Russian copy', () => {
   assert.ok(detailed.errors.includes('standalone AI в русском тексте'))
 })
 
+test('validateEditorial accepts camelCase product names as lead anchors and warns on short card teaser', () => {
+  const parsed = parseEditorialJson(VALID_EDITORIAL_JSON)!
+  parsed.lead = 'Автор проекта openLight описал двухмесячный опыт разработки локального ИИ-агента для серверов и объяснил, где правила надёжнее LLM.'
+  parsed.card_teaser = 'Как устроен openLight и почему правила иногда надёжнее LLM'
+
+  const detailed = validateEditorialDetailed(parsed)
+  assert.equal(detailed.ok, true)
+  assert.ok(detailed.warnings.some((warning) => warning.startsWith('card_teaser короткий')))
+})
+
 test('normalizeBatchResult extracts text and usage for succeeded item', () => {
   const normalized = normalizeBatchResult({
     custom_id: 'article:article-1:attempt:1:item:item-1',

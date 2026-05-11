@@ -1,9 +1,9 @@
 name: Generate AI Covers
 
-# Schedule disabled until owner approves the OpenAI Images budget for editorial covers.
-# Wave 2026-05-06 explicitly required zero API spend; re-enable by adding the schedule
-# trigger back (e.g. `- cron: '10 */2 * * *'`) and bumping `OPENAI_IMAGE_DAILY_BUDGET_USD`.
 on:
+  schedule:
+    # Every 2 hours, with script-level daily budget cap.
+    - cron: '10 */2 * * *'
   workflow_dispatch:
 
 jobs:

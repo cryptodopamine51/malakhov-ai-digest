@@ -179,6 +179,11 @@ async function main(): Promise<void> {
     console.log(`${money(row.totalCostUsd)} | text=${money(row.textCostUsd)} image=${money(row.imageCostUsd)} | in=${row.inputTokens} out=${row.outputTokens} | ${row.slug ?? row.articleId}`)
     console.log(`  ${row.title}`)
     console.log(`  ${row.source}${row.category ? ` / ${row.category}` : ''} / cover=${row.hasCover ? 'yes' : 'no'}`)
+    const operations = Object.entries(row.operations)
+      .sort((a, b) => b[1] - a[1])
+      .map(([operation, cost]) => `${operation}=${money(cost)}`)
+      .join(', ')
+    if (operations) console.log(`  ops: ${operations}`)
   }
 }
 

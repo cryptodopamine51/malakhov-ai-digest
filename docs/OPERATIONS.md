@@ -20,6 +20,7 @@ npm run publish-verify
 npm run recover-batch-stuck
 npm run cost:report
 npm run cost:guard
+npm run editorial:routing
 npm run routing:lab
 npm run image:style-lab
 npm run tg-digest
@@ -44,7 +45,11 @@ NEXT_PUBLIC_SITE_URL
 ```bash
 DEEPL_API_KEY
 DEEPSEEK_API_KEY
+DEEPSEEK_BASE_URL
+DEEPSEEK_WRITER_MODEL
+DEEPSEEK_DAILY_BUDGET_USD
 OPENAI_API_KEY
+OPENAI_IMAGE_DAILY_BUDGET_USD
 TELEGRAM_BOT_TOKEN
 TELEGRAM_CHANNEL_ID
 TELEGRAM_ADMIN_CHAT_ID
@@ -76,6 +81,8 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
 - `EDITORIAL_ROUTING_MODE=cheap|balanced|premium` — experimental multi-provider routing surface. Default должен оставаться `premium`, то есть текущий Claude Batch path.
 - `EDITORIAL_WRITER_PROVIDER=deepseek|anthropic` — override writer provider для routing lab/будущего worker-а. Для production без явного cutover не задавать.
 - `EDITORIAL_REVIEW_POLICY=none|selective|always` — политика compact Claude reviewer. Default для `cheap/balanced` — selective; для `premium` — none.
+- `DEEPSEEK_DAILY_BUDGET_USD` — hard logical cap для manual `editorial:routing --apply`; default в скрипте `$0.10`.
+- `OPENAI_IMAGE_DAILY_BUDGET_USD` — hard logical cap для AI cover workflow/ручного backfill; текущий workflow задаёт `$1`.
 
 ### Инвариант для URL-переменных
 
@@ -96,6 +103,9 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
 | `pipeline-health.yml` | каждые 2 часа, на 45 минуте | source health, backlog, provider guard, cost guard |
 | `ai-covers.yml` | каждые 2 часа, на 10 минуте | дешёвые OpenAI Images low cover для live-статей без обложки |
 | `docs-guard.yml` | push/pull request | проверка doc-impact |
+
+DeepSeek editorial routing intentionally has no scheduled GitHub Actions workflow. It is manual-only
+until the 20-article review gate is accepted.
 
 > **Telegram-дайджест с 2026-05-02 ушёл из GitHub Actions в Vercel Cron** —
 > см. ниже. `tg-digest.yml` удалён.
@@ -268,6 +278,7 @@ npx tsx scripts/generate-ai-covers.ts --category=ai-russia --limit=8 --apply --q
 Правила:
 
 - default mode — dry-run, без OpenAI вызовов, DB writes и Storage upload;
+- scheduled workflow `ai-covers.yml` включён каждые 2 часа на 10-й минуте и запускает только low-quality path с `--daily-budget=1`;
 - default model — `gpt-image-1.5`, потому что `gpt-image-2` требует verified organization;
 - default quality — `low` для автоматического дешёвого cover fallback; `medium`/`high` остаются ручным override для важных карточек;
 - `--category=all` отключает category filter и используется в автоматическом workflow `ai-covers.yml`;
@@ -336,6 +347,34 @@ Modes:
 - результаты пишутся в `tmp/model-routing-lab-*`;
 - production default не переключать на DeepSeek, пока 20-article lab не даст приемлемый manual acceptance rate;
 - `hybrid` не использовать как default: paid lab 2026-05-07 показал, что он дороже текущего Claude baseline.
+
+### Manual editorial routing runner
+
+Для limited rollout используется `scripts/run-editorial-routing.ts`.
+
+```bash
+npm run editorial:routing -- --limit=5
+npm run editorial:routing -- --limit=5 --mode=cheap --apply
+npm run editorial:routing -- --limit=5 --mode=balanced --apply
+```
+
+Правила:
+
+- default mode — dry-run: выбирает eligible `pending`/`retry_wait`, fetch-ит источник и показывает план, но не вызывает провайдеров и не пишет в Supabase;
+- `--apply` claim-ит статьи через общий article lease и не берёт строки с active Anthropic Batch ownership;
+- `cheap` применяет DeepSeek только после deterministic repair + strict validation; hard failures и `quality_ok=false` уходят в `editorial_premium_fallback`;
+- `balanced` добавляет compact Claude reviewer для high-score/money risk; reviewer reject или parse fail тоже уходит в `editorial_premium_fallback`;
+- high-risk rollout guards: `ai-research`, legal/regulation, medical и geopolitics не идут напрямую через DeepSeek;
+- premium fallback создаёт обычный `anthropic_batch_items`/`anthropic_batches` item, поэтому collector и recovery остаются текущими;
+- usage пишется в `llm_usage_logs` с operation names `deepseek_editorial_writer`, `claude_selective_reviewer`, `editorial_premium_fallback`;
+- daily DeepSeek cap берётся из `--deepseek-daily-budget` или `DEEPSEEK_DAILY_BUDGET_USD`.
+
+Перед любым apply:
+
+```bash
+npm run cost:articles -- --days=2 --limit=20
+npm run editorial:routing -- --mode=cheap --limit=3
+```
 
 ## Batch enrich runtime
 
