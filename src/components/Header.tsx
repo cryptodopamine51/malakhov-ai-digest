@@ -9,6 +9,7 @@ import ThemeToggle from './ThemeToggle'
 
 const NAV_LINKS = [
   { href: '/',                          label: 'Главная' },
+  { href: '/guides',                    label: 'Гайды' },
   { href: '/categories/ai-industry',    label: 'Индустрия' },
   { href: '/categories/ai-research',    label: 'Исследования' },
   { href: '/categories/ai-labs',        label: 'Лаборатории' },

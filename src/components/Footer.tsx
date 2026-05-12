@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 const NAV_MAIN = [
   { href: '/',        label: 'Главная' },
+  { href: '/guides',  label: 'Гайды' },
   { href: '/sources', label: 'Источники' },
 ]
 
