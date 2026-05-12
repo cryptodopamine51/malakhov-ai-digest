@@ -13,6 +13,20 @@ export interface RankedInterestArticle {
   }
 }
 
+export interface RankedRecommendationArticle {
+  article: Article
+  recommendation: number
+  components: {
+    samePrimaryCategory: boolean
+    relevanceScore: number
+    editorialScore: number
+    freshnessScore: number
+    sourceWeight: number
+    contentQualityBonus: number
+    mediaQualityBonus: number
+  }
+}
+
 export interface RankInterestingArticlesOptions {
   limit?: number
   minItems?: number
@@ -85,6 +99,34 @@ function getMediaQualityBonus(article: Article): number {
   if (sanitized.rejects.length > 0) return -0.5
   if (sanitized.coverImageUrl) return 0.3
   return 0
+}
+
+function list(value: string[] | null | undefined): string[] {
+  return Array.isArray(value) ? value.filter(Boolean) : []
+}
+
+function sharedCount(a: string[] | null | undefined, b: string[] | null | undefined): number {
+  const left = new Set(list(a))
+  let count = 0
+  for (const item of list(b)) {
+    if (left.has(item)) count++
+  }
+  return count
+}
+
+function getRecommendationRelevance(current: Article, candidate: Article): {
+  samePrimaryCategory: boolean
+  relevanceScore: number
+} {
+  const samePrimaryCategory = candidate.primary_category === current.primary_category
+  let relevanceScore = samePrimaryCategory ? 12 : 0
+
+  if (list(candidate.secondary_categories).includes(current.primary_category)) relevanceScore += 4
+  if (list(current.secondary_categories).includes(candidate.primary_category)) relevanceScore += 4
+  relevanceScore += Math.min(sharedCount(current.secondary_categories, candidate.secondary_categories), 2) * 2
+  relevanceScore += Math.min(sharedCount(current.topics, candidate.topics), 3)
+
+  return { samePrimaryCategory, relevanceScore }
 }
 
 export function scoreInterestingArticle(article: Article, now = new Date()): RankedInterestArticle {
@@ -170,4 +212,93 @@ export function rankInterestingArticlesWithFallback(
   if (primaryRanked.length >= minItems) return primaryRanked
 
   return rankInterestingArticles(fallbackCandidates, options)
+}
+
+export function scoreArticleRecommendation(
+  current: Article,
+  candidate: Article,
+  now = new Date(),
+): RankedRecommendationArticle {
+  const editorialScore = clamp(Number(candidate.score ?? 0), 0, 10)
+  const ageMs = Math.max(0, now.getTime() - freshnessTimestamp(candidate))
+  const ageHours = ageMs / (60 * 60 * 1000)
+  const freshnessScore = Math.exp(-ageHours / 48) * 10
+  const sourceWeight = getSourceWeight(candidate.source_name)
+  const contentQualityBonus = getContentQualityBonus(candidate)
+  const mediaQualityBonus = getMediaQualityBonus(candidate)
+  const { samePrimaryCategory, relevanceScore } = getRecommendationRelevance(current, candidate)
+  const recommendation =
+    relevanceScore * 4.0 +
+    freshnessScore * 2.4 +
+    editorialScore * 0.9 +
+    sourceWeight +
+    contentQualityBonus +
+    mediaQualityBonus
+
+  return {
+    article: candidate,
+    recommendation,
+    components: {
+      samePrimaryCategory,
+      relevanceScore,
+      editorialScore,
+      freshnessScore,
+      sourceWeight,
+      contentQualityBonus,
+      mediaQualityBonus,
+    },
+  }
+}
+
+export function rankArticleRecommendations(
+  current: Article,
+  candidates: Article[],
+  options: RankInterestingArticlesOptions = {},
+): RankedRecommendationArticle[] {
+  const limit = options.limit ?? 3
+  const minItems = options.minItems ?? 3
+  const excluded = new Set([current.id, ...(options.excludeIds ?? [])])
+  const now = options.now ?? new Date()
+  const ranked = candidates
+    .filter((article) => !excluded.has(article.id))
+    .map((article) => scoreArticleRecommendation(current, article, now))
+    .sort((a, b) => {
+      const primaryDiff = Number(b.components.samePrimaryCategory) - Number(a.components.samePrimaryCategory)
+      if (primaryDiff !== 0) return primaryDiff
+
+      const relevanceDiff = b.components.relevanceScore - a.components.relevanceScore
+      if (relevanceDiff !== 0) return relevanceDiff
+
+      const recommendationDiff = b.recommendation - a.recommendation
+      if (recommendationDiff !== 0) return recommendationDiff
+
+      return compareArticlesByFreshness(a.article, b.article)
+    })
+
+  const selected: RankedRecommendationArticle[] = []
+  const sourceCounts = new Map<string, number>()
+
+  for (const candidate of ranked) {
+    const sourceCount = sourceCounts.get(candidate.article.source_name) ?? 0
+    if (sourceCount > 0) continue
+
+    selected.push(candidate)
+    sourceCounts.set(candidate.article.source_name, sourceCount + 1)
+    if (selected.length >= limit) break
+  }
+
+  if (selected.length < limit) {
+    for (const candidate of ranked) {
+      if (selected.some((item) => item.article.id === candidate.article.id)) continue
+
+      const sourceCount = sourceCounts.get(candidate.article.source_name) ?? 0
+      if (sourceCount >= 2) continue
+
+      selected.push(candidate)
+      sourceCounts.set(candidate.article.source_name, sourceCount + 1)
+      if (selected.length >= limit) break
+    }
+  }
+
+  return selected.length >= minItems ? selected : []
 }

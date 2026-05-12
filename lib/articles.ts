@@ -7,7 +7,7 @@
 
 import { getPublicReadClient, type Article } from './supabase'
 import { toPublicArticleSlug } from './article-slugs'
-import { rankInterestingArticles, rankInterestingArticlesWithFallback } from './interest-ranking'
+import { rankArticleRecommendations, rankInterestingArticles, rankInterestingArticlesWithFallback } from './interest-ranking'
 import { normalizePositivePage } from './pagination'
 
 function client() {
@@ -364,11 +364,30 @@ export async function getHotStoryOfTheDay(
   return (latest as Article) ?? null
 }
 
-export async function getArticlesFeed(page = 1, perPage = 12): Promise<{ articles: Article[]; total: number }> {
-  const supabase = client()
-  const offset = (page - 1) * perPage
+interface ArticlesFeedOptions {
+  excludeIds?: string[]
+}
 
-  const [{ count: total }, { data, error }] = await Promise.all([
+function applyArticleIdExclusions<T extends { not: (column: string, operator: string, value: string) => T }>(
+  query: T,
+  excludeIds: string[],
+): T {
+  if (!excludeIds.length) return query
+  return query.not('id', 'in', `(${excludeIds.join(',')})`)
+}
+
+export async function getArticlesFeed(
+  page = 1,
+  perPage = 12,
+  options: ArticlesFeedOptions = {},
+): Promise<{ articles: Article[]; total: number }> {
+  const supabase = client()
+  const safePage = normalizePositivePage(page)
+  const safePerPage = Math.max(1, Math.floor(perPage))
+  const offset = (safePage - 1) * safePerPage
+  const excludeIds = options.excludeIds ?? []
+
+  const countQuery = applyArticleIdExclusions(
     supabase
       .from('articles')
       .select('*', { count: 'exact', head: true })
@@ -376,6 +395,10 @@ export async function getArticlesFeed(page = 1, perPage = 12): Promise<{ article
       .eq('quality_ok', true)
       .eq('verified_live', true)
       .eq('publish_status', 'live'),
+    excludeIds,
+  )
+
+  const feedQuery = applyArticleIdExclusions(
     supabase
       .from('articles')
       .select('*')
@@ -386,7 +409,13 @@ export async function getArticlesFeed(page = 1, perPage = 12): Promise<{ article
       .order('created_at', { ascending: false })
       .order('score', { ascending: false })
       .order('id', { ascending: false })
-      .range(offset, offset + perPage - 1),
+      .range(offset, offset + safePerPage - 1),
+    excludeIds,
+  )
+
+  const [{ count: total }, { data, error }] = await Promise.all([
+    countQuery,
+    feedQuery,
   ])
 
   if (error) {
@@ -425,6 +454,88 @@ export async function getRelatedArticles(
   }
 
   return (data ?? []) as Article[]
+}
+
+async function getRecentRecommendationCandidates(
+  since: Date,
+  limit: number,
+  categorySlug?: string,
+): Promise<Article[]> {
+  let query = client()
+    .from('articles')
+    .select('*')
+    .eq('published', true)
+    .eq('quality_ok', true)
+    .eq('verified_live', true)
+    .eq('publish_status', 'live')
+    .gte('created_at', since.toISOString())
+    .order('created_at', { ascending: false })
+    .order('score', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(limit)
+
+  if (categorySlug) {
+    query = query.or(`primary_category.eq.${categorySlug},secondary_categories.cs.{${categorySlug}}`)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    console.error('getRecentRecommendationCandidates error:', error.message)
+    return []
+  }
+
+  return (data ?? []) as Article[]
+}
+
+function mergeUniqueArticles(groups: Article[][]): Article[] {
+  const seen = new Set<string>()
+  const merged: Article[] = []
+  for (const group of groups) {
+    for (const article of group) {
+      if (seen.has(article.id)) continue
+      seen.add(article.id)
+      merged.push(article)
+    }
+  }
+  return merged
+}
+
+export async function getArticleRecommendations(
+  article: Article,
+  limit = 3,
+  minItems = 3,
+): Promise<Article[]> {
+  const now = new Date()
+  const seventyTwoHoursAgo = new Date(now.getTime() - 72 * 60 * 60 * 1000)
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+  const rankingOptions = {
+    limit,
+    minItems,
+    now,
+  }
+
+  const [categoryRecent, globalRecent] = await Promise.all([
+    getRecentRecommendationCandidates(seventyTwoHoursAgo, 64, article.primary_category),
+    getRecentRecommendationCandidates(seventyTwoHoursAgo, 96),
+  ])
+  const recentRanked = rankArticleRecommendations(
+    article,
+    mergeUniqueArticles([categoryRecent, globalRecent]),
+    rankingOptions,
+  )
+  if (recentRanked.length >= minItems) return recentRanked.map((ranked) => ranked.article)
+
+  const [categoryFallback, globalFallback] = await Promise.all([
+    getRecentRecommendationCandidates(thirtyDaysAgo, 80, article.primary_category),
+    getRecentRecommendationCandidates(thirtyDaysAgo, 120),
+  ])
+
+  return rankArticleRecommendations(
+    article,
+    mergeUniqueArticles([categoryRecent, globalRecent, categoryFallback, globalFallback]),
+    rankingOptions,
+  ).map((ranked) => ranked.article)
 }
 
 export async function getSourcesStats(): Promise<

@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 import sharp from 'sharp'
 import { writeLlmUsageLog } from '../pipeline/llm-usage'
 import { estimateOpenAiImageCostUsd, type ImageQuality, type ImageSize } from '../pipeline/model-pricing'
+import { sanitizeArticleMedia } from '../lib/media-sanitizer'
 
 loadDotenv({ path: resolve(process.cwd(), '.env.local') })
 loadDotenv({ path: resolve(process.cwd(), '.env') })
@@ -72,11 +73,12 @@ for (const arg of process.argv.slice(2)) {
   }
 }
 
+const homepagePriority = args.has('homepage')
 const apply = args.has('apply')
-const limit = positiveIntegerArg('limit', 8)
+const limit = positiveIntegerArg('limit', homepagePriority ? 2 : 8)
 const category = stringArg('category', 'ai-russia')
 const model = stringArg('model', 'gpt-image-1.5')
-const quality = qualityArg('quality', 'low')
+const quality = qualityArg('quality', homepagePriority ? 'medium' : 'low')
 const imageSize: ImageSize = '1536x1024'
 const dailyBudgetUsd = nonNegativeNumberArg('daily-budget', Number(process.env.OPENAI_IMAGE_DAILY_BUDGET_USD ?? 0))
 const date = stringArg('date', '')
@@ -110,6 +112,7 @@ async function main() {
     spent_today_usd: spentTodayUsd,
     limit,
     category,
+    homepage_priority: homepagePriority,
     latest_day: latestDay,
     selected_count: articles.length,
     out_dir: outDir,
@@ -213,6 +216,7 @@ async function main() {
           public_url: publicUrl,
           local_path: localPath,
           prompt_chars: prompt.length,
+          homepage_priority: homepagePriority,
         },
         usage: {
           inputTokens: usage?.input_tokens ?? 0,
@@ -244,6 +248,7 @@ async function main() {
           size: imageSize,
           scene,
           error: message,
+          homepage_priority: homepagePriority,
         },
         usage: {
           inputTokens: 0,
@@ -278,6 +283,8 @@ async function main() {
 }
 
 async function selectArticles(supabase: any): Promise<ArticleRow[]> {
+  if (homepagePriority) return selectHomepagePriorityArticles(supabase)
+
   let query = supabase
     .from('articles')
     .select('id, slug, ru_title, lead, card_teaser, editorial_body, source_name, topics, primary_category, secondary_categories, created_at, cover_image_url, score')
@@ -316,12 +323,88 @@ async function selectArticles(supabase: any): Promise<ArticleRow[]> {
   return selected
 }
 
+async function selectHomepagePriorityArticles(supabase: any): Promise<ArticleRow[]> {
+  const hotStory = await selectHomepageHotStory(supabase)
+  const excludeIds = hotStory ? [hotStory.id] : []
+  const firstFeedArticle = await selectFirstHomepageFeedArticle(supabase, excludeIds)
+  const candidates = [hotStory, firstFeedArticle].filter((article): article is ArticleRow => Boolean(article))
+  const selected = candidates
+    .filter((article) => !onlyGenerated || needsAiCover(article))
+    .slice(0, limit)
+
+  return selected
+}
+
+async function selectHomepageHotStory(supabase: any): Promise<ArticleRow | null> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const { data: hot, error } = await liveArticleQuery(supabase)
+    .gte('created_at', since)
+    .order('score', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw error
+  if (hot && Number((hot as ArticleRow).score ?? 0) >= 5) return hot as ArticleRow
+
+  const { data: latest, error: latestError } = await liveArticleQuery(supabase)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (latestError) throw latestError
+  return (latest as ArticleRow) ?? null
+}
+
+async function selectFirstHomepageFeedArticle(supabase: any, excludeIds: string[]): Promise<ArticleRow | null> {
+  let query = liveArticleQuery(supabase)
+    .order('created_at', { ascending: false })
+    .order('score', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(1)
+
+  if (excludeIds.length) query = query.not('id', 'in', `(${excludeIds.join(',')})`)
+
+  const { data, error } = await query.maybeSingle()
+  if (error) throw error
+  return (data as ArticleRow) ?? null
+}
+
+function liveArticleQuery(supabase: any) {
+  return supabase
+    .from('articles')
+    .select('id, slug, ru_title, lead, card_teaser, editorial_body, source_name, topics, primary_category, secondary_categories, created_at, cover_image_url, score')
+    .eq('published', true)
+    .eq('quality_ok', true)
+    .eq('verified_live', true)
+    .eq('publish_status', 'live')
+    .not('slug', 'is', null)
+    .not('ru_title', 'is', null)
+}
+
 function needsAiCover(article: ArticleRow): boolean {
   if (!article.cover_image_url) return true
+  if (!getUsableCoverUrl(article)) return true
   if (article.cover_image_url.includes('/article-images/ai-covers/')) return false
   if (article.cover_image_url.includes('/article-images/template-covers/')) return true
   if (article.cover_image_url.includes('/article-images/stock-covers/')) return true
-  return ['Habr AI', 'vc.ru', 'CNews'].includes(article.source_name)
+  return ['Habr AI', 'vc.ru', 'vc.ru AI/стартапы', 'CNews'].includes(article.source_name)
+}
+
+function getUsableCoverUrl(article: ArticleRow): string | null {
+  return sanitizeArticleMedia({
+    coverImageUrl: article.cover_image_url,
+    articleImages: null,
+    context: {
+      sourceName: article.source_name,
+      originalUrl: '',
+      originalTitle: article.ru_title,
+      ruTitle: article.ru_title,
+      lead: article.lead,
+      summary: null,
+      originalText: article.editorial_body,
+    },
+  }).coverImageUrl
 }
 
 function classifyCover(value: string | null): string {

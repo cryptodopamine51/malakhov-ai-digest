@@ -3,14 +3,16 @@ import { notFound, permanentRedirect } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 import type { Metadata } from 'next'
-import { getArticleBySlug, getRelatedArticles, resolveAnchorLinks } from '../../../../lib/articles'
+import { getArticleBySlug, getArticleRecommendations, resolveAnchorLinks } from '../../../../lib/articles'
 import { getArticlePath, toPublicArticleSlug } from '../../../../lib/article-slugs'
 import { getCategoryMeta } from '../../../../lib/category-meta'
 import { isKnownCategory, DEFAULT_CATEGORY } from '../../../../lib/categories'
+import { selectInlineImageSlots } from '../../../../lib/article-media-placement'
 import { SITE_URL, absoluteUrl } from '../../../../lib/site'
 import { formatRelativeTime } from '../../../../lib/utils'
 import TopicBadge from '../../../../src/components/TopicBadge'
-import ArticleCard from '../../../../src/components/ArticleCard'
+import ArticleRecommendations from '../../../../src/components/ArticleRecommendations'
+import ArticleSectionNav from '../../../../src/components/ArticleSectionNav'
 import ReadingProgress from '../../../../src/components/ReadingProgress'
 import TelegramCTA from '../../../../src/components/TelegramCTA'
 import {
@@ -33,7 +35,7 @@ type ExtractedVideo = NonNullable<Article['article_videos']>[number]
 
 const SHOWCASE_SLUG = 'sequoia-sobrala-7-mlrd-na-novyy-fond-pochti-vdvoe-bolshe-pre-0dd089'
 
-const SOURCES_WITH_TEXT_COVERS = new Set(['Habr AI', 'vc.ru', 'CNews'])
+const SOURCES_WITH_TEXT_COVERS = new Set(['Habr AI', 'vc.ru', 'vc.ru AI/стартапы', 'CNews'])
 
 function isArticleImagesStorageUrl(value: string | null): boolean {
   if (!value) return false
@@ -106,7 +108,7 @@ function sanitizeArticleForRender(article: Article): { coverImageUrl: string | n
 
   return {
     coverImageUrl: media.coverImageUrl,
-    inlineImages: sanitizeArticleImagesForRender(article.article_images, context, 2),
+    inlineImages: sanitizeArticleImagesForRender(article.article_images, context),
   }
 }
 
@@ -213,6 +215,7 @@ function interleaveBodyMedia(
   const result: ReactNode[] = []
   let tableIndex = 0
   let imageIndex = 0
+  const imageSlots = new Set(selectInlineImageSlots(paragraphs.length, images.length))
 
   paragraphs.forEach((paragraph, index) => {
     result.push(paragraph)
@@ -232,7 +235,7 @@ function interleaveBodyMedia(
       tableIndex++
     }
 
-    if (imageIndex < images.length && index === 2) {
+    if (imageSlots.has(index) && imageIndex < images.length) {
       result.push(renderInlineImage(images[imageIndex], sourceName, title, `image-${imageIndex}`))
       imageIndex++
     }
@@ -241,11 +244,6 @@ function interleaveBodyMedia(
   while (tableIndex < tables.length) {
     result.push(renderInlineTable(tables[tableIndex], `table-tail-${tableIndex}`))
     tableIndex++
-  }
-
-  while (imageIndex < images.length) {
-    result.push(renderInlineImage(images[imageIndex], sourceName, title, `image-tail-${imageIndex}`))
-    imageIndex++
   }
 
   return result
@@ -441,7 +439,7 @@ export default async function CategoryArticlePage({
   const inlineVideos = article.article_videos ?? []
 
   const [related, anchorLinks] = await Promise.all([
-    getRelatedArticles(article.primary_category, article.id, 3),
+    getArticleRecommendations(article, 3),
     resolveAnchorLinks(article.link_anchors ?? [], article.id),
   ])
 
@@ -690,13 +688,11 @@ export default async function CategoryArticlePage({
               По теме
             </p>
             <h3 className="mb-5 font-serif text-xl font-bold text-ink">Читать также</h3>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {related.map((rel) => (
-                <ArticleCard key={rel.id} article={rel} variant="related" />
-              ))}
-            </div>
+            <ArticleRecommendations articles={related} />
           </section>
         )}
+
+        <ArticleSectionNav currentCategory={article.primary_category} className="mt-8" />
 
         <footer className="mt-8 border-t border-line pt-5 text-sm text-muted">
           <p>
@@ -709,7 +705,6 @@ export default async function CategoryArticlePage({
             >
               {article.source_name}
             </a>
-            {' '}· Переработано редакцией Malakhov AI Дайджест.
           </p>
         </footer>
 

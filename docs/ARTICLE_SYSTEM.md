@@ -274,15 +274,25 @@ Production fallback backfill пишет обработанные WebP в Supabas
 - `template-covers/<date>/...` — бесплатный локальный SVG/WebP fallback, когда API-бюджет
   недоступен или достигнут hard limit.
 
-Источники с текстовыми обложками (`Habr AI`, `vc.ru`, `CNews`) остаются в denylist для исходных
-картинок, но карточки и страницы статей разрешают URL из нашего bucket `article-images`, потому что
-это уже нормализованный editorial treatment, а не source text-cover.
+Homepage-priority AI cover mode (`scripts/generate-ai-covers.ts --homepage`) выбирает только две
+видимые позиции главной: `getHotStoryOfTheDay()` и первый featured item в «Все новости» после
+исключения hot story. Он генерирует cover только если после sanitizer/card-cover rules нет usable
+cover, использует тот же OpenAI Images/Supabase Storage путь, обновляет только
+`articles.cover_image_url` и пишет `llm_usage_logs.operation='image_cover_generation'`.
+
+Источники с текстовыми обложками (`Habr AI`, `vc.ru`, `vc.ru AI/стартапы`, `CNews`) остаются в
+denylist для исходных картинок, но карточки и страницы статей разрешают URL из нашего bucket
+`article-images`, потому что это уже нормализованный editorial treatment, а не source text-cover.
 
 ### Inline images and tables
 
 Fetcher вытаскивает релевантные inline images и таблицы из оригинального HTML и сохраняет их в structured fields статьи.
 Для research-материалов отсутствие и cover, и inline images считается publish-risk: такие статьи
 отсекаются до вызова Claude, чтобы раздел не заполнялся сухими короткими заметками.
+Render layer больше не добавляет оставшиеся изображения хвостом после всех абзацев. Inline images
+раскладываются только по внутренним слотам тела статьи (`lib/article-media-placement.ts`): короткие
+статьи естественно показывают мало или ноль картинок, длинные могут показать больше 2–3 изображений
+при минимальном расстоянии между слотами, и последний block тела не должен быть image.
 
 ### Media sanitizer
 
@@ -329,6 +339,8 @@ Broad RSS feeds допускаются только с keyword filters:
   добавлены варианты `нейронк`, `ии-`, `ии-агент`, `ии-ассистент`.
 - `vc.ru AI/стартапы`, `RB.ru`, `TechCrunch Startups`, `Crunchbase News`, `TechCrunch Venture`
   дают материалы для `ai-startups`, но проходят через startup keyword filters.
+- Для vc.ru source health дополнительно следит за live-yield: если по `source_name ILIKE '%vc.ru%'`
+  нет live/verified статьи за 7 дней, поднимается `source_low_live_yield` follow-up.
 - Для самых широких startup feeds доступен `keywordGroups`: каждая группа должна иметь хотя бы одно
   совпадение. Например, RB.ru должен совпасть и с AI-группой, и со startup/deal-группой, чтобы
   обычные новости про маркетплейсы или инвестиции не попадали в `ai-startups`.
@@ -422,11 +434,17 @@ Broad RSS feeds допускаются только с keyword filters:
   времени добавления в наш каталог: `created_at desc`, затем `pub_date desc nulls last`,
   `score desc`, `id desc` там, где поле доступно для tie-breaker. Score больше не поднимает
   старую статью выше свежей в основной ленте.
+- На главной «Все новости» исключает текущую hot story из всей своей пагинации; total для блока
+  считается уже после исключения, чтобы page 1 и последующие страницы не дублировали один материал.
 - Блок «Самое интересное» на `/categories/[category]` и `/russia` строится отдельным
   deterministic ranking-ом (`lib/interest-ranking.ts`): editorial score + time decay +
   source weight + content/media quality + diversity по источникам. Primary-окно кандидатов —
   72 часа по `created_at`, fallback — до 30 дней; freshness decay использует `exp(-ageHours / 24)`.
   Блок скрывается, если после фильтрации меньше трёх кандидатов, и не требует персонального tracking.
+- Рекомендации на странице статьи используют `getArticleRecommendations(article)`: same primary
+  category имеет первый приоритет, затем shared secondary/topics, freshness, score, source diversity
+  и content/media quality. Primary-окно кандидатов — последние 72 часа, fallback — до 30 дней;
+  блок скрывается, если после исключения текущей статьи меньше трёх рекомендаций.
 - Legacy маршруты `/articles/[slug]` и `/topics/[topic]` остаются только как 308-редиректы.
 - Главная страница в верхнем VC-блоке использует `getHotStoryOfTheDay()`
   (статья с наивысшим score за последние 24 часа из live; если score ниже порога —
