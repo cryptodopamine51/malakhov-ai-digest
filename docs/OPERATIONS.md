@@ -287,6 +287,8 @@ npx tsx scripts/backfill-stock-covers.ts --latest-day --limit=12
 ```bash
 npx tsx scripts/generate-ai-covers.ts --category=ai-russia --limit=8
 npm run covers:ai-low -- --category=all --latest-day --limit=8
+npm run covers:ai-priority -- --daily-budget=1
+npm run covers:ai-priority -- --apply --daily-budget=1
 npx tsx scripts/generate-ai-covers.ts --category=ai-russia --limit=8 --apply --quality=medium
 ```
 
@@ -296,6 +298,10 @@ npx tsx scripts/generate-ai-covers.ts --category=ai-russia --limit=8 --apply --q
 - scheduled workflow `ai-covers.yml` включён каждые 2 часа на 10-й минуте и запускает только low-quality path с `--daily-budget=1`;
 - default model — `gpt-image-1.5`, потому что `gpt-image-2` требует verified organization;
 - default quality — `low` для автоматического дешёвого cover fallback; `medium`/`high` остаются ручным override для важных карточек;
+- homepage-priority command `npm run covers:ai-priority -- --daily-budget=1` — dry-run/apply режим
+  для двух видимых homepage-кандидатов: hot story и первого featured item в «Все новости» после
+  исключения hot story. Этот режим использует `quality=medium`, `model=gpt-image-1.5`, тот же
+  budget cap и пишет только `articles.cover_image_url`;
 - `--category=all` отключает category filter и используется в автоматическом workflow `ai-covers.yml`;
 - `--daily-budget=N` / `OPENAI_IMAGE_DAILY_BUDGET_USD` ограничивает дневной расход OpenAI Images по Москве;
 - dry-run не требует `OPENAI_API_KEY`; ключ нужен только для `--apply`;
@@ -435,6 +441,9 @@ Operational правило:
   `rejected_low_visual` / `research_too_short:*` после deploy ожидаем и означает, что фильтр работает.
 - Broad feeds (`vc.ru/rss/all`, `rb.ru/feeds/all/`) должны мониториться через source health и
   ручную выборку после первой недели. Если мусора больше 30%, ужесточить `pipeline/keyword-filters.ts`.
+- Для vc.ru дополнительно действует low-yield follow-up: если по `source_name ILIKE '%vc.ru%'`
+  нет live/verified статьи за 7 дней, `pipeline/source-health.ts` поднимает warning alert
+  `source_low_live_yield` с указанием проверить `source_runs`, keyword yield и `publish_ready` queue.
 - RSS rejected observability: `parseFeed` возвращает rejected summary по причинам
   `keyword_filter` и `requireDateInUrl`; `ingest` добавляет `dedup` после проверки
   `articles.dedup_hash` и пишет агрегат в `source_runs.items_rejected_count` /

@@ -12,7 +12,7 @@ interface ArticleCardProps {
 }
 
 // Источники, чьи og:image содержат текст заголовка — не используем их как обложку в карточках
-const SOURCES_WITH_TEXT_COVERS = new Set(['Habr AI', 'vc.ru', 'CNews'])
+const SOURCES_WITH_TEXT_COVERS = new Set(['Habr AI', 'vc.ru', 'vc.ru AI/стартапы', 'CNews'])
 
 function isArticleImagesStorageUrl(value: string | null): boolean {
   if (!value) return false

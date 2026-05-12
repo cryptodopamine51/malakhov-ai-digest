@@ -24,6 +24,7 @@ const HIGH_PRIORITY_SOURCES = [
 
 const FAILURE_WINDOW_HOURS = 6
 const MIN_FAILURES_TO_ALERT = 3
+const VC_RU_LIVE_WINDOW_DAYS = 7
 
 function log(msg: string): void {
   const ts = new Date().toTimeString().slice(0, 8)
@@ -47,11 +48,13 @@ async function checkSourceHealth(): Promise<void> {
 
   if (error) {
     log(`Ошибка выборки source_runs: ${error.message}`)
+    await checkVcRuLiveYield({ supabase, botToken, adminChatId })
     return
   }
 
   if (!runs?.length) {
     log('Нет данных source_runs за последние 6 часов')
+    await checkVcRuLiveYield({ supabase, botToken, adminChatId })
     return
   }
 
@@ -90,8 +93,63 @@ async function checkSourceHealth(): Promise<void> {
     }
   }
 
+  await checkVcRuLiveYield({
+    supabase,
+    botToken,
+    adminChatId,
+  })
+
   log(`Проверено источников: ${bySource.size}`)
   log('=== source-health завершён ===')
+}
+
+async function checkVcRuLiveYield({
+  supabase,
+  botToken,
+  adminChatId,
+}: {
+  supabase: ReturnType<typeof getServerClient>
+  botToken?: string
+  adminChatId?: string
+}): Promise<void> {
+  const since = new Date(Date.now() - VC_RU_LIVE_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  const { data, error } = await supabase
+    .from('articles')
+    .select('id, slug, source_name, created_at, publish_status, verified_live')
+    .ilike('source_name', '%vc.ru%')
+    .eq('publish_status', 'live')
+    .eq('verified_live', true)
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  if (error) {
+    log(`Ошибка проверки live-yield vc.ru: ${error.message}`)
+    return
+  }
+
+  const latestLive = data?.[0] ?? null
+  const entityKey = 'vc.ru'
+  if (!latestLive) {
+    const sent = await fireAlert({
+      supabase,
+      alertType: 'source_low_live_yield',
+      severity: 'warning',
+      entityKey,
+      message: `vc.ru has no live articles in the last ${VC_RU_LIVE_WINDOW_DAYS} days. Check source_runs, keyword yield, and publish_ready queue.`,
+      payload: {
+        sourcePattern: '%vc.ru%',
+        liveWindowDays: VC_RU_LIVE_WINDOW_DAYS,
+        since,
+      },
+      botToken,
+      adminChatId,
+    })
+    if (sent) log(`🟠 Alert fired for source low live yield: ${entityKey}`)
+    return
+  }
+
+  await resolveAlert(supabase, 'source_low_live_yield', entityKey)
 }
 
 checkSourceHealth().catch((err: unknown) => {

@@ -94,9 +94,8 @@ export default function Footer() {
           </ul>
         </nav>
 
-        <div className="mt-6 border-t border-white/10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-white/30">
-          <span>© 2024–2026 news.malakhovai.ru</span>
-          <span>Все материалы переработаны редакцией</span>
+        <div className="mt-6 border-t border-white/10 pt-6 text-xs text-white/30">
+          <span>© 2026 news.malakhovai.ru</span>
         </div>
       </div>
     </footer>

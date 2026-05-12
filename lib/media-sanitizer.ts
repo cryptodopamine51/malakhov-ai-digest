@@ -312,7 +312,7 @@ export function sanitizeArticleMedia({
 export function sanitizeArticleImagesForRender(
   articleImages: ArticleImageCandidate[] | { src: string; alt?: string | null }[] | null | undefined,
   context: MediaSanitizerContext,
-  limit = 2,
+  limit = Number.POSITIVE_INFINITY,
 ): { src: string; alt: string }[] {
   return sanitizeArticleMedia({
     articleImages,

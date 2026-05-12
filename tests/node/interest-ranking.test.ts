@@ -1,7 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { rankInterestingArticles, rankInterestingArticlesWithFallback, scoreInterestingArticle } from '../../lib/interest-ranking'
+import {
+  rankArticleRecommendations,
+  rankInterestingArticles,
+  rankInterestingArticlesWithFallback,
+  scoreInterestingArticle,
+} from '../../lib/interest-ranking'
 import type { Article } from '../../lib/supabase'
 
 function article(overrides: Partial<Article>): Article {
@@ -195,4 +200,76 @@ test('rankInterestingArticlesWithFallback uses wider window after excluded fresh
   })
 
   assert.deepEqual(ranked.map((item) => item.article.id), ['older-1', 'older-2', 'older-3'])
+})
+
+test('rankArticleRecommendations keeps same primary category first', () => {
+  const current = article({
+    id: 'current',
+    primary_category: 'ai-research',
+    secondary_categories: ['ai-industry'],
+    topics: ['models', 'agents'],
+  })
+  const samePrimaryOlder = article({
+    id: 'same-primary',
+    source_name: 'MIT Technology Review',
+    primary_category: 'ai-research',
+    created_at: '2026-04-29T12:00:00.000Z',
+    pub_date: '2026-04-29T12:00:00.000Z',
+    score: 4,
+  })
+  const sharedButFresh = article({
+    id: 'shared-fresh',
+    source_name: 'OpenAI',
+    primary_category: 'ai-industry',
+    secondary_categories: ['ai-research'],
+    topics: ['models'],
+    created_at: '2026-05-01T11:30:00.000Z',
+    pub_date: '2026-05-01T11:30:00.000Z',
+    score: 10,
+  })
+  const filler = [
+    article({ id: 'filler-a', source_name: 'The Verge', primary_category: 'coding' }),
+    article({ id: 'filler-b', source_name: 'TechCrunch', primary_category: 'ai-startups' }),
+  ]
+
+  const ranked = rankArticleRecommendations(current, [sharedButFresh, samePrimaryOlder, ...filler], {
+    now: fixedNow,
+    limit: 3,
+  })
+
+  assert.equal(ranked[0].article.id, 'same-primary')
+})
+
+test('rankArticleRecommendations excludes current article and limits source dominance', () => {
+  const current = article({ id: 'current', primary_category: 'ai-industry' })
+  const candidates = [
+    current,
+    article({ id: 'openai-1', source_name: 'OpenAI', primary_category: 'ai-industry', score: 10 }),
+    article({ id: 'openai-2', source_name: 'OpenAI', primary_category: 'ai-industry', score: 9 }),
+    article({ id: 'openai-3', source_name: 'OpenAI', primary_category: 'ai-industry', score: 8 }),
+    article({ id: 'anthropic', source_name: 'Anthropic', primary_category: 'ai-industry', score: 7 }),
+    article({ id: 'verge', source_name: 'The Verge', primary_category: 'ai-industry', score: 6 }),
+  ]
+
+  const ranked = rankArticleRecommendations(current, candidates, {
+    now: fixedNow,
+    limit: 4,
+  })
+
+  assert.equal(ranked.length, 4)
+  assert.equal(ranked.some((item) => item.article.id === 'current'), false)
+  assert.ok(ranked.filter((item) => item.article.source_name === 'OpenAI').length <= 2)
+})
+
+test('rankArticleRecommendations hides block when fewer than minimum remain', () => {
+  const current = article({ id: 'current' })
+  const ranked = rankArticleRecommendations(current, [
+    article({ id: 'one', source_name: 'OpenAI' }),
+    article({ id: 'two', source_name: 'Anthropic' }),
+  ], {
+    now: fixedNow,
+    limit: 3,
+  })
+
+  assert.deepEqual(ranked, [])
 })
