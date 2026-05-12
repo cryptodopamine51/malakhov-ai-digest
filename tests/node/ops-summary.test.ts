@@ -192,6 +192,12 @@ test('formatOpsSummaryForTelegram explains yellow status in admin language', () 
   assert.match(text, /Открытых пакетных задач обработки: 2/)
   assert.match(text, /Claude вернул невалидный результат/)
   assert.match(text, /они не присылаются отдельными сообщениями/)
+  assert.match(text, /<b>Что нужно для зелёного<\/b>/)
+  assert.match(text, /дособрать или корректно завершить 2 пакетные задачи обработки/)
+  assert.match(text, /<b>Промпт для Codex<\/b>/)
+  assert.match(text, /<pre>Разбери ops-сигнал Malakhov AI Digest\./)
+  assert.match(text, /Репозиторий: \/Users\/malast\/malakhov-ai-digest/)
+  assert.ok(text.length < 4096)
 })
 
 test('formatOpsSummaryForTelegram explains red critical failures', () => {
@@ -214,6 +220,8 @@ test('formatOpsSummaryForTelegram explains red critical failures', () => {
   assert.match(text, /Почему красный/)
   assert.match(text, /критическая ошибка публикации/)
   assert.match(text, /article returned 500 &lt;bad&gt;/)
+  assert.match(text, /устранить 1 critical алёрт/)
+  assert.match(text, /<pre>Разбери ops-сигнал Malakhov AI Digest\./)
 })
 
 test('groupAlerts sorts by severity and count', () => {

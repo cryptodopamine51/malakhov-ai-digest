@@ -454,6 +454,12 @@ export function formatOpsSummaryForTelegram(summary: OpsSummary): string {
   lines.push(...formatDeliveryOverview(summary))
   lines.push('')
   lines.push(...formatProblemOverview(summary))
+  if (summary.status.level !== 'green') {
+    lines.push('')
+    lines.push(...formatGreenPathOverview(summary))
+    lines.push('')
+    lines.push(...formatCodexPromptBlock(summary))
+  }
   lines.push('')
   lines.push('<b>Публикации</b>')
   lines.push(`• сегодня опубликовано: <b>${summary.articles.publishedTodayCount}</b>; за 6ч: <b>${summary.health.live_window_6h_count}</b>`)
@@ -613,6 +619,78 @@ function formatProblemOverview(summary: OpsSummary): string[] {
     lines.push(`• ${escapeHtml(issue)}`)
   }
   return lines
+}
+
+function formatGreenPathOverview(summary: OpsSummary): string[] {
+  const lines = ['<b>Что нужно для зелёного</b>']
+  const actions = buildGreenPathActions(summary)
+  if (!actions.length) {
+    lines.push('• Убрать нестандартный статус: явных блокеров уже не видно, проверь свежий dry-run.')
+    return lines
+  }
+  for (const action of actions.slice(0, 6)) lines.push(`• ${escapeHtml(action)}`)
+  return lines
+}
+
+function formatCodexPromptBlock(summary: OpsSummary): string[] {
+  return [
+    '<b>Промпт для Codex</b>',
+    'Нажми на блок ниже и скопируй:',
+    `<pre>${escapeHtml(buildCodexPrompt(summary))}</pre>`,
+  ]
+}
+
+function buildGreenPathActions(summary: OpsSummary): string[] {
+  const actions: string[] = []
+  const criticalAlerts = summary.openAlerts.filter((alert) => alert.severity === 'critical')
+  const warningAlerts = summary.openAlerts.filter((alert) => alert.severity === 'warning')
+  const latestDigest = summary.digestToday ?? summary.latestDigest
+
+  if (criticalAlerts.length) {
+    actions.push(`устранить ${criticalAlerts.length} critical ${pluralize(criticalAlerts.length, 'алёрт', 'алёрта', 'алёртов')} и закрыть его в pipeline_alerts`)
+  }
+  if (summary.latestIngest?.status === 'failed') actions.push('починить последний сбор источников')
+  if (summary.latestEnrich?.status === 'failed') actions.push('починить последнюю обработку статей')
+  if (latestDigest?.status?.startsWith('failed')) actions.push('починить отправку Telegram-дайджеста')
+  if (summary.reportKind === 'morning' && !summary.digestToday) actions.push('добиться записи success в digest_runs за сегодняшний дайджест')
+  if (summary.reportKind === 'morning' && summary.digestToday && summary.digestToday.status !== 'success') {
+    actions.push('довести утренний Telegram-дайджест до статуса success')
+  }
+  if (summary.reportKind === 'evening' && summary.articles.publishedTodayCount === 0) {
+    actions.push('выпустить хотя бы одну live-статью сегодня')
+  }
+  if (summary.health.live_window_6h_count === 0) actions.push('восстановить свежие live-публикации за последние 6 часов')
+  if (summary.health.batches_open > 0) {
+    actions.push(`дособрать или корректно завершить ${summary.health.batches_open} ${pluralize(summary.health.batches_open, 'пакетную задачу обработки', 'пакетные задачи обработки', 'пакетных задач обработки')}`)
+  }
+  if ((summary.health.oldest_pending_age_minutes ?? 0) >= 180) actions.push('разобрать старую очередь pending/retry статей')
+  if (warningAlerts.length) {
+    actions.push(`разобрать и закрыть ${warningAlerts.length} warning ${pluralize(warningAlerts.length, 'алёрт', 'алёрта', 'алёртов')}: ${formatAlertGroups(summary.alertGroups.filter((group) => group.severity === 'warning'))}`)
+  }
+  if (summary.sources.failedRuns24h > 0) actions.push('починить источники, которые падали за последние 24 часа')
+
+  return actions
+}
+
+function buildCodexPrompt(summary: OpsSummary): string {
+  const facts = [
+    `Сигнал: ${summary.status.emoji} ${summary.status.label}`,
+    `Причины: ${summary.status.reasons.join('; ')}`,
+    `Дайджест: ${stripTags(formatDigestDelivery(summary.digestToday ?? summary.latestDigest))}`,
+    `Публикации: сегодня ${summary.articles.publishedTodayCount}, за 6ч ${summary.health.live_window_6h_count}`,
+    `Очередь: pending ${count(summary.articles.currentQueue, 'pending')}, retry ${count(summary.articles.currentQueue, 'retry_wait')}, processing ${count(summary.articles.currentQueue, 'processing')}`,
+    `Open batches: ${summary.health.batches_open}`,
+    `Алерты: ${formatAlertGroups(summary.alertGroups)}`,
+  ].join('\n')
+
+  return [
+    'Разбери ops-сигнал Malakhov AI Digest.',
+    'Репозиторий: /Users/malast/malakhov-ai-digest',
+    facts,
+    'Задача: найти root cause, объяснить простым языком, что сломалось, и по возможности исправить до зелёного статуса.',
+    'Начни с dry-run: npm run ops:report -- --dry-run --kind=manual',
+    'Проверь pipeline_alerts, anthropic_batches, digest_runs и GitHub Actions. Не трогай unrelated changes.',
+  ].join('\n')
 }
 
 function buildDeliveryProblems(summary: OpsSummary): string[] {
@@ -840,6 +918,10 @@ function escapeHtml(text: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+}
+
+function stripTags(text: string): string {
+  return text.replace(/<[^>]*>/g, '')
 }
 
 function formatMskDateTime(value: string): string {
