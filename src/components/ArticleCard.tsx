@@ -99,40 +99,43 @@ function FeaturedCard({ article }: { article: Article }) {
             />
           </div>
 
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/25 to-black/10" />
+          <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/80 via-black/45 to-transparent" />
 
-          <div className="relative flex h-full min-h-[300px] flex-col justify-end p-5 md:min-h-[340px] md:p-6">
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              {(article.topics ?? []).slice(0, 3).map((t) => (
-                <span
-                  key={t}
-                  className="px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.06em] border border-white/40 text-white/90 rounded-sm"
-                >
-                  {TOPIC_LABELS[t] ?? t}
+          <div className="relative flex h-full min-h-[300px] flex-col justify-end p-4 md:min-h-[340px] md:p-6">
+            <div className="max-w-[92%] border-l-[3px] border-white bg-black/80 p-4 shadow-[0_16px_48px_rgba(0,0,0,0.45)] backdrop-blur-[2px] md:max-w-[78%] md:p-5">
+              <div className="mb-3 flex flex-wrap gap-1.5">
+                {(article.topics ?? []).slice(0, 3).map((t) => (
+                  <span
+                    key={t}
+                    className="rounded-sm border border-white/35 bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-white"
+                  >
+                    {TOPIC_LABELS[t] ?? t}
+                  </span>
+                ))}
+              </div>
+
+              <h2 className="mb-3 font-serif text-xl font-bold leading-tight text-white transition-colors line-clamp-3 group-hover:text-white/90 md:text-2xl">
+                {title}
+              </h2>
+
+              {teaser && (
+                <p className="mb-4 hidden text-sm leading-relaxed text-white/90 line-clamp-3 sm:block">
+                  {teaser}
+                </p>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-2 rounded border border-white/45 bg-white px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.06em] text-black transition-colors group-hover:bg-white/90">
+                  Читать
                 </span>
-              ))}
-            </div>
-
-            <h2 className="font-serif font-bold text-white text-xl md:text-2xl leading-tight mb-3 group-hover:text-white/90 transition-colors line-clamp-3">
-              {title}
-            </h2>
-
-            {teaser && (
-              <p className="text-white/70 text-sm leading-relaxed line-clamp-2 mb-4 hidden sm:block">
-                {teaser}
-              </p>
-            )}
-
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <span className="inline-flex items-center gap-2 rounded border border-white/40 px-4 py-1.5 text-xs font-medium text-white uppercase tracking-[0.06em] group-hover:bg-white group-hover:text-black transition-colors">
-                Читать
-              </span>
-              <div className="flex min-w-0 items-center gap-2 text-white/50 text-xs">
-                <div className="min-w-0 max-w-[180px] sm:max-w-[220px]">
-                  <SourceLabel name={article.source_name} />
+                <div className="flex min-w-0 items-center gap-2 text-xs text-white/75">
+                  <div className="min-w-0 max-w-[180px] sm:max-w-[220px]">
+                    <SourceLabel name={article.source_name} />
+                  </div>
+                  <span>·</span>
+                  <span>{time}</span>
                 </div>
-                <span>·</span>
-                <span>{time}</span>
               </div>
             </div>
           </div>

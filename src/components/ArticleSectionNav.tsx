@@ -40,7 +40,7 @@ export default function ArticleSectionNav({ currentCategory, className }: Articl
                   className={cn(
                     'inline-flex items-center rounded-sm border px-2 py-[3px] text-[11px] font-medium uppercase tracking-[0.06em] transition-colors',
                     isActive
-                      ? 'border-ink bg-ink text-base'
+                      ? 'border-ink bg-ink text-page'
                       : 'border-line text-muted hover:border-ink hover:text-ink',
                   )}
                 >
