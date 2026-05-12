@@ -160,9 +160,60 @@ test('formatOpsSummaryForTelegram renders traffic-light header and escapes HTML'
   const text = formatOpsSummaryForTelegram(summary)
 
   assert.match(text, /^🟢 <b>Ops-сводка/)
+  assert.match(text, /<b>Итог:<\/b> всё ок/)
+  assert.match(text, /<b>Что отправилось \/ что нет<\/b>/)
   assert.match(text, /<b>Публикации<\/b>/)
   assert.match(text, /OpenAI &lt;test&gt; &amp; partners/)
   assert.doesNotMatch(text, /OpenAI <test> & partners/)
+})
+
+test('formatOpsSummaryForTelegram explains yellow status in admin language', () => {
+  const summary = baseSummary({
+    health: {
+      ...baseSummary().health,
+      batches_open: 2,
+    },
+    openAlerts: [{
+      alert_type: 'claude_parse_failed',
+      severity: 'warning',
+      entity_key: 'batch-1',
+      message: 'validation failed',
+      occurrence_count: 1,
+      first_seen_at: '2026-05-11T12:00:00.000Z',
+      last_seen_at: '2026-05-11T12:00:00.000Z',
+    }],
+    alertGroups: [{ key: 'claude_parse_failed', severity: 'warning', count: 1 }],
+  })
+  summary.status = evaluateOpsStatus(summary)
+
+  const text = formatOpsSummaryForTelegram(summary)
+  assert.match(text, /Почему жёлтый/)
+  assert.match(text, /портал работает, но есть проблемы/)
+  assert.match(text, /Открытых пакетных задач обработки: 2/)
+  assert.match(text, /Claude вернул невалидный результат/)
+  assert.match(text, /они не присылаются отдельными сообщениями/)
+})
+
+test('formatOpsSummaryForTelegram explains red critical failures', () => {
+  const summary = baseSummary({
+    openAlerts: [{
+      alert_type: 'publish_verify_failed',
+      severity: 'critical',
+      entity_key: 'article-1',
+      message: 'article returned 500 <bad>',
+      occurrence_count: 1,
+      first_seen_at: '2026-05-11T12:00:00.000Z',
+      last_seen_at: '2026-05-11T12:00:00.000Z',
+    }],
+    alertGroups: [{ key: 'publish_verify_failed', severity: 'critical', count: 1 }],
+  })
+  summary.status = evaluateOpsStatus(summary)
+
+  const text = formatOpsSummaryForTelegram(summary)
+  assert.match(text, /критическая проблема/)
+  assert.match(text, /Почему красный/)
+  assert.match(text, /критическая ошибка публикации/)
+  assert.match(text, /article returned 500 &lt;bad&gt;/)
 })
 
 test('groupAlerts sorts by severity and count', () => {

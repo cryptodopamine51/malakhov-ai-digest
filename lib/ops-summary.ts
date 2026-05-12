@@ -391,37 +391,47 @@ export function evaluateOpsStatus(summary: Omit<OpsSummary, 'status'>): OpsStatu
   const warningAlerts = summary.openAlerts.filter((alert) => alert.severity === 'warning')
   const latestDigest = summary.digestToday ?? summary.latestDigest
 
-  if (criticalAlerts.length > 0) redReasons.push(`critical alerts: ${criticalAlerts.length}`)
-  if (summary.latestIngest?.status === 'failed') redReasons.push('последний ingest failed')
-  if (summary.latestEnrich?.status === 'failed') redReasons.push('последний enrich failed')
-  if (latestDigest?.status?.startsWith('failed')) redReasons.push(`дайджест ${latestDigest.status}`)
+  if (criticalAlerts.length > 0) {
+    redReasons.push(`есть ${criticalAlerts.length} critical ${pluralize(criticalAlerts.length, 'алёрт', 'алёрта', 'алёртов')}`)
+  }
+  if (summary.latestIngest?.status === 'failed') redReasons.push('последний сбор источников завершился ошибкой')
+  if (summary.latestEnrich?.status === 'failed') redReasons.push('последняя обработка статей завершилась ошибкой')
+  if (latestDigest?.status?.startsWith('failed')) {
+    redReasons.push(`Telegram-дайджест не отправился: ${humanDigestStatus(latestDigest.status)}`)
+  }
 
   if (summary.reportKind === 'morning') {
-    if (!summary.digestToday) yellowReasons.push('нет digest_runs за сегодня')
+    if (!summary.digestToday) yellowReasons.push('нет записи об утреннем Telegram-дайджесте за сегодня')
     else if (summary.digestToday.status !== 'success' && !summary.digestToday.status.startsWith('failed')) {
-      yellowReasons.push(`утренний дайджест: ${summary.digestToday.status}`)
+      yellowReasons.push(`утренний Telegram-дайджест в статусе ${humanDigestStatus(summary.digestToday.status)}`)
     }
   }
 
   if (summary.reportKind === 'evening' && summary.articles.publishedTodayCount === 0) {
-    redReasons.push('за день нет live-публикаций')
+    redReasons.push('сегодня нет live-публикаций на сайте')
   } else if (summary.reportKind === 'evening' && summary.articles.publishedTodayCount < 3) {
-    yellowReasons.push(`за день опубликовано ${summary.articles.publishedTodayCount}`)
+    yellowReasons.push(`сегодня опубликовано только ${summary.articles.publishedTodayCount} ${pluralize(summary.articles.publishedTodayCount, 'статья', 'статьи', 'статей')}`)
   }
 
-  if (summary.health.live_window_6h_count === 0) yellowReasons.push('за последние 6ч нет live-публикаций')
-  if (summary.health.batches_open > 0) yellowReasons.push(`open batches: ${summary.health.batches_open}`)
-  if ((summary.health.oldest_pending_age_minutes ?? 0) >= 360) {
-    redReasons.push(`oldest pending ${summary.health.oldest_pending_age_minutes} мин`)
-  } else if ((summary.health.oldest_pending_age_minutes ?? 0) >= 180) {
-    yellowReasons.push(`oldest pending ${summary.health.oldest_pending_age_minutes} мин`)
+  if (summary.health.live_window_6h_count === 0) yellowReasons.push('за последние 6 часов не вышло ни одной live-публикации')
+  if (summary.health.batches_open > 0) {
+    yellowReasons.push(`открытых пакетных задач обработки: ${summary.health.batches_open}`)
   }
-  if (warningAlerts.length > 0) yellowReasons.push(`warning alerts: ${warningAlerts.length}`)
-  if (summary.sources.failedRuns24h > 0) yellowReasons.push(`source failures за 24ч: ${summary.sources.failedRuns24h}`)
+  if ((summary.health.oldest_pending_age_minutes ?? 0) >= 360) {
+    redReasons.push(`самая старая статья ждёт обработки ${summary.health.oldest_pending_age_minutes} мин`)
+  } else if ((summary.health.oldest_pending_age_minutes ?? 0) >= 180) {
+    yellowReasons.push(`самая старая статья ждёт обработки ${summary.health.oldest_pending_age_minutes} мин`)
+  }
+  if (warningAlerts.length > 0) {
+    yellowReasons.push(`открытых предупреждений: ${warningAlerts.length}`)
+  }
+  if (summary.sources.failedRuns24h > 0) {
+    yellowReasons.push(`ошибок источников за 24 часа: ${summary.sources.failedRuns24h}`)
+  }
 
   const failed24h = summary.articles.byEnrichStatus.failed ?? 0
   if (summary.articles.created24h >= 5 && failed24h / summary.articles.created24h >= 0.5) {
-    yellowReasons.push(`много failed за 24ч: ${failed24h}/${summary.articles.created24h}`)
+    yellowReasons.push(`много failed-статей за 24 часа: ${failed24h}/${summary.articles.created24h}`)
   }
 
   if (redReasons.length > 0) {
@@ -430,7 +440,7 @@ export function evaluateOpsStatus(summary: Omit<OpsSummary, 'status'>): OpsStatu
   if (yellowReasons.length > 0) {
     return { level: 'yellow', emoji: '🟡', label: 'желтый', reasons: yellowReasons.slice(0, 5) }
   }
-  return { level: 'green', emoji: '🟢', label: 'зеленый', reasons: ['все ключевые контуры в норме'] }
+  return { level: 'green', emoji: '🟢', label: 'зеленый', reasons: ['всё ок: дайджест отправлен, публикации идут, критических ошибок нет'] }
 }
 
 export function formatOpsSummaryForTelegram(summary: OpsSummary): string {
@@ -439,17 +449,21 @@ export function formatOpsSummaryForTelegram(summary: OpsSummary): string {
   const criticalAlerts = summary.openAlerts.filter((alert) => alert.severity === 'critical')
 
   lines.push(`${summary.status.emoji} <b>Ops-сводка · ${kind} · ${formatMskDateTime(summary.generatedAt)}</b>`)
-  lines.push(`<b>Статус:</b> ${summary.status.label} — ${escapeHtml(summary.status.reasons.join('; '))}`)
+  lines.push(...formatAdminOverview(summary))
+  lines.push('')
+  lines.push(...formatDeliveryOverview(summary))
+  lines.push('')
+  lines.push(...formatProblemOverview(summary))
   lines.push('')
   lines.push('<b>Публикации</b>')
-  lines.push(`• сегодня live: <b>${summary.articles.publishedTodayCount}</b>; за 6ч: <b>${summary.health.live_window_6h_count}</b>`)
-  lines.push(`• за 24ч создано: <b>${summary.articles.created24h}</b>; live: ${count(summary.articles.byPublishStatus, 'live')}; processing: ${count(summary.articles.byEnrichStatus, 'processing')}; failed: ${count(summary.articles.byEnrichStatus, 'failed')}; rejected: ${count(summary.articles.byEnrichStatus, 'rejected')}`)
+  lines.push(`• сегодня опубликовано: <b>${summary.articles.publishedTodayCount}</b>; за 6ч: <b>${summary.health.live_window_6h_count}</b>`)
+  lines.push(`• за 24ч создано: <b>${summary.articles.created24h}</b>; опубликовано: ${count(summary.articles.byPublishStatus, 'live')}; в работе: ${count(summary.articles.byEnrichStatus, 'processing')}; с ошибкой: ${count(summary.articles.byEnrichStatus, 'failed')}; отклонено: ${count(summary.articles.byEnrichStatus, 'rejected')}`)
   lines.push(`• дайджест: ${formatDigest(summary.digestToday ?? summary.latestDigest)}`)
   const rejectReasons = Object.entries(summary.health.articles_rejected_today_by_reason)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 4)
   if (rejectReasons.length) {
-    lines.push(`• reject reasons: ${rejectReasons.map(([key, value]) => `${escapeHtml(key)}=${value}`).join(', ')}`)
+    lines.push(`• причины отклонения: ${rejectReasons.map(([key, value]) => `${escapeHtml(humanRejectReason(key))}=${value}`).join(', ')}`)
   }
 
   if (summary.articles.recentPublished.length) {
@@ -462,15 +476,15 @@ export function formatOpsSummaryForTelegram(summary: OpsSummary): string {
   }
 
   lines.push('')
-  lines.push('<b>Pipeline</b>')
-  lines.push(`• ingest: ${formatIngest(summary.latestIngest)}`)
-  lines.push(`• enrich: ${formatEnrich(summary.latestEnrich)}`)
-  lines.push(`• очередь: pending ${count(summary.articles.currentQueue, 'pending')}, retry ${count(summary.articles.currentQueue, 'retry_wait')}, processing ${count(summary.articles.currentQueue, 'processing')}; oldest ${summary.health.oldest_pending_age_minutes ?? 0} мин`)
-  lines.push(`• источники 24ч: new ${summary.sources.itemsInserted24h}, seen ${summary.sources.itemsSeen24h}, rejected ${summary.sources.itemsRejected24h}, fetch errors ${summary.sources.fetchErrors24h}`)
+  lines.push('<b>Пайплайн</b>')
+  lines.push(`• сбор источников: ${formatIngest(summary.latestIngest)}`)
+  lines.push(`• обработка статей: ${formatEnrich(summary.latestEnrich)}`)
+  lines.push(`• очередь: ждут ${count(summary.articles.currentQueue, 'pending')}, на повтор ${count(summary.articles.currentQueue, 'retry_wait')}, в работе ${count(summary.articles.currentQueue, 'processing')}; самая старая ${summary.health.oldest_pending_age_minutes ?? 0} мин`)
+  lines.push(`• источники 24ч: новых ${summary.sources.itemsInserted24h}, просмотрено ${summary.sources.itemsSeen24h}, отсеяно ${summary.sources.itemsRejected24h}, ошибок загрузки ${summary.sources.fetchErrors24h}`)
 
   lines.push('')
   lines.push('<b>Расход</b>')
-  lines.push(`• сегодня: <b>${formatUsd(summary.costs.totalCostUsd)}</b> · calls ${summary.costs.calls}`)
+  lines.push(`• сегодня: <b>${formatUsd(summary.costs.totalCostUsd)}</b> · вызовов ${summary.costs.calls}`)
   if (summary.costs.byProvider.length) {
     lines.push(`• провайдеры: ${summary.costs.byProvider.map((row) => `${escapeHtml(row.key)} ${formatUsd(row.costUsd)}`).join(', ')}`)
   }
@@ -480,15 +494,15 @@ export function formatOpsSummaryForTelegram(summary: OpsSummary): string {
   if (!summary.openAlerts.length) {
     lines.push('• открытых алёртов нет')
   } else {
-    lines.push(`• открыто: ${summary.openAlerts.length}; critical: ${criticalAlerts.length}; warning: ${summary.openAlerts.filter((alert) => alert.severity === 'warning').length}`)
-    lines.push(`• группы: ${summary.alertGroups.slice(0, 5).map((group) => `${escapeHtml(group.key)}=${group.count}`).join(', ')}`)
+    lines.push(`• открыто: ${summary.openAlerts.length}; критических: ${criticalAlerts.length}; предупреждений: ${summary.openAlerts.filter((alert) => alert.severity === 'warning').length}`)
+    lines.push(`• группы: ${summary.alertGroups.slice(0, 5).map((group) => `${escapeHtml(humanAlertType(group.key))}=${group.count}`).join(', ')}`)
     if (criticalAlerts.length) {
-      lines.push('• важные:')
+      lines.push('• критические:')
       for (const alert of criticalAlerts.slice(0, 3)) {
-        lines.push(`  ${escapeHtml(alert.alert_type)} · ${escapeHtml(truncate(alert.message, 130))}`)
+        lines.push(`  ${escapeHtml(humanAlertType(alert.alert_type))} · ${escapeHtml(truncate(alert.message, 130))}`)
       }
     } else {
-      lines.push('• critical нет; warning оставлены в сводке без отдельных пушей')
+      lines.push('• критических нет; предупреждения собраны здесь и не присылаются отдельными сообщениями')
     }
   }
 
@@ -533,24 +547,292 @@ export function formatOpsCostForTelegram(summary: OpsSummary): string {
   return lines.join('\n')
 }
 
+function formatAdminOverview(summary: OpsSummary): string[] {
+  if (summary.status.level === 'green') {
+    return [
+      '<b>Итог:</b> всё ок. Дайджест отправлен, статьи публикуются, критических ошибок нет.',
+      `• Почему зелёный: ${escapeHtml(summary.status.reasons.join('; '))}`,
+    ]
+  }
+
+  if (summary.status.level === 'red') {
+    return [
+      `<b>Итог:</b> критическая проблема: ${escapeHtml(summary.status.reasons[0] ?? 'требуется проверка')}.`,
+      `• Почему красный: ${escapeHtml(summary.status.reasons.join('; '))}`,
+      `• Что проверить сначала: ${escapeHtml(firstRecommendedAction(summary))}`,
+    ]
+  }
+
+  return [
+    '<b>Итог:</b> портал работает, но есть проблемы без критического сбоя.',
+    `• Почему жёлтый: ${escapeHtml(summary.status.reasons.join('; '))}`,
+    `• Что проверить сначала: ${escapeHtml(firstRecommendedAction(summary))}`,
+  ]
+}
+
+function formatDeliveryOverview(summary: OpsSummary): string[] {
+  const lines = ['<b>Что отправилось / что нет</b>']
+  const criticalAlerts = summary.openAlerts.filter((alert) => alert.severity === 'critical')
+  const warningAlerts = summary.openAlerts.filter((alert) => alert.severity === 'warning')
+  const deliveryProblems = buildDeliveryProblems(summary)
+
+  lines.push(`• Telegram-дайджест: ${formatDigestDelivery(summary.digestToday ?? summary.latestDigest)}`)
+  lines.push(`• Статьи на сайте: ${formatPublicationDelivery(summary)}`)
+
+  if (deliveryProblems.length) {
+    lines.push(`• Не отправилось/не дошло: ${deliveryProblems.map(escapeHtml).join('; ')}`)
+  } else {
+    lines.push('• Не отправилось/не дошло: явных потерь доставки не вижу.')
+  }
+
+  if (criticalAlerts.length) {
+    lines.push(`• Критические алёрты: открыто ${criticalAlerts.length}, подробности ниже.`)
+  } else if (warningAlerts.length) {
+    lines.push(`• Предупреждения: ${warningAlerts.length}; они не присылаются отдельными сообщениями и собраны в этой сводке.`)
+  } else {
+    lines.push('• Алёрты: открытых проблем нет.')
+  }
+
+  return lines
+}
+
+function formatProblemOverview(summary: OpsSummary): string[] {
+  const lines = ['<b>Проблемы</b>']
+  if (summary.status.level === 'green') {
+    lines.push('• Проблем не вижу: сбор источников, обработка, публикации и дайджест в норме.')
+    return lines
+  }
+
+  const issues = buildAdminIssueLines(summary)
+  if (!issues.length) {
+    lines.push('• Есть нестандартный статус, но явную причину определить не удалось. Смотри технические метрики ниже.')
+    return lines
+  }
+
+  for (const issue of issues.slice(0, 8)) {
+    lines.push(`• ${escapeHtml(issue)}`)
+  }
+  return lines
+}
+
+function buildDeliveryProblems(summary: OpsSummary): string[] {
+  const problems: string[] = []
+  const digest = summary.digestToday ?? summary.latestDigest
+
+  if (!summary.digestToday && summary.reportKind === 'morning') {
+    problems.push('нет подтверждения, что утренний Telegram-дайджест сегодня отправлялся')
+  } else if (digest?.status?.startsWith('failed')) {
+    problems.push(`Telegram-дайджест не отправился: ${humanDigestStatus(digest.status)}`)
+  } else if (summary.reportKind === 'morning' && digest && digest.status !== 'success') {
+    problems.push(`Telegram-дайджест сегодня не в статусе "отправлен": ${humanDigestStatus(digest.status)}`)
+  }
+
+  if (summary.reportKind === 'evening' && summary.articles.publishedTodayCount === 0) {
+    problems.push('сегодня на сайт не вышла ни одна live-статья')
+  }
+  if (summary.health.live_window_6h_count === 0) {
+    problems.push('за последние 6 часов на сайт не вышла ни одна live-статья')
+  }
+
+  return problems
+}
+
+function buildAdminIssueLines(summary: OpsSummary): string[] {
+  const lines: string[] = []
+  const criticalAlerts = summary.openAlerts.filter((alert) => alert.severity === 'critical')
+  const warningAlerts = summary.openAlerts.filter((alert) => alert.severity === 'warning')
+  const latestDigest = summary.digestToday ?? summary.latestDigest
+
+  if (criticalAlerts.length) {
+    lines.push(`Критические алёрты: ${criticalAlerts.length}. ${formatAlertGroups(summary.alertGroups.filter((group) => group.severity === 'critical'))}.`)
+    for (const alert of criticalAlerts.slice(0, 2)) {
+      lines.push(`${humanAlertType(alert.alert_type)}: ${truncate(alert.message, 150)}`)
+    }
+  }
+
+  if (summary.latestIngest?.status === 'failed') {
+    lines.push(`Сбор источников упал. Последняя ошибка: ${summary.latestIngest.error_summary ?? 'детали не записаны'}.`)
+  }
+  if (summary.latestEnrich?.status === 'failed') {
+    lines.push(`Обработка статей упала. Последняя ошибка: ${summary.latestEnrich.error_summary ?? 'детали не записаны'}.`)
+  }
+  if (latestDigest?.status?.startsWith('failed')) {
+    lines.push(`Telegram-дайджест не отправился: ${humanDigestStatus(latestDigest.status)}${latestDigest.error_message ? `; ${latestDigest.error_message}` : ''}.`)
+  }
+
+  if (summary.reportKind === 'morning' && !summary.digestToday) {
+    lines.push('Нет записи о сегодняшнем утреннем дайджесте: нужно проверить GitHub Actions `tg-digest.yml` и таблицу `digest_runs`.')
+  } else if (summary.reportKind === 'morning' && summary.digestToday?.status !== 'success') {
+    lines.push(`Утренний дайджест сегодня не подтверждён как отправленный: ${humanDigestStatus(summary.digestToday?.status ?? 'unknown')}.`)
+  }
+
+  if (summary.reportKind === 'evening' && summary.articles.publishedTodayCount === 0) {
+    lines.push('Сегодня нет live-публикаций: пользователи не увидели новых статей на сайте.')
+  } else if (summary.reportKind === 'evening' && summary.articles.publishedTodayCount < 3) {
+    lines.push(`Сегодня мало live-публикаций: ${summary.articles.publishedTodayCount} ${pluralize(summary.articles.publishedTodayCount, 'статья', 'статьи', 'статей')}.`)
+  }
+
+  if (summary.health.live_window_6h_count === 0) {
+    lines.push('За последние 6 часов не было live-публикаций: проверь enrich/publish-verify, если это не ночное окно.')
+  }
+  if (summary.health.batches_open > 0) {
+    lines.push(`Открытых пакетных задач обработки: ${summary.health.batches_open}. Это статьи, которые ждут результата пакетной обработки Anthropic/Claude.`)
+  }
+  if ((summary.health.oldest_pending_age_minutes ?? 0) >= 180) {
+    lines.push(`Самая старая статья в очереди ждёт ${formatMinutes(summary.health.oldest_pending_age_minutes ?? 0)}.`)
+  }
+  if (warningAlerts.length) {
+    lines.push(`Предупреждения: ${warningAlerts.length}. ${formatAlertGroups(summary.alertGroups.filter((group) => group.severity === 'warning'))}.`)
+  }
+  if (summary.sources.failedRuns24h > 0) {
+    const sources = summary.sources.topProblemSources.length
+      ? ` Проблемные источники: ${summary.sources.topProblemSources.map((row) => `${row.key}=${row.count}`).join(', ')}.`
+      : ''
+    lines.push(`Ошибки источников за 24 часа: ${summary.sources.failedRuns24h}.${sources}`)
+  }
+
+  const failed24h = summary.articles.byEnrichStatus.failed ?? 0
+  if (summary.articles.created24h >= 5 && failed24h / summary.articles.created24h >= 0.5) {
+    lines.push(`Много failed-статей за 24 часа: ${failed24h} из ${summary.articles.created24h}.`)
+  }
+
+  return lines
+}
+
+function firstRecommendedAction(summary: OpsSummary): string {
+  if (summary.openAlerts.some((alert) => alert.severity === 'critical')) return 'открой критические алёрты ниже и проверь последнюю ошибку'
+  if (summary.latestIngest?.status === 'failed') return 'проверь сбор RSS/источников'
+  if (summary.latestEnrich?.status === 'failed') return 'проверь обработку статей и ключи LLM-провайдеров'
+  const digest = summary.digestToday ?? summary.latestDigest
+  if (digest?.status?.startsWith('failed') || (summary.reportKind === 'morning' && !summary.digestToday)) return 'проверь workflow Telegram-дайджеста'
+  if (summary.health.batches_open > 0) return 'проверь пакетную обработку Anthropic/Claude'
+  if (summary.openAlerts.some((alert) => alert.severity === 'warning')) return 'посмотри группы warning-алёртов в блоке "Проблемы"'
+  if (summary.health.live_window_6h_count === 0) return 'проверь, почему нет свежих live-публикаций'
+  return 'смотри технические метрики ниже'
+}
+
+function formatDigestDelivery(row: OpsDigestRunRow | null): string {
+  if (!row) return 'нет данных о запуске'
+  if (row.status === 'success') {
+    const countText = row.articles_count === null || row.articles_count === undefined
+      ? ''
+      : `, ${row.articles_count} ${pluralize(row.articles_count, 'статья', 'статьи', 'статей')}`
+    return `отправлен в ${formatMskTime(row.sent_at ?? row.created_at)}${countText}`
+  }
+  if (row.status.startsWith('failed')) {
+    return `не отправился: ${humanDigestStatus(row.status)}${row.error_message ? ` (${row.error_message})` : ''}`
+  }
+  return `не подтверждён как отправленный: ${humanDigestStatus(row.status)}`
+}
+
+function formatPublicationDelivery(summary: OpsSummary): string {
+  const today = summary.articles.publishedTodayCount
+  const window6h = summary.health.live_window_6h_count
+  if (today === 0) return 'сегодня новых live-статей нет'
+  return `сегодня опубликовано ${today} ${pluralize(today, 'статья', 'статьи', 'статей')}; за последние 6 часов ${window6h} ${pluralize(window6h, 'статья', 'статьи', 'статей')}`
+}
+
+function formatAlertGroups(groups: OpsSummary['alertGroups']): string {
+  if (!groups.length) return 'группы не определены'
+  return groups.slice(0, 5).map((group) => `${humanAlertType(group.key)} — ${group.count}`).join('; ')
+}
+
+function humanDigestStatus(status: string): string {
+  const map: Record<string, string> = {
+    success: 'отправлен',
+    running: 'запущен и ещё не завершился',
+    skipped: 'пропущен',
+    skipped_already_claimed: 'пропущен, потому что другой запуск уже забрал слот',
+    skipped_no_articles: 'не отправлен, потому что не было подходящих статей',
+    low_articles: 'отправлен с малым числом статей',
+    failed: 'ошибка отправки',
+    failed_send: 'ошибка отправки в Telegram',
+    failed_pipeline_stalled: 'пайплайн не подготовил статьи к отправке',
+    error: 'ошибка',
+  }
+  return map[status] ?? status
+}
+
+function humanRunStatus(status: string): string {
+  const map: Record<string, string> = {
+    ok: 'ok',
+    success: 'ok',
+    partial: 'частично ok',
+    failed: 'ошибка',
+    running: 'в работе',
+  }
+  return map[status] ?? status
+}
+
+function humanRunKind(kind: string | null): string {
+  const map: Record<string, string> = {
+    sync: 'обычная обработка',
+    batch_submit: 'отправка пакетной задачи',
+    batch_collect: 'сбор результата пакетной задачи',
+  }
+  return kind ? (map[kind] ?? kind) : 'обработка'
+}
+
+function humanAlertType(type: string): string {
+  const map: Record<string, string> = {
+    source_down: 'источник/RSS упал',
+    backlog_high: 'очередь статей выросла',
+    provider_invalid_request: 'LLM-провайдер отклонил запрос',
+    provider_rate_limit: 'LLM-провайдер упёрся в лимит',
+    enrich_failed_spike: 'много ошибок обработки статей',
+    batch_submit_failed: 'не удалось отправить пакетную задачу',
+    batch_collect_failed: 'не удалось забрать результаты пакетной задачи',
+    batch_poll_stuck: 'пакетная обработка давно не обновлялась',
+    batch_apply_stuck: 'результаты пакетной обработки не применяются к статьям',
+    claude_parse_failed: 'Claude вернул невалидный результат',
+    claude_daily_budget_exceeded: 'превышен дневной бюджет Claude',
+    publish_verify_failed: 'критическая ошибка публикации',
+    publish_verify_failed_warn: 'предупреждение публикации',
+    publish_rpc_bypass_active: 'включён аварийный bypass публикации',
+    published_low_window: 'нет свежих live-публикаций',
+    digest_low_articles: 'в дайджесте мало статей',
+    digest_pipeline_stalled: 'дайджест заблокирован пайплайном',
+    enrich_submit_blocked_budget: 'обработка остановлена бюджетом',
+    llm_usage_log_write_failed: 'не записался лог расхода LLM',
+    lease_expired_spike: 'много зависших задач восстановлено',
+  }
+  return map[type] ?? type
+}
+
+function humanRejectReason(reason: string): string {
+  const map: Record<string, string> = {
+    quality_reject: 'качество/релевантность',
+    research_too_short: 'исследование слишком короткое',
+    no_content: 'нет текста',
+    duplicate: 'дубликат',
+  }
+  return map[reason] ?? reason
+}
+
+function formatMinutes(minutes: number): string {
+  if (minutes < 60) return `${minutes} мин`
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  return rest ? `${hours} ч ${rest} мин` : `${hours} ч`
+}
+
 function formatDigest(row: OpsDigestRunRow | null): string {
   if (!row) return 'нет данных'
   const time = formatMskTime(row.sent_at ?? row.failed_at ?? row.created_at)
   const countText = row.articles_count === null || row.articles_count === undefined
     ? ''
     : `, ${row.articles_count} ${pluralize(row.articles_count, 'статья', 'статьи', 'статей')}`
-  return `<b>${escapeHtml(row.status)}</b>${countText}${time !== '-' ? `, ${time}` : ''}`
+  return `<b>${escapeHtml(humanDigestStatus(row.status))}</b>${countText}${time !== '-' ? `, ${time}` : ''}`
 }
 
 function formatIngest(row: OpsIngestRunRow | null): string {
   if (!row) return 'нет данных'
-  return `<b>${escapeHtml(row.status)}</b>, ${formatMskTime(row.finished_at ?? row.started_at)} · feeds ${row.feeds_total ?? 0}/${row.feeds_failed ?? 0} failed · inserted ${row.items_inserted ?? 0}/${row.items_seen ?? 0}`
+  return `<b>${escapeHtml(humanRunStatus(row.status))}</b>, ${formatMskTime(row.finished_at ?? row.started_at)} · фиды: ${row.feeds_total ?? 0} всего, ${row.feeds_failed ?? 0} с ошибкой · новых статей ${row.items_inserted ?? 0}/${row.items_seen ?? 0}`
 }
 
 function formatEnrich(row: OpsEnrichRunRow | null): string {
   if (!row) return 'нет данных'
-  const kind = row.run_kind ? `${escapeHtml(row.run_kind)} ` : ''
-  return `${kind}<b>${escapeHtml(row.status)}</b>, ${formatMskTime(row.finished_at ?? row.started_at)} · claimed ${row.articles_claimed ?? 0}, ok ${row.articles_enriched_ok ?? 0}, rejected ${row.articles_rejected ?? 0}, failed ${row.articles_failed ?? 0}`
+  return `${escapeHtml(humanRunKind(row.run_kind))} <b>${escapeHtml(humanRunStatus(row.status))}</b>, ${formatMskTime(row.finished_at ?? row.started_at)} · взято ${row.articles_claimed ?? 0}, готово ${row.articles_enriched_ok ?? 0}, отклонено ${row.articles_rejected ?? 0}, ошибок ${row.articles_failed ?? 0}`
 }
 
 function escapeHtml(text: string): string {
