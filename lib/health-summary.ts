@@ -33,6 +33,8 @@ export interface HealthSummary {
   }>
 }
 
+type DigestHealthRow = { digest_date: string | null; status: string; sent_at: string | null }
+
 function startOfMskDayUtcIso(now: Date = new Date()): string {
   const msk = new Date(now.getTime() + MSK_OFFSET_MS)
   msk.setUTCHours(0, 0, 0, 0)
@@ -47,9 +49,15 @@ function mergeBreakdownPrefix(map: Record<string, number>, breakdown: Record<str
   if (!breakdown) return
   for (const [rawKey, rawValue] of Object.entries(breakdown)) {
     if (typeof rawValue !== 'number' || !Number.isFinite(rawValue)) continue
-    const prefix = rawKey.split(':', 1)[0] ?? rawKey
+    const prefix = normalizeRejectReasonKey(rawKey)
     map[prefix] = (map[prefix] ?? 0) + rawValue
   }
+}
+
+function normalizeRejectReasonKey(rawKey: string): string {
+  const prefix = rawKey.split(':', 1)[0] ?? rawKey
+  if (prefix.length > 48 || /\s/.test(prefix)) return 'quality_reject'
+  return prefix
 }
 
 export async function getHealthSummary(supabase: SupabaseClient): Promise<HealthSummary> {
@@ -60,7 +68,7 @@ export async function getHealthSummary(supabase: SupabaseClient): Promise<Health
   const [
     ingestRes,
     enrichRes,
-    digestRes,
+    digestRowsRes,
     alertsCountRes,
     batchesCountRes,
     oldestPendingRes,
@@ -86,8 +94,7 @@ export async function getHealthSummary(supabase: SupabaseClient): Promise<Health
       .from('digest_runs')
       .select('digest_date, status, sent_at')
       .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+      .limit(10),
     supabase
       .from('pipeline_alerts')
       .select('*', { count: 'exact', head: true })
@@ -143,11 +150,14 @@ export async function getHealthSummary(supabase: SupabaseClient): Promise<Health
     return Number.isFinite(value) ? sum + value : sum
   }, 0)
 
+  const digestRows = (digestRowsRes.data ?? []) as DigestHealthRow[]
+  const digest = selectRepresentativeDigestRun(digestRows)
+
   return {
     server_time: now.toISOString(),
     ingest: ingestRes.data ?? null,
     enrich: enrichRes.data ?? null,
-    digest: digestRes.data ?? null,
+    digest,
     alerts_open: alertsCountRes.count ?? 0,
     batches_open: batchesCountRes.count ?? 0,
     oldest_pending_age_minutes: oldestPendingAgeMinutes,
@@ -164,4 +174,20 @@ export const _internals = {
   startOfMskDayUtcIso,
   isoMinusHours,
   mergeBreakdownPrefix,
+  normalizeRejectReasonKey,
+  selectRepresentativeDigestRun,
+}
+
+function selectRepresentativeDigestRun(rows: DigestHealthRow[]): DigestHealthRow | null {
+  const latest = rows[0] ?? null
+  if (!latest) return null
+
+  if (latest.status === 'skipped_already_claimed' && latest.digest_date) {
+    const sameDateMeaningful = rows.find((row) =>
+      row.digest_date === latest.digest_date && row.status !== 'skipped_already_claimed'
+    )
+    if (sameDateMeaningful) return sameDateMeaningful
+  }
+
+  return latest
 }

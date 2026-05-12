@@ -66,6 +66,26 @@ test('mergeBreakdownPrefix ignores non-numeric values', () => {
   assert.deepEqual(out, { ok: 1 })
 })
 
+test('mergeBreakdownPrefix normalizes long free-text quality reasons', () => {
+  const out: Record<string, number> = {}
+  _internals.mergeBreakdownPrefix(out, {
+    'Источник представляет собой форму сбора заявок без фактических данных': 2,
+    'research_too_short:1240': 1,
+  })
+  assert.deepEqual(out, { quality_reject: 2, research_too_short: 1 })
+})
+
+test('selectRepresentativeDigestRun prefers same-day success over fallback skipped row', () => {
+  const digest = _internals.selectRepresentativeDigestRun([
+    { digest_date: '2026-05-11', status: 'skipped_already_claimed', sent_at: null },
+    { digest_date: '2026-05-11', status: 'success', sent_at: '2026-05-11T06:30:00Z' },
+    { digest_date: '2026-05-10', status: 'success', sent_at: '2026-05-10T08:30:00Z' },
+  ])
+
+  assert.equal(digest?.status, 'success')
+  assert.equal(digest?.sent_at, '2026-05-11T06:30:00Z')
+})
+
 test('getHealthSummary contract shape — all required keys present', async () => {
   const supabase = mockSupabase({
     tables: {

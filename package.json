@@ -22,6 +22,7 @@
     "recover-batch-stuck": "tsx pipeline/recover-batch-stuck.ts",
     "cost:report": "tsx scripts/claude-cost-report.ts",
     "cost:articles": "tsx scripts/article-cost-report.ts",
+    "ops:report": "tsx scripts/send-ops-report.ts",
     "cost:guard": "tsx pipeline/cost-guard.ts",
     "editorial:routing": "tsx scripts/run-editorial-routing.ts",
     "routing:lab": "tsx scripts/model-routing-lab.ts",

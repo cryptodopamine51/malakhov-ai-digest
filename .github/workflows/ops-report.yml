@@ -1,0 +1,36 @@
+name: Telegram Ops Report
+
+on:
+  schedule:
+    # Morning report after the Telegram digest:
+    # weekdays 09:45 MSK, weekends 11:45 MSK.
+    - cron: '45 6 * * 1-5'
+    - cron: '45 8 * * 6,0'
+    # Evening report, every day 20:30 MSK.
+    - cron: '30 17 * * *'
+  workflow_dispatch:
+
+jobs:
+  ops-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Send Telegram ops report
+        run: npm run ops:report -- --kind=auto
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}

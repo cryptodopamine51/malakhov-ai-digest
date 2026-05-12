@@ -52,7 +52,12 @@ function hasTelegramAlertTarget(opts: Pick<AlertPayload, 'botToken' | 'adminChat
 
 /**
  * Fires an alert. Skips if an identical alert was fired within its cooldown window.
- * Returns true if the alert was sent (Telegram notified), false if suppressed by dedup.
+ * Returns true only when an immediate Telegram notification was sent.
+ *
+ * By default, immediate Telegram notifications are reserved for critical alerts.
+ * Warning/info alerts are still written to `pipeline_alerts` and are included in
+ * the morning/evening ops report. Override with
+ * TELEGRAM_IMMEDIATE_ALERT_MIN_SEVERITY=warning|info|none when needed.
  */
 export async function fireAlert(opts: AlertPayload): Promise<boolean> {
   const { supabase, alertType, severity, entityKey, message, payload = {} } = opts
@@ -73,10 +78,11 @@ export async function fireAlert(opts: AlertPayload): Promise<boolean> {
     if (selectError) {
       console.error(`[alerts] Failed to query pipeline_alerts: ${selectError.message}`)
       // Still attempt Telegram even if DB is down
-      if (hasTelegramAlertTarget(opts)) {
+      if (hasTelegramAlertTarget(opts) && shouldSendImmediateTelegramAlert(severity, alertType)) {
         await sendTelegramAlert(opts.botToken, opts.adminChatId, severity, message)
+        return true
       }
-      return true
+      return false
     }
 
     if (existing && existing.cooldown_until && existing.cooldown_until > now) {
@@ -137,12 +143,13 @@ export async function fireAlert(opts: AlertPayload): Promise<boolean> {
     console.error(`[alerts] Unexpected error in fireAlert: ${err instanceof Error ? err.message : String(err)}`)
   }
 
-  // Send Telegram notification regardless of DB outcome
-  if (hasTelegramAlertTarget(opts)) {
+  // Send Telegram notification only for alerts that pass the immediate policy.
+  if (hasTelegramAlertTarget(opts) && shouldSendImmediateTelegramAlert(severity, alertType)) {
     await sendTelegramAlert(opts.botToken, opts.adminChatId, severity, message)
+    return true
   }
 
-  return true
+  return false
 }
 
 /**
@@ -197,4 +204,29 @@ async function sendTelegramAlert(
     // Non-critical — alert is already written to DB
     console.error(`[alerts] Telegram send error: ${err instanceof Error ? err.message : String(err)}`)
   }
+}
+
+function shouldSendImmediateTelegramAlert(severity: AlertPayload['severity'], alertType: string): boolean {
+  const explicitTypes = (process.env.TELEGRAM_IMMEDIATE_ALERT_TYPES ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+  if (explicitTypes.includes(alertType)) return true
+
+  const minSeverity = (process.env.TELEGRAM_IMMEDIATE_ALERT_MIN_SEVERITY ?? 'critical').toLowerCase()
+  if (minSeverity === 'none' || minSeverity === 'off' || minSeverity === 'false') return false
+
+  const threshold = severityRank(minSeverity)
+  return threshold > 0 && severityRank(severity) >= threshold
+}
+
+function severityRank(severity: string): number {
+  if (severity === 'critical') return 3
+  if (severity === 'warning') return 2
+  if (severity === 'info') return 1
+  return 0
+}
+
+export const _internals = {
+  shouldSendImmediateTelegramAlert,
 }

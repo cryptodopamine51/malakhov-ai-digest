@@ -73,6 +73,13 @@ Publish verification также пишет verify-attempts для RPC-перех
 и последние `digest_runs`. Доступ только по `HEALTH_TOKEN`; без валидного query/header
 страница отдаёт 404.
 
+`lib/ops-summary.ts` строит поверх этих же данных Telegram ops-сводку для владельца:
+воронка статей за 24 часа, текущая очередь, live-публикации за день/6 часов,
+статус дайджеста, grouped alerts, source rejected/fetch errors и cost за московский день.
+Workflow `ops-report.yml` шлёт её утром после дайджеста и вечером; одиночные warning/info
+алёрты при этом не пушатся сразу, а остаются в сводке. Мгновенные Telegram-пуши из
+`fireAlert` по умолчанию оставлены только для `critical`.
+
 ### Batch source of truth
 
 Batch-specific lifecycle не хранится в `articles.enrich_status`.
@@ -207,7 +214,7 @@ validator failures и reviewer rejects по-прежнему создают об
 
 Каждый run `pipeline/enrich-submit-batch.ts` и `pipeline/enrich-collect-batch.ts` пишет в `enrich_runs.rejected_breakdown` JSONB Map ключ→счётчик причин reject за этот run. Submit-batch агрегирует pre-submit reject коды (`rejected_low_visual`, `low_score`); collect-batch агрегирует post-collect `editorial.quality_reason` (включая `research_too_short:1240` с длиной).
 
-`/api/health` (`lib/health-summary.ts`) при чтении схлопывает ключи по префиксу до `:` — `research_too_short:1240` и `research_too_short:980` сливаются в `research_too_short`, чтобы оператор видел агрегат. Сами строки в `enrich_runs` сохраняются с детализацией для post-mortem.
+`/api/health` (`lib/health-summary.ts`) при чтении схлопывает ключи по префиксу до `:` — `research_too_short:1240` и `research_too_short:980` сливаются в `research_too_short`, чтобы оператор видел агрегат. Длинные free-text причины нормализуются в `quality_reject`, чтобы Telegram ops-сводка не превращалась в простыню. Сами строки в `enrich_runs` сохраняются с детализацией для post-mortem.
 
 ## Categories (модель статьи ↔ категория)
 
