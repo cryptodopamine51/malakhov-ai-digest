@@ -10,8 +10,11 @@ import {
   type Guide,
   type GuideImage,
 } from '../../../lib/guides'
+import { getGuideRelatedArticles } from '../../../lib/articles'
 import { absoluteUrl, SITE_LOGO_URL, SITE_NAME, SITE_URL } from '../../../lib/site'
+import ArticleRecommendations from '../../../src/components/ArticleRecommendations'
 import { GuideBackToTop, GuideDesktopToc, GuideMobileToc } from '../../../src/components/GuideScrollTools'
+import { guideArticleStyles } from '../../../src/components/guideArticleStyles'
 
 export const revalidate = 86400
 
@@ -24,6 +27,7 @@ type HrBlock = { type: 'hr' }
 type MarkdownBlock = HeadingBlock | ParagraphBlock | QuoteBlock | ListBlock | TableBlock | HrBlock
 
 const TELEGRAM_URL = process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL ?? 'https://t.me/malakhovai'
+const CONTACTS_URL = 'https://malakhovai.ru/contacts'
 
 export function generateStaticParams() {
   return getAllGuides().map((guide) => ({ slug: guide.slug }))
@@ -83,6 +87,7 @@ export default async function GuideArticlePage({
   const tocHeadings = blocks
     .filter((block): block is HeadingBlock => block.type === 'heading' && block.level === 2 && block.text !== 'Оглавление')
     .map(({ id, text }) => ({ id, text }))
+  const relatedArticles = await getGuideRelatedArticles(guide.relatedArticleCategories)
   const updatedDate = formatRuDate(guide.updatedAt)
   const jsonLd = buildJsonLd(guide)
 
@@ -93,8 +98,8 @@ export default async function GuideArticlePage({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
-      <article id="top" className="mx-auto max-w-6xl px-4 py-8 md:py-10 lg:py-12">
-        <nav className="mb-7 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted" aria-label="Хлебные крошки">
+      <article id="top" className={guideArticleStyles.article}>
+        <nav className={guideArticleStyles.breadcrumbs} aria-label="Хлебные крошки">
           <Link href="/" className="transition-colors hover:text-ink">Главная</Link>
           <span aria-hidden>→</span>
           <Link href="/guides" className="transition-colors hover:text-ink">Гайды</Link>
@@ -102,24 +107,24 @@ export default async function GuideArticlePage({
           <span>{guide.category}</span>
         </nav>
 
-        <header className="mb-9 max-w-4xl">
-          <p className="mb-3 text-[12px] font-semibold uppercase text-accent">
+        <header className={guideArticleStyles.header}>
+          <p className={guideArticleStyles.eyebrow}>
             Evergreen · {guide.category}
           </p>
-          <h1 className="font-serif text-[34px] font-extrabold leading-tight text-ink md:text-[48px]">
+          <h1 className={guideArticleStyles.title}>
             {guide.title}
           </h1>
-          <p className="mt-5 max-w-3xl text-[18px] font-medium leading-relaxed text-hero-muted md:text-[20px]">
+          <p className={guideArticleStyles.heroLead}>
             {guide.heroLead}
           </p>
-          <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted">
+          <div className={guideArticleStyles.meta}>
             <span>Обновлено: {updatedDate}</span>
             <span>{guide.readingMinutes} мин чтения</span>
             <span>{guide.tags.slice(0, 2).join(' · ')}</span>
           </div>
         </header>
 
-        <figure className="mb-10 overflow-hidden rounded border border-line bg-surface">
+        <figure className={guideArticleStyles.cover}>
           <Image
             src={guide.cover.src}
             alt={guide.cover.alt}
@@ -136,14 +141,15 @@ export default async function GuideArticlePage({
 
         <GuideMobileToc headings={tocHeadings} />
 
-        <div className="grid gap-12 lg:grid-cols-[minmax(0,760px)_280px] lg:items-start">
-          <div className="min-w-0">
-            <MarkdownBlocks blocks={blocks} guide={guide} telegramUrl={TELEGRAM_URL} />
-            <FinalGuideCta telegramUrl={TELEGRAM_URL} />
-            <RelatedLinks guide={guide} />
-          </div>
-
+        <div className={guideArticleStyles.layout}>
           <GuideDesktopToc headings={tocHeadings} />
+
+          <div className={guideArticleStyles.content}>
+            <MarkdownBlocks blocks={blocks} guide={guide} telegramUrl={TELEGRAM_URL} contactsUrl={CONTACTS_URL} />
+            <FinalGuideCta telegramUrl={TELEGRAM_URL} contactsUrl={CONTACTS_URL} />
+            <RelatedLinks guide={guide} />
+            <RelatedGuideArticles articles={relatedArticles} />
+          </div>
         </div>
       </article>
       <GuideBackToTop />
@@ -155,18 +161,26 @@ function MarkdownBlocks({
   blocks,
   guide,
   telegramUrl,
+  contactsUrl,
 }: {
   blocks: MarkdownBlock[]
   guide: Guide
   telegramUrl: string
+  contactsUrl: string
 }) {
   const nodes: ReactNode[] = []
   let currentH2 = ''
+  let skipManualToc = false
 
   blocks.forEach((block, index) => {
     if (block.type === 'heading') {
       if (block.level === 1) return
+      if (block.level === 2 && block.text === 'Оглавление') {
+        skipManualToc = true
+        return
+      }
       if (block.level === 2) currentH2 = block.id
+      skipManualToc = false
 
       const image = guide.inlineImagesByHeading[block.id]
       const HeadingTag = block.level === 2 ? 'h2' : 'h3'
@@ -176,8 +190,8 @@ function MarkdownBlocks({
           id={block.id}
           className={
             block.level === 2
-              ? 'mt-12 scroll-mt-36 font-serif text-[26px] font-bold leading-tight text-ink md:text-[30px] lg:scroll-mt-28'
-              : 'mt-8 scroll-mt-36 text-[20px] font-semibold leading-snug text-ink lg:scroll-mt-28'
+              ? guideArticleStyles.h2
+              : guideArticleStyles.h3
           }
         >
           {renderInline(block.text)}
@@ -190,9 +204,14 @@ function MarkdownBlocks({
       return
     }
 
+    if (skipManualToc) {
+      if (block.type === 'hr') skipManualToc = false
+      return
+    }
+
     if (block.type === 'paragraph') {
       nodes.push(
-        <p key={`paragraph-${index}`} className="mb-5 text-[17px] leading-[1.75] text-ink">
+        <p key={`paragraph-${index}`} className={guideArticleStyles.paragraph}>
           {renderInline(block.text)}
         </p>,
       )
@@ -201,7 +220,7 @@ function MarkdownBlocks({
 
     if (block.type === 'blockquote') {
       nodes.push(
-        <blockquote key={`quote-${index}`} className="my-6 border-l-4 border-accent bg-surface px-5 py-4 text-[17px] font-medium leading-relaxed text-ink">
+        <blockquote key={`quote-${index}`} className={guideArticleStyles.quote}>
           {renderInline(block.text)}
         </blockquote>,
       )
@@ -213,7 +232,7 @@ function MarkdownBlocks({
       nodes.push(
         <ListTag
           key={`list-${index}`}
-          className={`mb-6 ml-6 space-y-2 text-[17px] leading-relaxed text-ink ${block.ordered ? 'list-decimal' : 'list-disc'}`}
+          className={`${guideArticleStyles.list} ${block.ordered ? 'list-decimal' : 'list-disc'}`}
         >
           {block.items.map((item, itemIndex) => (
             <li key={itemIndex}>{renderInline(item)}</li>
@@ -229,12 +248,12 @@ function MarkdownBlocks({
     }
 
     if (block.type === 'hr') {
-      nodes.push(<hr key={`hr-${index}`} className="my-9 border-line" />)
+      nodes.push(<hr key={`hr-${index}`} className={guideArticleStyles.separator} />)
       if (currentH2 === 'краткое-резюме') {
-        nodes.push(<GuideCta key="summary-cta" variant="checklist" telegramUrl={telegramUrl} />)
+        nodes.push(<GuideCta key="summary-cta" variant="checklist" telegramUrl={telegramUrl} contactsUrl={contactsUrl} />)
       }
       if (currentH2 === 'как-выбрать-первый-ai-проект') {
-        nodes.push(<GuideCta key="audit-cta" variant="audit" telegramUrl={telegramUrl} />)
+        nodes.push(<GuideCta key="audit-cta" variant="audit" telegramUrl={telegramUrl} contactsUrl={contactsUrl} />)
       }
     }
   })
@@ -244,7 +263,7 @@ function MarkdownBlocks({
 
 function MarkdownTable({ table }: { table: TableBlock }) {
   return (
-    <div className="my-7 overflow-x-auto rounded border border-line">
+    <div className={guideArticleStyles.tableWrap}>
       <table className="min-w-[640px] w-full text-left text-sm text-ink">
         <thead className="bg-surface">
           <tr>
@@ -273,7 +292,7 @@ function MarkdownTable({ table }: { table: TableBlock }) {
 
 function GuideImageFigure({ image }: { image: GuideImage }) {
   return (
-    <figure className="my-7 overflow-hidden rounded border border-line bg-surface">
+    <figure className={guideArticleStyles.mediaFigure}>
       <Image
         src={image.src}
         alt={image.alt}
@@ -293,13 +312,16 @@ function GuideImageFigure({ image }: { image: GuideImage }) {
 function GuideCta({
   variant,
   telegramUrl,
+  contactsUrl,
 }: {
   variant: 'checklist' | 'audit'
   telegramUrl: string
+  contactsUrl: string
 }) {
   const isChecklist = variant === 'checklist'
+  const href = isChecklist ? telegramUrl : contactsUrl
   return (
-    <section className="my-9 rounded border border-line bg-surface px-5 py-5 md:px-6">
+    <section className={guideArticleStyles.inlineCta}>
       <p className="mb-2 text-[12px] font-semibold uppercase text-accent">
         {isChecklist ? 'Практический следующий шаг' : 'Когда нужен разбор'}
       </p>
@@ -312,7 +334,7 @@ function GuideCta({
           : 'Для сложных процессов полезно сначала разложить данные, интеграции, экономику, риски и владельца результата.'}
       </p>
       <a
-        href={telegramUrl}
+        href={href}
         target="_blank"
         rel="noopener noreferrer"
         className="mt-4 inline-flex rounded border border-ink px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-ink hover:text-[var(--base)]"
@@ -323,27 +345,30 @@ function GuideCta({
   )
 }
 
-function FinalGuideCta({ telegramUrl }: { telegramUrl: string }) {
+function FinalGuideCta({ telegramUrl, contactsUrl }: { telegramUrl: string; contactsUrl: string }) {
   const items = [
     {
       title: 'Чеклист за 30 минут',
       text: 'Быстро выберите первый AI-проект и подготовьте пилот на 30-90 дней.',
       action: 'Получить чеклист',
+      href: telegramUrl,
     },
     {
-      title: 'AI-сигналы без шума',
+      title: 'AI-дайджест в ТГ',
       text: 'Подписка на короткий дайджест главных событий, инструментов и кейсов ИИ.',
       action: 'Подписаться',
+      href: telegramUrl,
     },
     {
       title: 'Архитектурный AI-разбор',
       text: 'Разберите процессы, данные, риски и экономику до старта разработки.',
-      action: 'Обсудить проект',
+      action: 'Обсудить AI-проект',
+      href: contactsUrl,
     },
   ]
 
   return (
-    <section className="mt-12 border-t border-line pt-9">
+    <section className={guideArticleStyles.endSection}>
       <p className="mb-2 text-[12px] font-semibold uppercase text-accent">Дальше</p>
       <h2 className="font-serif text-[26px] font-bold text-ink">Что можно сделать после чтения</h2>
       <div className="mt-5 grid gap-4 md:grid-cols-3">
@@ -352,7 +377,7 @@ function FinalGuideCta({ telegramUrl }: { telegramUrl: string }) {
             <h3 className="text-base font-semibold text-ink">{item.title}</h3>
             <p className="mt-2 text-sm leading-relaxed text-muted">{item.text}</p>
             <a
-              href={telegramUrl}
+              href={item.href}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-4 inline-flex text-sm font-semibold text-accent hover:underline"
@@ -368,7 +393,7 @@ function FinalGuideCta({ telegramUrl }: { telegramUrl: string }) {
 
 function RelatedLinks({ guide }: { guide: Guide }) {
   return (
-    <section className="mt-12 border-t border-line pt-9">
+    <section className={guideArticleStyles.endSection}>
       <p className="mb-2 text-[12px] font-semibold uppercase text-muted">Что читать дальше</p>
       <h2 className="font-serif text-[26px] font-bold text-ink">Связанные разделы</h2>
       <div className="mt-5 grid gap-4 md:grid-cols-3">
@@ -382,6 +407,20 @@ function RelatedLinks({ guide }: { guide: Guide }) {
             <p className="mt-2 text-sm leading-relaxed text-muted">{link.description}</p>
           </Link>
         ))}
+      </div>
+    </section>
+  )
+}
+
+function RelatedGuideArticles({ articles }: { articles: Awaited<ReturnType<typeof getGuideRelatedArticles>> }) {
+  if (articles.length === 0) return null
+
+  return (
+    <section className={guideArticleStyles.endSection}>
+      <p className="mb-2 text-[12px] font-semibold uppercase text-muted">По теме</p>
+      <h2 className="font-serif text-[26px] font-bold text-ink">Связанные статьи</h2>
+      <div className="mt-5">
+        <ArticleRecommendations articles={articles} />
       </div>
     </section>
   )

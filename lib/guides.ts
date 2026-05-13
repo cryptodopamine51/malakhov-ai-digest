@@ -37,6 +37,7 @@ export interface Guide {
   cover: GuideImage
   inlineImagesByHeading: Record<string, GuideImage>
   relatedLinks: GuideRelatedLink[]
+  relatedArticleCategories: string[]
   faq: GuideFaqItem[]
   markdown: string
 }
@@ -172,6 +173,7 @@ const guideMeta = {
       href: '/categories/coding',
     },
   ],
+  relatedArticleCategories: ['ai-industry', 'ai-startups', 'ai-russia', 'coding'],
   faq,
 }
 
