@@ -66,3 +66,19 @@ test('fireClaudeParseFailedAlert writes warning alert deduped by batch id', asyn
     reason: 'missing output_text in batch response_payload',
   })
 })
+
+test('fireClaudeParseFailedAlert keeps editorial validation failures informational', async () => {
+  const supabase = mockSupabase()
+
+  await fireClaudeParseFailedAlert(supabase.client as never, {
+    runId: 'run-1',
+    batchId: 'batch-1',
+    itemId: 'item-1',
+    reason: 'editorial validation failed: lead без конкретного якоря в первом предложении',
+  })
+
+  const insert = supabase.calls.find((call) => call.table === 'pipeline_alerts' && call.op === 'insert')
+  assert.ok(insert, 'expected pipeline_alerts insert')
+  assert.equal(insert!.payload?.alert_type, 'claude_parse_failed')
+  assert.equal(insert!.payload?.severity, 'info')
+})

@@ -151,6 +151,31 @@ test('validateEditorial rejects standalone AI in Russian copy', () => {
   assert.ok(detailed.errors.includes('standalone AI в русском тексте'))
 })
 
+test('validateEditorial allows dot-ai handles without treating them as standalone AI', () => {
+  const parsed = parseEditorialJson(VALID_EDITORIAL_JSON)!
+  parsed.lead = 'Threads тестирует Meta AI через упоминание @meta.ai в публичных обсуждениях, чтобы встроить ответы ассистента прямо в ленту.'
+  parsed.editorial_body = parsed.editorial_body.replace('OpenAI 21 апреля', 'Meta AI через @meta.ai 21 апреля')
+
+  const detailed = validateEditorialDetailed(parsed)
+  assert.equal(detailed.ok, true)
+})
+
+test('validateEditorial accepts Russian number words as lead anchors', () => {
+  const parsed = parseEditorialJson(VALID_EDITORIAL_JSON)!
+  parsed.lead = 'За два месяца до релиза на незнакомом рынке серверных ОС автор провёл пятнадцать синтетических интервью и получил больше гипотез, чем от классического кастдева.'
+
+  const detailed = validateEditorialDetailed(parsed)
+  assert.equal(detailed.ok, true)
+})
+
+test('validateEditorial does not split lead sentence inside dotfile paths', () => {
+  const parsed = parseEditorialJson(VALID_EDITORIAL_JSON)!
+  parsed.lead = 'Разработчик опубликовал open-source утилиту cc-janitor после того, как обнаружил в своём ~/.claude/ 847 сессий на 3,2 ГБ, дублирующиеся правила permissions и сломанный хук, который молча не работал две недели.'
+
+  const detailed = validateEditorialDetailed(parsed)
+  assert.equal(detailed.ok, true)
+})
+
 test('validateEditorial accepts camelCase product names as lead anchors and warns on short card teaser', () => {
   const parsed = parseEditorialJson(VALID_EDITORIAL_JSON)!
   parsed.lead = 'Автор проекта openLight описал двухмесячный опыт разработки локального ИИ-агента для серверов и объяснил, где правила надёжнее LLM.'

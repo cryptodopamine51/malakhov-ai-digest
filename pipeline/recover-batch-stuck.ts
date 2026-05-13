@@ -13,6 +13,18 @@ const APPLY_STARTED_NOT_FINISHED_MINUTES = Number(process.env.BATCH_APPLY_STUCK_
 const NULL_POLL_RESCUE_AFTER_MINUTES = Number(process.env.BATCH_NULL_POLL_RESCUE_MINUTES ?? 5)
 const POLL_PRIORITY_EPOCH = '1970-01-01T00:00:00Z'
 
+type BatchPollRecoveryRow = {
+  id: string
+  provider_batch_id: string
+  processing_status: string
+  last_polled_at: string | null
+  created_at: string | null
+}
+
+function dedupeBatches(rows: BatchPollRecoveryRow[]): BatchPollRecoveryRow[] {
+  return Array.from(new Map(rows.map((row) => [row.id, row])).values())
+}
+
 export async function runRecoverBatchStuck(): Promise<void> {
   log('=== Запуск recover-batch-stuck.ts ===')
 
@@ -23,31 +35,52 @@ export async function runRecoverBatchStuck(): Promise<void> {
   const pollThreshold = new Date(now - PROVIDER_BATCH_POLL_STUCK_MINUTES * 60_000).toISOString()
   const resultThreshold = new Date(now - RESULT_IMPORTED_NOT_APPLIED_MINUTES * 60_000).toISOString()
   const applyThreshold = new Date(now - APPLY_STARTED_NOT_FINISHED_MINUTES * 60_000).toISOString()
-
-  const { data: stuckBatches } = await supabase
-    .from('anthropic_batches')
-    .select('id, provider_batch_id, processing_status, last_polled_at, created_at')
-    .neq('processing_status', 'ended')
-    .or(`last_polled_at.is.null,last_polled_at.lte.${pollThreshold}`)
-    .limit(50)
+  const nullRescueCutoff = new Date(now - NULL_POLL_RESCUE_AFTER_MINUTES * 60_000).toISOString()
 
   // Auto-rescue: для строк с last_polled_at = NULL старше чем NULL_POLL_RESCUE_AFTER_MINUTES
   // выставляем last_polled_at = эпоха, чтобы они уехали в начало очереди collector-а.
   // Без этого Postgres сортирует NULL последними (даже при nullsFirst=true в JS клиенте сбой
   // может произойти в legacy коде), и новые батчи навсегда вытесняются уже опрошенными.
-  const nullRescueCutoff = new Date(now - NULL_POLL_RESCUE_AFTER_MINUTES * 60_000).toISOString()
+  const { data: nullPollBatches } = await supabase
+    .from('anthropic_batches')
+    .select('id, provider_batch_id, processing_status, last_polled_at, created_at')
+    .neq('processing_status', 'ended')
+    .is('last_polled_at', null)
+    .lte('created_at', nullRescueCutoff)
+    .limit(50)
+
   let nullRescued = 0
-  for (const batch of stuckBatches ?? []) {
-    if (batch.last_polled_at == null && batch.created_at && batch.created_at <= nullRescueCutoff) {
-      const { error: rescueError } = await supabase
-        .from('anthropic_batches')
-        .update({ last_polled_at: POLL_PRIORITY_EPOCH, updated_at: new Date().toISOString() })
-        .eq('id', batch.id)
-        .is('last_polled_at', null)
+  for (const batch of (nullPollBatches ?? []) as BatchPollRecoveryRow[]) {
+    const { error: rescueError } = await supabase
+      .from('anthropic_batches')
+      .update({ last_polled_at: POLL_PRIORITY_EPOCH, updated_at: new Date().toISOString() })
+      .eq('id', batch.id)
+      .is('last_polled_at', null)
 
-      if (!rescueError) nullRescued++
-    }
+    if (!rescueError) nullRescued++
+  }
 
+  const [{ data: stalePolledBatches }, { data: staleNeverPolledBatches }] = await Promise.all([
+    supabase
+      .from('anthropic_batches')
+      .select('id, provider_batch_id, processing_status, last_polled_at, created_at')
+      .neq('processing_status', 'ended')
+      .lte('last_polled_at', pollThreshold)
+      .limit(50),
+    supabase
+      .from('anthropic_batches')
+      .select('id, provider_batch_id, processing_status, last_polled_at, created_at')
+      .neq('processing_status', 'ended')
+      .is('last_polled_at', null)
+      .lte('created_at', pollThreshold)
+      .limit(50),
+  ])
+  const stuckBatches = dedupeBatches([
+    ...((stalePolledBatches ?? []) as BatchPollRecoveryRow[]),
+    ...((staleNeverPolledBatches ?? []) as BatchPollRecoveryRow[]),
+  ])
+
+  for (const batch of stuckBatches) {
     await fireAlert({
       supabase,
       alertType: 'batch_poll_stuck',

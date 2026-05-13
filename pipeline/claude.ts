@@ -335,18 +335,30 @@ function hasDisallowedStandaloneAi(text: string): boolean {
   const matches = [...text.matchAll(/\bAI(?:-[\p{L}\p{N}]+)?\b/giu)]
   return matches.some((match) => {
     const index = match.index ?? 0
+    const previousChar = text[index - 1] ?? ''
+    const nextChar = text[index + match[0].length] ?? ''
+    if (previousChar === '.' || previousChar === '@' || nextChar === '.') return false
     const context = text.slice(Math.max(0, index - 24), index + match[0].length + 48)
     return !ALLOWED_AI_NAME_PATTERNS.some((pattern) => pattern.test(context))
   })
 }
 
+function hasRussianNumberWord(text: string): boolean {
+  return /(^|[^\p{L}\p{N}_])(один|одна|одно|два|две|три|четыре|пять|шесть|семь|восемь|девять|десять|месяц|месяца|месяцев|год|года|лет)(?=$|[^\p{L}\p{N}_])/iu.test(text)
+}
+
+function getFirstSentence(text: string): string {
+  const normalized = text.trim()
+  const match = normalized.match(/^[\s\S]*?[.!?](?=\s|$)/u)
+  return match?.[0] ?? normalized
+}
+
 function hasLeadAnchor(lead: string): boolean {
-  const firstSentence = lead.split(/[.!?]/)[0] ?? lead
-  const russianNumberWord = /\b(один|одна|одно|два|две|три|четыре|пять|шесть|семь|восемь|девять|десять|месяц|месяца|месяцев|год|года|лет)\b/i
+  const firstSentence = getFirstSentence(lead)
   const latinProductName = /\b[a-z]+[A-Z][A-Za-z0-9.-]*\b|\b[A-Z][A-Za-z0-9.-]{2,}\b/
   return (
     /\d/.test(firstSentence) ||
-    russianNumberWord.test(firstSentence) ||
+    hasRussianNumberWord(firstSentence) ||
     latinProductName.test(firstSentence) ||
     /\b[A-ZА-ЯЁ][A-Za-zА-Яа-яЁё0-9.-]{2,}/.test(firstSentence) ||
     /\b[A-Z][A-Za-z0-9.-]*(?:GPT|AI|LLM|API|ML|Cloud|Labs|Search|Studio|Claude|Gemini|Llama|DeepSeek|OpenAI)[A-Za-z0-9.-]*\b/i.test(firstSentence)
