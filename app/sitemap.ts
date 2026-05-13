@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next'
 import { getArticleUrl } from '../lib/article-slugs'
 import { getAllArticlesForSitemap } from '../lib/articles'
+import { getAllGuides, getGuideAbsoluteUrl } from '../lib/guides'
 import { SITE_URL } from '../lib/site'
 
 // ISR: re-generate the sitemap every 30 minutes so newly published articles
@@ -11,9 +12,11 @@ export const revalidate = 1800
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const articles = await getAllArticlesForSitemap()
+  const guides = getAllGuides()
 
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: `${SITE_URL}/`,                              changeFrequency: 'hourly', priority: 1.0 },
+    { url: `${SITE_URL}/guides`,                        changeFrequency: 'weekly', priority: 0.8 },
     { url: `${SITE_URL}/russia`,                        changeFrequency: 'hourly', priority: 0.9 },
     { url: `${SITE_URL}/categories/ai-industry`,        changeFrequency: 'daily',  priority: 0.8 },
     { url: `${SITE_URL}/categories/ai-research`,        changeFrequency: 'daily',  priority: 0.7 },
@@ -32,5 +35,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.6,
   }))
 
-  return [...staticRoutes, ...articleRoutes]
+  const guideRoutes: MetadataRoute.Sitemap = guides.map((guide) => ({
+    url: getGuideAbsoluteUrl(guide),
+    lastModified: new Date(guide.updatedAt),
+    changeFrequency: 'monthly',
+    priority: 0.8,
+  }))
+
+  return [...staticRoutes, ...guideRoutes, ...articleRoutes]
 }

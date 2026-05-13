@@ -1,6 +1,8 @@
 import Link from 'next/link'
+import Image from 'next/image'
 import { redirect } from 'next/navigation'
 import { getHotStoryOfTheDay, getRecentHeadlines, getArticlesFeed } from '../lib/articles'
+import { getAllGuides } from '../lib/guides'
 import { getMoscowDateKey, shiftMoscowDateKey, pluralize } from '../lib/utils'
 import ArticleCard from '../src/components/ArticleCard'
 import ArticleFeedList from '../src/components/ArticleFeedList'
@@ -20,6 +22,7 @@ export default async function HomePage({
 }) {
   const resolvedSearchParams = await searchParams
   const page = Math.max(1, parseInt(resolvedSearchParams.page ?? '1', 10) || 1)
+  const [featuredGuide] = getAllGuides()
 
   const hotStory = await getHotStoryOfTheDay()
   const feedExcludeIds = hotStory ? [hotStory.id] : []
@@ -51,6 +54,36 @@ export default async function HomePage({
           </section>
           <TopicTabs className="mb-12" />
         </>
+      )}
+
+      {page === 1 && featuredGuide && (
+        <section className="mb-12 overflow-hidden rounded border border-line bg-base md:grid md:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="p-6 md:p-7">
+            <p className="mb-2 text-[12px] font-semibold uppercase text-accent">Гайд для бизнеса</p>
+            <h2 className="max-w-2xl font-serif text-2xl font-bold leading-tight text-ink md:text-3xl">
+              {featuredGuide.seoTitle}
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted md:text-[15px]">
+              Пошаговая рамка: выбрать первый AI-проект, подготовить данные, посчитать экономику и не застрять на демо.
+            </p>
+            <Link
+              href={featuredGuide.path}
+              className="mt-5 inline-flex rounded border border-ink px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-ink hover:text-[var(--base)]"
+            >
+              Читать гайд
+            </Link>
+          </div>
+          <Link href={featuredGuide.path} className="block border-t border-line md:border-l md:border-t-0">
+            <Image
+              src={featuredGuide.cover.src}
+              alt={featuredGuide.cover.alt}
+              width={featuredGuide.cover.width}
+              height={featuredGuide.cover.height}
+              sizes="(max-width: 768px) 100vw, 320px"
+              className="h-full min-h-[180px] w-full object-cover"
+            />
+          </Link>
+        </section>
       )}
 
       {page === 1 && hotStory && (
