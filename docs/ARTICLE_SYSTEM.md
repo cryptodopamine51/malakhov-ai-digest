@@ -102,9 +102,11 @@ Batch-specific lifecycle не хранится в `articles.enrich_status`.
   `anthropic_batch_items` и `request_payload.article_context`. Collector матчится по
   `anthropic_batch_items.request_custom_id`; legacy `article:<article_id>:attempt:<n>:item:<item_id>`
   остаётся parseable для старых результатов.
-- Claude output parse failures (`missing output_text`, invalid JSON, failed editorial validation)
-  переводят item/article через `error_code='claude_parse_failed'` и поднимают warning
-  alert `claude_parse_failed` с cooldown 4 часа и dedupe по `batch_id`.
+- Claude output parse failures (`missing output_text`, invalid JSON) переводят item/article через
+  `error_code='claude_parse_failed'` и поднимают warning alert `claude_parse_failed` с cooldown
+  4 часа и dedupe по `batch_id`. Failed editorial validation остаётся в `pipeline_alerts`, но
+  пишется как `info`: один не прошедший strict validator материал не должен каждый день держать
+  ops-сводку в жёлтом статусе, если очередь, batch collect и публикации здоровы.
 - Ошибка записи `llm_usage_logs` больше не роняет collect/apply path: `writeLlmUsageLog`
   логирует проблему и поднимает warning alert `llm_usage_log_write_failed`.
 
@@ -119,12 +121,15 @@ Validator дополнительно проверяет:
 
 - каждый `link_anchor` должен присутствовать в `editorial_body` дословно;
 - banned phrases из editorial prompt across title/lead/summary/teasers/body;
-- standalone `AI` в русском тексте, кроме известных product/institution names;
+- standalone `AI` в русском тексте, кроме известных product/institution names, dot-ai handles
+  (`@meta.ai`, `BeWise.ai`) и похожих доменных/handle форм;
 - basic body/teaser/summary shape.
 
 Lead anchor check считает конкретным якорем цифры, русские числительные, имена собственные,
 латинские product/model names и camelCase identifiers вроде `openLight`. `card_teaser` 50-59
 символов считается warning (`card_teaser короткий`), а не hard reject; ниже 50 остаётся ошибкой.
+Первое предложение лида ищется по sentence-ending punctuation перед пробелом/концом строки, поэтому
+пути и dotfile-фрагменты вроде `~/.claude/` не обрывают проверку якоря раньше времени.
 
 `pipeline/editorial-routing.ts` и `pipeline/editorial-apply.ts` задают fallback-first routing surface
 для scheduled limited rollout:
