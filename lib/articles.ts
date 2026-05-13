@@ -538,6 +538,85 @@ export async function getArticleRecommendations(
   ).map((ranked) => ranked.article)
 }
 
+export async function getGuideRelatedArticles(
+  categories: string[],
+  limit = 6,
+  minItems = 3,
+): Promise<Article[]> {
+  const normalizedCategories = Array.from(new Set(categories.filter(Boolean)))
+  const now = new Date()
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+  const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+
+  const liveQuery = () => client()
+    .from('articles')
+    .select('*')
+    .eq('published', true)
+    .eq('quality_ok', true)
+    .eq('verified_live', true)
+    .eq('publish_status', 'live')
+    .not('slug', 'is', null)
+
+  const fetchCandidates = async (
+    since: Date,
+    candidateLimit: number,
+    categoryFilter = normalizedCategories,
+  ): Promise<Article[]> => {
+    const runQuery = async (category: string | null, perQueryLimit: number): Promise<Article[]> => {
+      let query = liveQuery()
+        .gte('created_at', since.toISOString())
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(perQueryLimit)
+
+      if (category) {
+        query = query.eq('primary_category', category)
+      }
+
+      const { data, error } = await query
+
+      if (error) {
+        console.error('getGuideRelatedArticles error:', error.message)
+        return []
+      }
+
+      return (data ?? []) as Article[]
+    }
+
+    if (categoryFilter.length === 0) {
+      return runQuery(null, candidateLimit)
+    }
+
+    const perCategoryLimit = Math.max(20, Math.ceil(candidateLimit / categoryFilter.length))
+    const groups = await Promise.all(
+      categoryFilter.map((category) => runQuery(category, perCategoryLimit)),
+    )
+
+    return mergeUniqueArticles(groups).slice(0, candidateLimit)
+  }
+
+  const [categoryRecent, globalRecent] = await Promise.all([
+    fetchCandidates(thirtyDaysAgo, 80),
+    fetchCandidates(thirtyDaysAgo, 120, []),
+  ])
+
+  const recentRanked = rankInterestingArticles(
+    mergeUniqueArticles([categoryRecent, globalRecent]),
+    { limit, minItems, now },
+  )
+  if (recentRanked.length >= minItems) return recentRanked.map((ranked) => ranked.article)
+
+  const [categoryFallback, globalFallback] = await Promise.all([
+    fetchCandidates(ninetyDaysAgo, 100),
+    fetchCandidates(ninetyDaysAgo, 140, []),
+  ])
+
+  return rankInterestingArticles(
+    mergeUniqueArticles([categoryRecent, globalRecent, categoryFallback, globalFallback]),
+    { limit, minItems, now },
+  ).map((ranked) => ranked.article)
+}
+
 export async function getSourcesStats(): Promise<
   { source_name: string; count: number; latest_titles: string[] }[]
 > {

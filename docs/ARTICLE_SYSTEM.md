@@ -404,6 +404,8 @@ Broad RSS feeds допускаются только с keyword filters:
 - sitemap, RSS и `llms.txt` не берут canonical-домен из env: все публичные URL в этих поверхностях должны оставаться на `news.malakhovai.ru`;
 - evergreen-гайды регистрируются в `lib/guides.ts`, хранят Markdown в `content/guides/`,
   картинки в `public/images/guides/<slug>/` и добавляются в sitemap как статичные monthly URL;
+  для каждого гайда также задаются `relatedArticleCategories`, по которым в конце материала
+  подтягиваются live-статьи из Supabase;
 - `app/sitemap.ts` использует ISR (`export const revalidate = 1800`), чтобы пересобираться каждые 30 минут из live-выборки и не зависать на состоянии последнего деплоя — без этого свежие статьи невидимы для Яндекс/Google до следующего билда;
 - `pipeline/publish-verify.ts` после успешного перехода статьи в `live` вызывает `pingIndexNow()` (`lib/indexnow.ts`) на `https://api.indexnow.org/indexnow`, чтобы Yandex / Bing узнали о новом URL за минуты, а не за дни. Ключ — env `INDEXNOW_KEY`, проверочный файл — `app/indexnow.txt/route.ts`. Без env-переменной ping молча no-op'ится, publish-path не ломается. Google не участвует в IndexNow и продолжает индексировать через sitemap;
 - публичные листинги (`/archive/[date]`, `/sources`, `/sources/[source]`, `/categories/[category]`, `/russia`) задают canonical / `og:url` на news-домен через `lib/site.ts::absoluteUrl`;
@@ -430,6 +432,10 @@ Broad RSS feeds допускаются только с keyword filters:
 - Главная и category pages используют опубликованные статьи.
 - `/guides` и `/guides/[slug]` используют file-based контент из `content/guides/` и metadata из
   `lib/guides.ts`; это SEO-слой evergreen-материалов, не ingest/enrich/publish flow.
+- Evergreen-гайды строят внутреннюю перелинковку двумя слоями: ручные `relatedLinks` на
+  постоянные разделы и автоматический блок связанных live-статей через
+  `getGuideRelatedArticles(categories)`. Related-статьи должны вести только на canonical
+  `/categories/<primary>/<slug>` через существующие article card helpers.
 - Archive и source pages используют те же article records.
 - Telegram digest использует `tg_teaser`, `ru_title`, score и public article URL (`/categories/<primary>/<slug>`).
 - Category pages (`/categories/[category]`, `/russia`) и главная под hero рендерят `TopicTabs`

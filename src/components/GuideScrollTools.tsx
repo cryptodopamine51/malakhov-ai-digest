@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { guideArticleStyles } from './guideArticleStyles'
 
 export interface GuideTocHeading {
   id: string
@@ -47,7 +48,7 @@ export function GuideMobileToc({ headings }: { headings: GuideTocHeading[] }) {
   if (headings.length === 0) return null
 
   return (
-    <div className="sticky top-14 z-40 -mx-4 mb-8 border-y border-line bg-base/95 px-4 py-3 backdrop-blur lg:hidden">
+    <div className={guideArticleStyles.mobileToc}>
       <p className="mb-2 text-[11px] font-semibold uppercase text-muted">Содержание</p>
       <nav className="tags-scroll flex gap-2 overflow-x-auto pb-0.5" aria-label="Содержание гайда">
         {headings.map((heading) => {
@@ -78,9 +79,9 @@ export function GuideDesktopToc({ headings }: { headings: GuideTocHeading[] }) {
 
   return (
     <aside className="hidden lg:block">
-      <div className="sticky top-[88px] max-h-[calc(100vh-7rem)] overflow-y-auto border-l border-line pl-6">
-        <p className="mb-3 text-[11px] font-semibold uppercase text-muted">В статье</p>
-        <nav className="space-y-2 text-sm" aria-label="Содержание гайда">
+      <div className={guideArticleStyles.desktopTocWrap}>
+        <p className={guideArticleStyles.tocLabel}>В статье</p>
+        <nav className="space-y-2 text-[13px]" aria-label="Содержание гайда">
           {headings.map((heading) => {
             const active = heading.id === activeId
             return (
