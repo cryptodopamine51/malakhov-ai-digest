@@ -11,6 +11,7 @@ import {
   type GuideImage,
 } from '../../../lib/guides'
 import { absoluteUrl, SITE_LOGO_URL, SITE_NAME, SITE_URL } from '../../../lib/site'
+import { GuideBackToTop, GuideDesktopToc, GuideMobileToc } from '../../../src/components/GuideScrollTools'
 
 export const revalidate = 86400
 
@@ -79,6 +80,9 @@ export default async function GuideArticlePage({
   if (!guide) notFound()
 
   const blocks = parseMarkdown(guide.markdown)
+  const tocHeadings = blocks
+    .filter((block): block is HeadingBlock => block.type === 'heading' && block.level === 2 && block.text !== 'Оглавление')
+    .map(({ id, text }) => ({ id, text }))
   const updatedDate = formatRuDate(guide.updatedAt)
   const jsonLd = buildJsonLd(guide)
 
@@ -89,7 +93,7 @@ export default async function GuideArticlePage({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
-      <article className="mx-auto max-w-6xl px-4 py-8 md:py-10 lg:py-12">
+      <article id="top" className="mx-auto max-w-6xl px-4 py-8 md:py-10 lg:py-12">
         <nav className="mb-7 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted" aria-label="Хлебные крошки">
           <Link href="/" className="transition-colors hover:text-ink">Главная</Link>
           <span aria-hidden>→</span>
@@ -130,6 +134,8 @@ export default async function GuideArticlePage({
           </figcaption>
         </figure>
 
+        <GuideMobileToc headings={tocHeadings} />
+
         <div className="grid gap-12 lg:grid-cols-[minmax(0,760px)_280px] lg:items-start">
           <div className="min-w-0">
             <MarkdownBlocks blocks={blocks} guide={guide} telegramUrl={TELEGRAM_URL} />
@@ -137,26 +143,10 @@ export default async function GuideArticlePage({
             <RelatedLinks guide={guide} />
           </div>
 
-          <aside className="hidden lg:block">
-            <div className="sticky top-[88px] border-l border-line pl-6">
-              <p className="mb-3 text-[11px] font-semibold uppercase text-muted">В статье</p>
-              <nav className="space-y-2 text-sm">
-                {blocks
-                  .filter((block): block is HeadingBlock => block.type === 'heading' && block.level === 2 && block.text !== 'Оглавление')
-                  .map((heading) => (
-                    <a
-                      key={heading.id}
-                      href={`#${heading.id}`}
-                      className="block text-muted transition-colors hover:text-ink"
-                    >
-                      {heading.text}
-                    </a>
-                  ))}
-              </nav>
-            </div>
-          </aside>
+          <GuideDesktopToc headings={tocHeadings} />
         </div>
       </article>
+      <GuideBackToTop />
     </>
   )
 }
@@ -186,8 +176,8 @@ function MarkdownBlocks({
           id={block.id}
           className={
             block.level === 2
-              ? 'mt-12 scroll-mt-24 font-serif text-[26px] font-bold leading-tight text-ink md:text-[30px]'
-              : 'mt-8 scroll-mt-24 text-[20px] font-semibold leading-snug text-ink'
+              ? 'mt-12 scroll-mt-36 font-serif text-[26px] font-bold leading-tight text-ink md:text-[30px] lg:scroll-mt-28'
+              : 'mt-8 scroll-mt-36 text-[20px] font-semibold leading-snug text-ink lg:scroll-mt-28'
           }
         >
           {renderInline(block.text)}
