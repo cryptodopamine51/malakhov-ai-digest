@@ -94,6 +94,27 @@ async function countVerifyAttempts(
   return count ?? 0
 }
 
+async function countVerifyFailuresSince(
+  supabase: ReturnType<typeof getServerClient>,
+  articleId: string,
+  stage: 'verify' | 'verify_sample',
+  since: string | null,
+): Promise<number> {
+  let query = supabase
+    .from('article_attempts')
+    .select('*', { count: 'exact', head: true })
+    .eq('article_id', articleId)
+    .eq('stage', stage)
+    .neq('result_status', 'ok')
+
+  if (since) {
+    query = query.gt('started_at', since)
+  }
+
+  const { count } = await query
+  return count ?? 0
+}
+
 async function writeVerifyAttempt(
   supabase: ReturnType<typeof getServerClient>,
   articleId: string,
@@ -182,8 +203,6 @@ async function markAlreadyLiveVerified(
   article: Article,
   now: string,
 ): Promise<void> {
-  if (article.verified_live === true) return
-
   const { error } = await supabase
     .from('articles')
     .update({
@@ -415,11 +434,17 @@ async function publishVerify(): Promise<void> {
             log(`✗ ${transitionResult}: /articles/${article.slug}`)
           }
         } else {
+          await markAlreadyLiveVerified(supabase, article, now)
           await resolveAlert(supabase, 'publish_verify_failed', article.slug ?? article.id)
           await resolveAlert(supabase, 'publish_verify_failed_warn', article.slug ?? article.id)
         }
       } else if (isLiveSample) {
-        const prevSampleFails = await countVerifyAttempts(supabase, article.id, 'verify_sample')
+        const prevSampleFails = await countVerifyFailuresSince(
+          supabase,
+          article.id,
+          'verify_sample',
+          article.verified_live_at,
+        )
         const errorMsg = `HEAD returned ${status ?? error}`
 
         if (prevSampleFails + 1 < MAX_VERIFY_ATTEMPTS) {

@@ -455,6 +455,10 @@ Operational правило:
   (`not_eligible`). Неуспешные RPC-коды пишутся в `article_attempts.stage='verify'`
   с `error_code='publish_rpc_*'`; `rejected_quality` дополнительно withdraw-ит статью
   и поднимает critical `publish_verify_failed`.
+- Live-sample verification: успешный sample для уже опубликованной статьи обязан обновлять
+  `verified_live_at`, `live_check_error` и закрывать `publish_verify_failed*`. Critical
+  regression поднимается только после 3 неуспешных `verify_sample` попыток после последнего
+  успешного sample; старые сетевые таймауты до свежего `verified_live_at` не считаются.
 - Не подключать неофициальные агрегаторы как замену source-owned RSS без отдельного решения:
   например, стандартные RSS endpoints `anthropic.com` сейчас отвечают 404, поэтому Anthropic
   покрывается broad feeds/filters до появления официального feed endpoint.

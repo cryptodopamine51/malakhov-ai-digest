@@ -47,3 +47,12 @@ test('publish-verify success path resolves both critical and warn alerts', () =>
   assert.match(src, /resolveAlert\(supabase,\s*'publish_verify_failed_warn'/)
   assert.match(src, /resolveAlert\(supabase,\s*'publish_verify_failed'[^_]/)
 })
+
+test('publish-verify rotates live samples and ignores stale sample failures', () => {
+  const src = source()
+
+  assert.match(src, /else\s+\{\s*await markAlreadyLiveVerified\(supabase,\s*article,\s*now\)[\s\S]{0,220}resolveAlert\(supabase,\s*'publish_verify_failed'/)
+  assert.match(src, /countVerifyFailuresSince\([\s\S]{0,180}article\.verified_live_at/)
+  assert.match(src, /\.neq\('result_status',\s*'ok'\)/)
+  assert.match(src, /\.gt\('started_at',\s*since\)/)
+})
