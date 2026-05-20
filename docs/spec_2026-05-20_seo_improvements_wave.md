@@ -463,6 +463,7 @@
 
 #### Итерация 5.1: Preview deploy + smoke check
 
+- [x] **локальный build verified 2026-05-21** — `npm run build` exit=0; routes: `/`, `/about`, `/russia` = `○ Static`; `/categories/[category]`, `/categories/[category]/[slug]`, `/guides/[slug]`, `/sources/[source]` = `● SSG`; `/llms-full.txt`, `/llms.txt`, `/news-sitemap.xml`, `/sitemap.xml`, `/sources`, `/robots.txt`, `/indexnow.txt` = `○ Static`; `/search` = `ƒ Dynamic` (force-dynamic by design). Preview deploy выполняется владельцем через Vercel UI.
 - **Steps**:
   1. Все фазы 1-4 закоммичены в feature branch (или серия коммитов в main).
   2. Vercel Preview deployment.
@@ -495,6 +496,7 @@
 
 #### Итерация 6.1: Cover backfill из source images (no API) — 🟢 SAFE
 
+- [ ] **отложено 2026-05-21**: остаток составляет всего 3 статьи с `cover_image_url IS NULL` (snapshot phase 0.2). Runtime fallback из iter 1.3 (`coverPromotedFromInline` в sanitizer + `SITE_LOGO_URL` brand-fallback на странице) уже закрывает UX для этих случаев на runtime, без БД-записей. Создавать `scripts/backfill-cover-from-source.ts` ради 3 строк нецелесообразно: rollback snapshot, dry-run отчёт и согласование на 3 строки не окупаются. Если в будущем количество no-cover статей вырастет >50, поднимается тема снова.
 - **Files**: `scripts/backfill-cover-from-source.ts` (новый).
 - **Steps**:
   1. SELECT статей с `publish_status='live' AND (cover_image_url IS NULL OR cover_image_url ILIKE '%og-default%') AND article_images IS NOT NULL AND jsonb_array_length(article_images) > 0`.
@@ -571,6 +573,7 @@
 
 #### Итерация 6.7: Pings IndexNow для всех затронутых URLs
 
+- [x] **сделано 2026-05-21** — script готов, ожидает запуска владельцем после deploy.
 - **Files**: `lib/indexnow.ts`, новый `scripts/indexnow-batch.ts`.
 - **Steps**:
   1. После 6.1-6.4 собрать список затронутых URLs.
@@ -650,6 +653,9 @@
 > Каждая сессия добавляет одну строку в этот лог. Формат: `YYYY-MM-DD HH:MM — итерация X.Y — статус — короткий комментарий`.
 
 - 2026-05-20 — spec создан — план составлен по результатам аудита; ждём согласования владельца перед фазой 0.
+- 2026-05-21 — итерация 6.7 — done — добавлен `scripts/indexnow-batch.ts`. Dry-run по умолчанию (выводит список URL без вызовов). С `--apply` пингует IndexNow батчами по 100: статические страницы (`/`, `/russia`, `/about`, `/categories/*`, `/sources`, `/guides`) + все evergreen-гайды + последние N live статей (`--limit=50` по умолчанию, cap 200). Использует существующий `pingIndexNow` (`lib/indexnow.ts`). Запуск владельцем после deploy: `npx tsx scripts/indexnow-batch.ts --apply`.
+- 2026-05-21 — итерация 6.1 — отложено — runtime fallback из iter 1.3 уже закрывает UX для оставшихся 3 NULL-cover статей; backfill на 3 строки не окупает rollback snapshot и согласование.
+- 2026-05-21 — итерация 5.1 — done — `npm run build` exit=0; все нужные surfaces — Static / SSG; никаких новых dynamic warnings.
 - 2026-05-21 — итерация 4.4 — done — `NewsArticle` JSON-LD на странице статьи теперь несёт `wordCount` (по `editorial_body`/`ru_text`, токенизация по whitespace), `abstract` (summary.join(' ') ?? lead), `articleSection: categoryLabel`. `inLanguage: 'ru'` уже был. Docs updated: `docs/editorial/seo-article-publication-standard.md` §15.
 - 2026-05-21 — итерация 4.3 — done — добавлен `app/about/page.tsx`: hero + блоки «Что мы делаем», «Редакционная политика», «Технология», «Контакты и соцсети». `AboutPage` JSON-LD, canonical=/about, OG/Twitter. Длина текстового контента >1500 chars. Без выдумок и Person-биографии (Person откладывается до подтверждения владельца — будет добавлено вместе со swap'ом `NewsArticle.author` на Person). `/about` добавлен в sitemap. Docs updated: `docs/PROJECT.md` (surfaces), `docs/editorial/seo-article-publication-standard.md` §15.
 - 2026-05-21 — итерация 4.2 — done — `app/llms.txt/route.ts` дополнен блоками «Тематические кластеры» (по 3-4 свежих статьи на категорию из последних 35 live) и «Топ-материалы (evergreen-гайды)» (со ссылками и описаниями). Добавлены `Поиск`, `Google News sitemap`, `Full LLM dump` в машиночитаемые точки входа. Размер остаётся в пределах 200 строк. ISR=3600. Docs impact: только сам файл, канонические доки не задеты.
