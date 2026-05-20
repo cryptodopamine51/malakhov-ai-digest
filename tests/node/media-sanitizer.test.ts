@@ -298,6 +298,72 @@ test('sanitizeArticleMedia rejects empty and generic captions', () => {
   assert.deepEqual(result.rejects.map((reject) => reject.reason), ['generic_caption', 'generic_caption'])
 })
 
+test('sanitizeArticleMedia promotes first sanitized inline image into cover when cover is empty', () => {
+  const result = sanitizeArticleMedia({
+    coverImageUrl: null,
+    articleImages: [{
+      src: 'https://example.com/openai-product.png',
+      alt: 'OpenAI product interface for GPT agents',
+      width: 1200,
+      height: 720,
+    }],
+    context,
+  })
+
+  assert.equal(result.coverImageUrl, 'https://example.com/openai-product.png')
+  assert.equal(result.coverPromotedFromInline, true)
+  assert.equal(result.articleImages.length, 1)
+})
+
+test('sanitizeArticleMedia promotes first inline when source cover was rejected', () => {
+  const result = sanitizeArticleMedia({
+    coverImageUrl: 'https://www.cnews.ru/img/design2008/placeholderimage.jpg',
+    articleImages: [{
+      src: 'https://example.com/openai-product.png',
+      alt: 'OpenAI product interface for GPT agents',
+      width: 1200,
+      height: 720,
+    }],
+    context: { ...context, sourceName: 'CNews' },
+  })
+
+  assert.equal(result.coverImageUrl, 'https://example.com/openai-product.png')
+  assert.equal(result.coverPromotedFromInline, true)
+})
+
+test('sanitizeArticleMedia keeps coverPromotedFromInline=false when source cover survives', () => {
+  const result = sanitizeArticleMedia({
+    coverImageUrl: 'https://example.com/cover.jpg',
+    articleImages: [{
+      src: 'https://example.com/openai-product.png',
+      alt: 'OpenAI product interface for GPT agents',
+      width: 1200,
+      height: 720,
+    }],
+    context,
+  })
+
+  assert.equal(result.coverImageUrl, 'https://example.com/cover.jpg')
+  assert.equal(result.coverPromotedFromInline ?? false, false)
+})
+
+test('sanitizeArticleMedia does NOT promote when no inline image survived sanitisation', () => {
+  const result = sanitizeArticleMedia({
+    coverImageUrl: null,
+    articleImages: [{
+      src: 'https://example.com/photo.jpg',
+      alt: '',
+      width: 800,
+      height: 600,
+    }],
+    context,
+  })
+
+  assert.equal(result.coverImageUrl, null)
+  assert.equal(result.coverPromotedFromInline ?? false, false)
+  assert.equal(result.articleImages.length, 0)
+})
+
 test('sanitizeArticleMedia supports legacy { src, alt } image shape', () => {
   const result = sanitizeArticleMedia({
     coverImageUrl: 'https://example.com/cover.jpg',

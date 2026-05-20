@@ -96,3 +96,38 @@
 - `docs/ARTICLE_SYSTEM.md` — extended `Sources and feed filters` with the off-topic blocklist
   and the ZDNet/Wired tightening note.
 - `docs/editorial/seo-article-publication-standard.md` §7 — added "Off-topic gate" block.
+
+---
+
+## Iteration 1.3 — Cover sanitizer runtime fallback (closed)
+
+**Files changed**:
+- `lib/media-sanitizer.ts` — added `SanitizedMedia.coverPromotedFromInline?: boolean`;
+  `sanitizeArticleMedia` now promotes the first sanitized inline image into the cover slot when
+  the cover is null/rejected.
+- `app/categories/[category]/[slug]/page.tsx` — `generateMetadata` falls back to `SITE_LOGO_URL`
+  (instead of `/og-default.png`) when even the promoted cover is missing; `NewsArticle.image`
+  and `NewsArticle.publisher.logo` switched from `/og-default.png` to `SITE_LOGO_URL`.
+- `tests/node/media-sanitizer.test.ts` — four new tests covering promotion semantics. All 23
+  tests pass.
+
+**Not touched**:
+- `pipeline/fetcher.ts::extractOgImage` already implements the full fallback chain
+  (`og:image:secure_url` → `og:image:url` → `og:image` → `twitter:image` → `twitter:image:src` →
+  JSON-LD `image` → first valid inline). Confirmed via Read; no change needed.
+
+**Decisions**:
+- Promotion is unconditional once an inline image survived sanitisation. Spec mentioned
+  "≥ 800×400" gate, but sanitizer already rejects `<80px` images, ad banners, UI icons, promo
+  blocks, author headshots and SVG. The first survivor is the best available "real" image; a
+  brand fallback (`SITE_LOGO_URL`) covers the case when nothing survives.
+
+**Impact**:
+- Current `live AND cover_image_url ILIKE '%og-default%'` count was already 0 (phase 0.2
+  snapshot). This change protects future articles from regressing into the `/og-default.png`
+  fallback at render time even when `cover_image_url` itself is empty but `article_images` has
+  a real image.
+
+**Docs updated**:
+- `docs/ARTICLE_SYSTEM.md` — Media sanitizer section now documents "Runtime cover fallback".
+- `docs/editorial/seo-article-publication-standard.md` §11 — added "Cover fallback chain" block.

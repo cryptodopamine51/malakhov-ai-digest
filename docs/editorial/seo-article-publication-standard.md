@@ -228,7 +228,18 @@ Mandatory:
 - Guide cover target: 1200x675 WebP.
 - Guide inline images must have descriptive `alt` and captions in `content/guides/meta/<slug>.json`.
 - News articles use sanitized source/fallback media and must not render ads, author portraits, UI icons or promo images.
-- `og:image` must resolve to a real image or `/og-default.png`.
+- `og:image` must resolve to a real image, the promoted inline image (see fallback chain), or `SITE_LOGO_URL` as the brand-level fallback.
+
+Cover fallback chain (news articles, computed at render time):
+
+1. `articles.cover_image_url` if it survives `sanitizeArticleMedia` in `lib/media-sanitizer.ts`.
+2. If the cover was empty or rejected, the first sanitized inline image is promoted into the
+   cover slot (`coverPromotedFromInline=true`). Sanitizer has already filtered out SVG icons,
+   ad banners, promo blocks, author headshots and `<80px` images, so the first survivor is a
+   safe "real" image.
+3. If even that promotion fails, `og:image` falls back to `SITE_LOGO_URL` (a real branded asset,
+   stronger social signal than a generic placeholder). `NewsArticle.image` and
+   `NewsArticle.publisher.logo` use the same `SITE_LOGO_URL` rather than `/og-default.png`.
 
 Recommended:
 

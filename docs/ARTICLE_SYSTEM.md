@@ -319,6 +319,16 @@ Sanitizer отбрасывает рекламные/промо URL и конте
 расширенный контекст изображения:
 `caption`, `title`, размеры, class/id родителя, link href и ближайший `figure`.
 
+**Runtime cover fallback**: после sanitizer-а если `coverImageUrl=null`
+(не было исходного cover или он был отброшен) и в `articleImages` остались
+sanitized картинки, sanitizer промоутит первую sanitized inline-картинку в
+cover (`SanitizedMedia.coverPromotedFromInline=true`). Это снижает число
+страниц, которые на runtime отдают `/og-default.png`. Render слой
+(`app/categories/[category]/[slug]/page.tsx::generateMetadata`) при отсутствии
+cover после promotion использует `SITE_LOGO_URL` как brand-fallback, а
+`NewsArticle.publisher.logo` и `NewsArticle.image` тоже опираются на
+`SITE_LOGO_URL` (а не на `/og-default.png`).
+
 Backfill старых live-статей выполняется тем же sanitizer-ом через
 `npx tsx scripts/sanitize-existing-article-media.ts --dry-run` и только после просмотра отчёта
 может запускаться с `--apply`.

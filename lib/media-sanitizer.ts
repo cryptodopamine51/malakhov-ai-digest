@@ -33,6 +33,12 @@ export interface SanitizedMedia {
   coverImageUrl: string | null
   articleImages: { src: string; alt: string }[]
   rejects: MediaReject[]
+  /**
+   * True when the cover was empty/rejected and we promoted the first sanitized
+   * inline image into the cover slot. Lets callers decide whether to emit a
+   * brand-fallback (SITE_LOGO_URL) or trust the promoted image.
+   */
+  coverPromotedFromInline?: boolean
 }
 
 export interface SanitizeArticleMediaInput {
@@ -313,10 +319,23 @@ export function sanitizeArticleMedia({
     })
   }
 
+  // Cover fallback: when no source cover survived sanitisation but inline
+  // images did, promote the first sanitized inline image into the cover slot.
+  // Sanitizer has already rejected SVG icons, ad banners, promo blocks, author
+  // headshots and small (<80px) images, so the first survivor is the best
+  // available "real" image. This minimises pages that would otherwise fall
+  // back to /og-default.png at render time.
+  let coverPromotedFromInline = false
+  if (!sanitizedCover && sanitizedImages.length > 0) {
+    sanitizedCover = sanitizedImages[0]!.src
+    coverPromotedFromInline = true
+  }
+
   return {
     coverImageUrl: sanitizedCover,
     articleImages: sanitizedImages,
     rejects,
+    coverPromotedFromInline,
   }
 }
 

@@ -8,7 +8,7 @@ import { getArticlePath, toPublicArticleSlug } from '../../../../lib/article-slu
 import { getCategoryMeta } from '../../../../lib/category-meta'
 import { isKnownCategory, DEFAULT_CATEGORY } from '../../../../lib/categories'
 import { selectInlineImageSlots } from '../../../../lib/article-media-placement'
-import { SITE_URL, absoluteUrl } from '../../../../lib/site'
+import { SITE_LOGO_URL, SITE_URL, absoluteUrl } from '../../../../lib/site'
 import { formatRelativeTime } from '../../../../lib/utils'
 import TopicBadge from '../../../../src/components/TopicBadge'
 import ArticleRecommendations from '../../../../src/components/ArticleRecommendations'
@@ -394,6 +394,13 @@ export async function generateMetadata({
   const canonicalPath = getArticlePath(publicSlug, article.primary_category)
   const { coverImageUrl } = sanitizeArticleForRender(article)
 
+  // sanitizeArticleMedia (lib/media-sanitizer.ts) already promotes the first
+  // sanitized inline image into the cover slot when cover_image_url is empty
+  // or rejected. If even that promotion did not produce a cover, fall back to
+  // the brand logo — a real branded asset is a stronger og/social signal than
+  // a generic generic placeholder.
+  const socialImage = coverImageUrl ?? SITE_LOGO_URL
+
   return {
     title,
     description,
@@ -405,13 +412,13 @@ export async function generateMetadata({
       url: absoluteUrl(canonicalPath),
       publishedTime: article.pub_date ?? article.created_at,
       modifiedTime: article.updated_at,
-      images: coverImageUrl ? [coverImageUrl] : ['/og-default.png'],
+      images: [socialImage],
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description,
-      images: coverImageUrl ? [coverImageUrl] : ['/og-default.png'],
+      images: [socialImage],
     },
     other: {
       'twitter:url': absoluteUrl(canonicalPath),
@@ -481,7 +488,7 @@ export default async function CategoryArticlePage({
     dateModified: article.updated_at ?? article.pub_date ?? article.created_at,
     inLanguage: 'ru',
     url: `${SITE_URL}${canonicalPath}`,
-    image: sanitizedMedia.coverImageUrl ?? `${SITE_URL}/og-default.png`,
+    image: sanitizedMedia.coverImageUrl ?? SITE_LOGO_URL,
     video: primaryVideo ? {
       '@type': 'VideoObject',
       name: primaryVideo.title || title,
@@ -494,7 +501,7 @@ export default async function CategoryArticlePage({
       '@type': 'Organization',
       name: 'Malakhov AI Дайджест',
       url: SITE_URL,
-      logo: { '@type': 'ImageObject', url: `${SITE_URL}/og-default.png` },
+      logo: { '@type': 'ImageObject', url: SITE_LOGO_URL },
     },
   }
 
