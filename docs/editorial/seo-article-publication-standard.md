@@ -355,7 +355,7 @@ Mandatory for article/guide template changes:
 - sitemap has ISR when it reads from DB;
 - a Google News sitemap (`/news-sitemap.xml`) ships alongside the main sitemap, covers articles published within the last 48h, capped at 1000 URLs, and is referenced from `robots.txt`;
 - `robots.txt` lists explicit allow-rules for LLM-side crawlers (GPTBot, ChatGPT-User, OAI-SearchBot, Google-Extended, ClaudeBot, anthropic-ai, claude-web, PerplexityBot, CCBot, Applebot-Extended, DuckAssistBot, MistralAI-User, cohere-ai) alongside the wildcard `*` rule. The `/demo/`, `/internal/`, `/api/`, `/_next/` blocks are repeated on each named rule. Adding Bytespider/Amazonbot is an owner decision (not in the default list);
-- RSS and `llms.txt` use `news.malakhovai.ru`;
+- RSS, `llms.txt` and the full markdown dump `/llms-full.txt` (top 100 articles + all evergreen guides in full form, ISR 1h, capped at 5 MB) all use `news.malakhovai.ru`;
 - legacy article/topic routes redirect instead of duplicating content;
 - `publish-verify` remains the path from `publish_ready` to `live`;
 - IndexNow remains soft-fail and must not block publication.
