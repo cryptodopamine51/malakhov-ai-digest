@@ -482,6 +482,9 @@ Operational правило:
   `/api/`, `/_next/`. `Host` и `Sitemap` указывают только на `news.malakhovai.ru`.
 - Yandex Metrika / Google Analytics для news должны быть отдельными счётчиками от лендинга
   `malakhovai.ru`.
+- `next.config.mjs` держит `images.unoptimized=true`: Vercel Image Optimization может вернуть
+  `402 OPTIMIZED_IMAGE_REQUEST_PAYMENT_REQUIRED`, после чего карточки показывают fallback вместо
+  внешних cover URL. Внешние article/source/Supabase Storage images должны грузиться напрямую.
 - Перед production deploy локально желательно проверить `npm run build`.
 - После значимых изменений article-system или routing обязателен smoke-check живого сайта.
 
@@ -501,6 +504,8 @@ Operational правило:
 8. Если меняли media/video logic, на live-странице корректно рендерится media block.
 9. Если меняли media sanitizer, problem pages с Habr career/course banner и Ars Technica
    `Photo of ...` не показывают эти inline images; нормальная тематическая картинка остаётся.
+   Для карточек дополнительно проверить, что external image URL в HTML не переписан в
+   `/_next/image` и не получает Vercel `402`.
 10. RSS (`/rss.xml`) и `llms.txt` отдают новые URL.
 11. `robots.txt` содержит `Host: news.malakhovai.ru`, sitemap на news-домене и запреты
     `/internal/`, `/api/`, `/_next/`.
