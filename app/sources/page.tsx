@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import { getSourcesStats, sourceNameToSlug } from '../../lib/articles'
-import { absoluteUrl } from '../../lib/site'
+import { SITE_URL, absoluteUrl } from '../../lib/site'
 import { pluralize } from '../../lib/utils'
 
 export const revalidate = 3600
@@ -62,8 +62,32 @@ const SOURCE_LANG: Record<string, 'EN' | 'RU'> = {
 export default async function SourcesPage() {
   const sources = await getSourcesStats()
 
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    name: 'Источники новостей об ИИ',
+    description:
+      'Все источники, которые мы отслеживаем — международные и российские медиа об искусственном интеллекте.',
+    url: `${SITE_URL}/sources`,
+    publisher: { '@type': 'Organization', name: 'Malakhov AI Дайджест', url: SITE_URL },
+    mainEntity: {
+      '@type': 'ItemList',
+      numberOfItems: sources.length,
+      itemListElement: sources.map((source, index) => ({
+        '@type': 'ListItem',
+        position: index + 1,
+        url: `${SITE_URL}/sources/${sourceNameToSlug(source.source_name)}`,
+        name: source.source_name,
+      })),
+    },
+  }
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:py-10">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <div className="mb-8">
         <h1 className="font-serif text-2xl font-bold text-ink">Источники</h1>
         <p className="mt-1 text-sm text-muted">

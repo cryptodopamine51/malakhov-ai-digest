@@ -323,7 +323,10 @@ Current implemented schema:
 - guide: `Article`;
 - guide FAQ: `FAQPage`;
 - guide breadcrumbs: `BreadcrumbList`;
-- category/russia pages: `CollectionPage`.
+- category/russia pages: `CollectionPage`;
+- `/sources`: `CollectionPage` with `mainEntity: ItemList` of source links;
+- search results (`/search`): `SearchResultsPage` (the page itself is `noindex, follow`);
+- `/archive/<date>`: `noindex, follow` (no JSON-LD — thin navigational surface).
 
 Rules:
 

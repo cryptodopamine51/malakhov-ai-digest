@@ -369,6 +369,7 @@
 
 #### Итерация 3.5: `/sources` CollectionPage JSON-LD + `/archive/<date>` решение
 
+- [x] **сделано 2026-05-21**.
 - **Files**: `app/sources/page.tsx`, `app/archive/[date]/page.tsx`.
 - **Steps**:
   1. Добавить `CollectionPage` + `ItemList` JSON-LD в `app/sources/page.tsx` — список источников как `ListItem`.
@@ -645,6 +646,7 @@
 > Каждая сессия добавляет одну строку в этот лог. Формат: `YYYY-MM-DD HH:MM — итерация X.Y — статус — короткий комментарий`.
 
 - 2026-05-20 — spec создан — план составлен по результатам аудита; ждём согласования владельца перед фазой 0.
+- 2026-05-21 — итерация 3.5 — done — `app/sources/page.tsx` теперь эмитит `CollectionPage` + `mainEntity: ItemList` JSON-LD с ссылками на `/sources/<slug>`. `app/archive/[date]/page.tsx` теперь возвращает `robots: { index: false, follow: true }` — per-date архив тонкий navigational surface, не индексируем, но краулер ходит по ссылкам на статьи. Docs updated: `docs/editorial/seo-article-publication-standard.md` §15.
 - 2026-05-21 — итерация 3.4 — done — WebSite JSON-LD в `app/layout.tsx` получил `potentialAction: SearchAction` с urlTemplate `/search?q={search_term_string}`. Новая страница `app/search/page.tsx` (force-dynamic, noindex follow) с simple-form поиском по `ru_title/lead/card_teaser/editorial_body` через новый helper `searchArticlesByQuery` в `lib/articles.ts` (ILIKE per-word, OR-of-AND, лимит 30 результатов). Search-результаты также эмитят `SearchResultsPage` JSON-LD. Docs updated: `docs/editorial/seo-article-publication-standard.md` §15 (WebSite SearchAction), `docs/PROJECT.md` (новая surface /search).
 - 2026-05-21 — итерация 3.3 — done — `MAX_SLUG_LENGTH` в `pipeline/slug.ts` поднят с 60 до 75. Добавлен helper `capSlugAtWordBoundary` — режет на последнем `-` перед лимитом, fallback на hard cut если последний dash дальше 60% maxLength. Применяется в `generateSlug` и `normalizeSlug`. Существующие slug-и в БД не пересчитываются. Обновлён тест `generateSlug keeps clean urls` (новый ожидаемый slug длиннее на 1 token) + 2 новых теста на 75-cap и word boundary. 14/14 pipeline-reliability тестов pass. Docs updated: `docs/editorial/seo-article-publication-standard.md` §10, `docs/ARTICLE_SYSTEM.md` Slug validation gate.
 - 2026-05-21 — итерация 3.2 — done — system prompt в `pipeline/claude.ts` обновлён: `link_anchors 0–3` → `3–5` (минимум 2), требование «если меньше 2 — quality_ok=false после честной попытки». `validateEditorialDetailed` теперь добавляет warning при count<2 или >5 (не error — не блокирует публикацию мягким fallback). Новый тест в `tests/node/batch-enrich.test.ts` (count warning). 18 тестов batch-enrich pass. Касается только НОВЫХ статей через следующий enrichment cycle; старые не трогаем. Docs updated: `docs/editorial/seo-article-publication-standard.md` §14.

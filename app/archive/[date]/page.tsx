@@ -26,6 +26,10 @@ export async function generateMetadata({
     title: `AI новости за ${formatted}`,
     description: `Все материалы об искусственном интеллекте за ${formatted} на Malakhov AI Дайджест.`,
     alternates: { canonical: `/archive/${date}` },
+    // SEO-wave 2026-05-21: per-date archive pages are intentionally thin
+    // navigational surfaces (no original copy). Set noindex, but keep follow
+    // so the crawler still discovers article links from here.
+    robots: { index: false, follow: true },
     openGraph: {
       title: `AI новости за ${formatted}`,
       description: `Все материалы об искусственном интеллекте за ${formatted} на Malakhov AI Дайджест.`,
