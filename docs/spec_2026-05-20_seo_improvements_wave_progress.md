@@ -131,3 +131,24 @@
 **Docs updated**:
 - `docs/ARTICLE_SYSTEM.md` — Media sanitizer section now documents "Runtime cover fallback".
 - `docs/editorial/seo-article-publication-standard.md` §11 — added "Cover fallback chain" block.
+
+---
+
+## Iteration 2.1 — BreadcrumbList JSON-LD on article pages (closed)
+
+**Files changed**:
+- `app/categories/[category]/[slug]/page.tsx` — `jsonLd` const turned into an array
+  `[NewsArticle, BreadcrumbList]`. BreadcrumbList items: `Главная` (SITE_URL) →
+  `categoryLabel` (`/categories/<primary_category>`) → article title (canonical path).
+  Both objects ship in a single `<script type="application/ld+json">` tag.
+
+**Why it matters**:
+- Closes the gap flagged in the audit (§4.3) — visual breadcrumb was rendered but not
+  declared in structured data.
+- BreadcrumbList is supported by Google for sitelinks-style results and feeds richer
+  navigation context to LLM-side crawlers.
+
+**Docs updated**:
+- `docs/editorial/seo-article-publication-standard.md` §15 — list now includes
+  `news article: NewsArticle + BreadcrumbList`; "Future improvement" notes marked
+  implemented (publisher logo, article-level BreadcrumbList).

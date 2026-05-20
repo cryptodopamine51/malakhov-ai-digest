@@ -306,7 +306,7 @@ Digest issue links are not mandatory because public digest issue pages do not ex
 Current implemented schema:
 
 - root layout: `Organization` and `WebSite`;
-- news article: `NewsArticle`;
+- news article: `NewsArticle` + `BreadcrumbList` (Главная → категория → статья);
 - news video: `VideoObject` inside `NewsArticle` when video exists;
 - guide: `Article`;
 - guide FAQ: `FAQPage`;
@@ -323,8 +323,8 @@ Rules:
 
 Future improvement:
 
-- Align all publisher logo references with `SITE_LOGO_URL` where practical.
-- Add article-level BreadcrumbList for news if needed.
+- Align all publisher logo references with `SITE_LOGO_URL` where practical. ✅ Implemented for news articles in 2026-05-21 wave.
+- Add article-level BreadcrumbList for news if needed. ✅ Implemented in 2026-05-21 wave.
 
 ## 16. Technical SEO checklist
 

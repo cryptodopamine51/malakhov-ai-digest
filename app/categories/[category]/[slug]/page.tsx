@@ -479,31 +479,52 @@ export default async function CategoryArticlePage({
   const categoryMeta = getCategoryMeta(article.primary_category)
   const categoryLabel = categoryMeta?.shortLabel ?? article.primary_category
 
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'NewsArticle',
-    headline: title,
-    description: article.card_teaser ?? article.lead ?? undefined,
-    datePublished: article.pub_date ?? article.created_at,
-    dateModified: article.updated_at ?? article.pub_date ?? article.created_at,
-    inLanguage: 'ru',
-    url: `${SITE_URL}${canonicalPath}`,
-    image: sanitizedMedia.coverImageUrl ?? SITE_LOGO_URL,
-    video: primaryVideo ? {
-      '@type': 'VideoObject',
-      name: primaryVideo.title || title,
-      embedUrl: primaryVideo.embedUrl,
-      contentUrl: primaryVideo.sourceUrl,
-      thumbnailUrl: primaryVideo.poster ?? sanitizedMedia.coverImageUrl ?? undefined,
-    } : undefined,
-    author: { '@type': 'Organization', name: 'Malakhov AI Дайджест', url: SITE_URL },
-    publisher: {
-      '@type': 'Organization',
-      name: 'Malakhov AI Дайджест',
-      url: SITE_URL,
-      logo: { '@type': 'ImageObject', url: SITE_LOGO_URL },
+  const jsonLd = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'NewsArticle',
+      headline: title,
+      description: article.card_teaser ?? article.lead ?? undefined,
+      datePublished: article.pub_date ?? article.created_at,
+      dateModified: article.updated_at ?? article.pub_date ?? article.created_at,
+      inLanguage: 'ru',
+      url: `${SITE_URL}${canonicalPath}`,
+      image: sanitizedMedia.coverImageUrl ?? SITE_LOGO_URL,
+      video: primaryVideo ? {
+        '@type': 'VideoObject',
+        name: primaryVideo.title || title,
+        embedUrl: primaryVideo.embedUrl,
+        contentUrl: primaryVideo.sourceUrl,
+        thumbnailUrl: primaryVideo.poster ?? sanitizedMedia.coverImageUrl ?? undefined,
+      } : undefined,
+      author: { '@type': 'Organization', name: 'Malakhov AI Дайджест', url: SITE_URL },
+      publisher: {
+        '@type': 'Organization',
+        name: 'Malakhov AI Дайджест',
+        url: SITE_URL,
+        logo: { '@type': 'ImageObject', url: SITE_LOGO_URL },
+      },
     },
-  }
+    {
+      '@context': 'https://schema.org',
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Главная', item: SITE_URL },
+        {
+          '@type': 'ListItem',
+          position: 2,
+          name: categoryLabel,
+          item: `${SITE_URL}/categories/${article.primary_category}`,
+        },
+        {
+          '@type': 'ListItem',
+          position: 3,
+          name: title,
+          item: `${SITE_URL}${canonicalPath}`,
+        },
+      ],
+    },
+  ]
 
   return (
     <>
