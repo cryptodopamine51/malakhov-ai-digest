@@ -124,6 +124,33 @@ test('parseEditorialJson and validateEditorial accept valid output contract', ()
   assert.equal(validateEditorial(parsed!), null)
 })
 
+test('validateEditorial warns when link_anchors count is outside 2-5 (SEO-wave 2026-05-21)', () => {
+  // Less than 2 anchors → warning (not error), so a thin story can still publish
+  // soft-fallback per spec 3.2.
+  const parsed = parseEditorialJson(VALID_EDITORIAL_JSON)!
+  parsed.link_anchors = [parsed.link_anchors[0]!]
+
+  const detailed = validateEditorialDetailed(parsed)
+  assert.equal(detailed.ok, true)
+  assert.ok(
+    detailed.warnings.some((warning) => /link_anchors слишком мало/.test(warning)),
+    `expected count warning, got: ${JSON.stringify(detailed.warnings)}`,
+  )
+
+  // More than 5 anchors → also warning, not blocking.
+  parsed.link_anchors = [
+    parsed.link_anchors[0]!,
+    parsed.link_anchors[0]!,
+    parsed.link_anchors[0]!,
+    parsed.link_anchors[0]!,
+    parsed.link_anchors[0]!,
+    parsed.link_anchors[0]!,
+  ]
+  const detailedMany = validateEditorialDetailed(parsed)
+  assert.equal(detailedMany.ok, true)
+  assert.ok(detailedMany.warnings.some((warning) => /link_anchors слишком много/.test(warning)))
+})
+
 test('validateEditorial rejects link anchors that are not present verbatim', () => {
   const parsed = parseEditorialJson(VALID_EDITORIAL_JSON)!
   parsed.link_anchors = ['не существующий анкор']
@@ -149,6 +176,31 @@ test('validateEditorial rejects standalone AI in Russian copy', () => {
   const detailed = validateEditorialDetailed(parsed)
   assert.equal(detailed.ok, false)
   assert.ok(detailed.errors.includes('standalone AI в русском тексте'))
+})
+
+test('validateEditorial allows dot-ai handles without treating them as standalone AI', () => {
+  const parsed = parseEditorialJson(VALID_EDITORIAL_JSON)!
+  parsed.lead = 'Threads тестирует Meta AI через упоминание @meta.ai в публичных обсуждениях, чтобы встроить ответы ассистента прямо в ленту.'
+  parsed.editorial_body = parsed.editorial_body.replace('OpenAI 21 апреля', 'Meta AI через @meta.ai 21 апреля')
+
+  const detailed = validateEditorialDetailed(parsed)
+  assert.equal(detailed.ok, true)
+})
+
+test('validateEditorial accepts Russian number words as lead anchors', () => {
+  const parsed = parseEditorialJson(VALID_EDITORIAL_JSON)!
+  parsed.lead = 'За два месяца до релиза на незнакомом рынке серверных ОС автор провёл пятнадцать синтетических интервью и получил больше гипотез, чем от классического кастдева.'
+
+  const detailed = validateEditorialDetailed(parsed)
+  assert.equal(detailed.ok, true)
+})
+
+test('validateEditorial does not split lead sentence inside dotfile paths', () => {
+  const parsed = parseEditorialJson(VALID_EDITORIAL_JSON)!
+  parsed.lead = 'Разработчик опубликовал open-source утилиту cc-janitor после того, как обнаружил в своём ~/.claude/ 847 сессий на 3,2 ГБ, дублирующиеся правила permissions и сломанный хук, который молча не работал две недели.'
+
+  const detailed = validateEditorialDetailed(parsed)
+  assert.equal(detailed.ok, true)
 })
 
 test('validateEditorial accepts camelCase product names as lead anchors and warns on short card teaser', () => {

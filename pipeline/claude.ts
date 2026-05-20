@@ -70,7 +70,7 @@ const SYSTEM_PROMPT = `Ты — выпускающий редактор русс
   "tg_teaser": string,            // 1–2 строки, 160–260 символов, чтобы кликнули из Telegram
   "editorial_body": string,       // основной текст, минимум 1200 символов, минимум 3 абзаца
   "glossary": [{"term": string, "definition": string}],  // 0–7 терминов — см. ниже
-  "link_anchors": string[],       // 0–3 фразы из editorial_body для внутренней перелинковки — см. ниже
+  "link_anchors": string[],       // 3–5 фраз из editorial_body для внутренней перелинковки — см. ниже
   "article_tables": [{"headers": string[], "rows": string[][]}], // 0–3 таблицы — см. ниже
   "quality_ok": boolean,          // true только если материал действительно пригоден к публикации
   "quality_reason": string        // если false — одно предложение «почему»; если true — пустая строка
@@ -108,13 +108,16 @@ STARTUPS. Если темы содержат ai-startups, обязательно
 фона может не знать. Для каждого — одно предложение определения, без воды и вводных слов.
 Если все термины общеизвестны — оставь пустой массив [].
 
-ЯКОРЯ ПЕРЕЛИНКОВКИ. В поле link_anchors укажи 0–3 короткие фразы из editorial_body, которые
+ЯКОРЯ ПЕРЕЛИНКОВКИ. В поле link_anchors укажи 3–5 коротких фраз из editorial_body, которые
 хорошо описывают смежные темы и могут служить анкором ссылки на другую статью. Требования:
 — фраза должна присутствовать в тексте editorial_body дословно (не перефразировать);
 — длина: 3–8 слов;
 — предпочтительны технические термины, названия продуктов/методов, конкретные явления;
 — не выбирай общие фразы вроде «искусственный интеллект» или «языковые модели».
-Если подходящих фраз нет — оставь пустой массив [].
+Минимум 2 анкора, цель — 3–5. Если в материале реально нет 3 разных смежных тем (очень короткая
+новость, тема узкая) — допустимы 2, но это сигнал «материал тонкий», и quality_ok=true только при
+действительно сильном основном факте. Меньше 2 анкоров — пустого массива быть не должно, и
+quality_ok=false если их меньше 2 после честной попытки.
 
 КРИТЕРИЙ quality_ok = true.
 Все условия должны выполняться:
@@ -335,18 +338,30 @@ function hasDisallowedStandaloneAi(text: string): boolean {
   const matches = [...text.matchAll(/\bAI(?:-[\p{L}\p{N}]+)?\b/giu)]
   return matches.some((match) => {
     const index = match.index ?? 0
+    const previousChar = text[index - 1] ?? ''
+    const nextChar = text[index + match[0].length] ?? ''
+    if (previousChar === '.' || previousChar === '@' || nextChar === '.') return false
     const context = text.slice(Math.max(0, index - 24), index + match[0].length + 48)
     return !ALLOWED_AI_NAME_PATTERNS.some((pattern) => pattern.test(context))
   })
 }
 
+function hasRussianNumberWord(text: string): boolean {
+  return /(^|[^\p{L}\p{N}_])(один|одна|одно|два|две|три|четыре|пять|шесть|семь|восемь|девять|десять|месяц|месяца|месяцев|год|года|лет)(?=$|[^\p{L}\p{N}_])/iu.test(text)
+}
+
+function getFirstSentence(text: string): string {
+  const normalized = text.trim()
+  const match = normalized.match(/^[\s\S]*?[.!?](?=\s|$)/u)
+  return match?.[0] ?? normalized
+}
+
 function hasLeadAnchor(lead: string): boolean {
-  const firstSentence = lead.split(/[.!?]/)[0] ?? lead
-  const russianNumberWord = /\b(один|одна|одно|два|две|три|четыре|пять|шесть|семь|восемь|девять|десять|месяц|месяца|месяцев|год|года|лет)\b/i
+  const firstSentence = getFirstSentence(lead)
   const latinProductName = /\b[a-z]+[A-Z][A-Za-z0-9.-]*\b|\b[A-Z][A-Za-z0-9.-]{2,}\b/
   return (
     /\d/.test(firstSentence) ||
-    russianNumberWord.test(firstSentence) ||
+    hasRussianNumberWord(firstSentence) ||
     latinProductName.test(firstSentence) ||
     /\b[A-ZА-ЯЁ][A-Za-zА-Яа-яЁё0-9.-]{2,}/.test(firstSentence) ||
     /\b[A-Z][A-Za-z0-9.-]*(?:GPT|AI|LLM|API|ML|Cloud|Labs|Search|Studio|Claude|Gemini|Llama|DeepSeek|OpenAI)[A-Za-z0-9.-]*\b/i.test(firstSentence)
@@ -410,6 +425,16 @@ export function validateEditorialDetailed(out: EditorialOutput): EditorialValida
       const words = anchor.trim().split(/\s+/).filter(Boolean)
       if (words.length < 2 || words.length > 8) warnings.push(`link_anchor length suspicious: "${anchor}"`)
       if (!out.editorial_body.includes(anchor)) errors.push(`link_anchor отсутствует в editorial_body: "${anchor}"`)
+    }
+    // SEO-wave 2026-05-21: target 3-5 anchors, hard minimum 2.
+    // Less than 2 valid anchors → warning. Validator stays non-blocking for
+    // anchors so a thin story can still publish, but lack of anchors is
+    // surfaced upstream (we used to silently accept 0 anchors).
+    const stringAnchors = out.link_anchors.filter((anchor) => typeof anchor === 'string')
+    if (stringAnchors.length < 2) {
+      warnings.push(`link_anchors слишком мало (${stringAnchors.length}, цель 3–5, минимум 2)`)
+    } else if (stringAnchors.length > 5) {
+      warnings.push(`link_anchors слишком много (${stringAnchors.length}, цель 3–5)`)
     }
   }
 

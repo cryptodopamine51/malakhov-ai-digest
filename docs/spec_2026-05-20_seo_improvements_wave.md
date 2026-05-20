@@ -321,6 +321,7 @@
 
 #### Итерация 3.2: Internal linking — увеличить до 3-5 link_anchors для новых статей
 
+- [x] **сделано 2026-05-21**.
 - **Files**: `pipeline/claude.ts` (system prompt), `pipeline/editorial-apply.ts` (валидация), `tests/node/editorial-apply.test.ts`.
 - **Steps**:
   1. В system prompt Claude поменять `link_anchors 0-3` → `link_anchors 3-5` для новых статей. Жёсткий минимум — 2.
@@ -642,6 +643,7 @@
 > Каждая сессия добавляет одну строку в этот лог. Формат: `YYYY-MM-DD HH:MM — итерация X.Y — статус — короткий комментарий`.
 
 - 2026-05-20 — spec создан — план составлен по результатам аудита; ждём согласования владельца перед фазой 0.
+- 2026-05-21 — итерация 3.2 — done — system prompt в `pipeline/claude.ts` обновлён: `link_anchors 0–3` → `3–5` (минимум 2), требование «если меньше 2 — quality_ok=false после честной попытки». `validateEditorialDetailed` теперь добавляет warning при count<2 или >5 (не error — не блокирует публикацию мягким fallback). Новый тест в `tests/node/batch-enrich.test.ts` (count warning). 18 тестов batch-enrich pass. Касается только НОВЫХ статей через следующий enrichment cycle; старые не трогаем. Docs updated: `docs/editorial/seo-article-publication-standard.md` §14.
 - 2026-05-21 — итерация 3.1 — done — cover на странице статьи рендерится 1200×630 (1.91:1, OG/Twitter Card стандарт). Раньше было 1200×460. `maxHeight` тоже обновлён. `pipeline/generate-images.ts` не трогал — это runtime render change, не генерация. Docs updated: `docs/editorial/seo-article-publication-standard.md` §11.
 - 2026-05-21 — итерация 2.4 — done — `app/robots.ts` теперь генерирует явные allow-правила для 13 LLM-side ботов (`GPTBot`, `ChatGPT-User`, `OAI-SearchBot`, `Google-Extended`, `ClaudeBot`, `anthropic-ai`, `claude-web`, `PerplexityBot`, `CCBot`, `Applebot-Extended`, `DuckAssistBot`, `MistralAI-User`, `cohere-ai`). Каждое именованное правило повторяет `disallow: ['/demo/', '/internal/', '/api/', '/_next/']`. `Bytespider`/`Amazonbot` НЕ добавлены — требуется решение владельца. Docs updated: `docs/editorial/seo-article-publication-standard.md` §16.
 - 2026-05-21 — итерация 2.3 (частично) — done — главная (`app/page.tsx`) получила `metadata.title='AI новости на русском'` (template добавляет `| Malakhov AI Дайджест`, итог ~44 chars), description с ключами «релизы/исследования/стартапы/инвестиции/AI в России», canonical=`/`, OG/Twitter. В `lib/site.ts` добавлены `SITE_TELEGRAM_URL='https://t.me/malakhovaidigest'` и `SITE_SAME_AS=[SITE_TELEGRAM_URL]`. В `app/layout.tsx` Organization JSON-LD получил `sameAs: SITE_SAME_AS`. Person-author НЕ менялся — spec требует подтверждения владельца. Docs updated: `docs/editorial/seo-article-publication-standard.md` §9 (Home page metadata) + §15 (`Organization … with sameAs`).

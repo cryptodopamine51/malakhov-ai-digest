@@ -294,7 +294,9 @@ For evergreen/manual materials, Claude/Codex may draft text, but the final page 
 
 News article:
 
-- Use 0-3 meaningful `link_anchors`.
+- Target 3–5 meaningful `link_anchors` (hard minimum 2). Less than 2 anchors raises a validator
+  warning (`link_anchors слишком мало`); more than 5 also warns. Publication is not blocked by
+  the count gate so a genuinely thin story can still ship, but the signal is surfaced upstream.
 - Anchor text must exist verbatim in `editorial_body`.
 - Avoid generic anchors like "искусственный интеллект" or "языковые модели".
 - Keep automatic recommendations after the article.
