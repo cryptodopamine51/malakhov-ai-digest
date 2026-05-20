@@ -550,16 +550,16 @@ export default async function CategoryArticlePage({
           <span>{article.source_name}</span>
         </nav>
 
-        {/* Cover image */}
+        {/* Cover image — 1200×630 (1.91:1) per Open Graph / Twitter Card spec. */}
         {sanitizedMedia.coverImageUrl && !isSvgUrl(sanitizedMedia.coverImageUrl) && (!SOURCES_WITH_TEXT_COVERS.has(article.source_name) || isArticleImagesStorageUrl(sanitizedMedia.coverImageUrl)) && (
-          <div className="relative mb-10 w-full overflow-hidden rounded border border-line" style={{ maxHeight: 460 }}>
+          <div className="relative mb-10 w-full overflow-hidden rounded border border-line" style={{ maxHeight: 630 }}>
             <Image
               src={sanitizedMedia.coverImageUrl}
               alt={title}
               width={1200}
-              height={460}
+              height={630}
               className="w-full object-cover"
-              style={{ maxHeight: 460 }}
+              style={{ maxHeight: 630 }}
               priority
             />
           </div>

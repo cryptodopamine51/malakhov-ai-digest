@@ -232,7 +232,7 @@ Slug requirements:
 Mandatory:
 
 - Every evergreen guide needs a local cover image.
-- Guide cover target: 1200x675 WebP.
+- Guide cover target: 1200x675 WebP (16:9). News article cover renders at 1200×630 (1.91:1, Open Graph / Twitter Card standard); existing source covers downscale via `next/image` without stretching.
 - Guide inline images must have descriptive `alt` and captions in `content/guides/meta/<slug>.json`.
 - News articles use sanitized source/fallback media and must not render ads, author portraits, UI icons or promo images.
 - `og:image` must resolve to a real image, the promoted inline image (see fallback chain), or `SITE_LOGO_URL` as the brand-level fallback.
