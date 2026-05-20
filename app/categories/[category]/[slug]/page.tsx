@@ -479,12 +479,23 @@ export default async function CategoryArticlePage({
   const categoryMeta = getCategoryMeta(article.primary_category)
   const categoryLabel = categoryMeta?.shortLabel ?? article.primary_category
 
+  const editorialBodyText = (article.editorial_body ?? article.ru_text ?? '').trim()
+  const wordCount = editorialBodyText
+    ? editorialBodyText.split(/\s+/).filter(Boolean).length
+    : undefined
+  const abstract = Array.isArray(article.summary) && article.summary.length > 0
+    ? article.summary.join(' ')
+    : (article.lead ?? undefined)
+
   const jsonLd = [
     {
       '@context': 'https://schema.org',
       '@type': 'NewsArticle',
       headline: title,
       description: article.card_teaser ?? article.lead ?? undefined,
+      abstract,
+      articleSection: categoryLabel,
+      wordCount,
       datePublished: article.pub_date ?? article.created_at,
       dateModified: article.updated_at ?? article.pub_date ?? article.created_at,
       inLanguage: 'ru',
