@@ -285,6 +285,7 @@
 
 #### Итерация 2.4: Robots — явные allow для AI-ботов
 
+- [x] **сделано 2026-05-21**.
 - **Files**: `app/robots.ts`.
 - **Steps**:
   1. Добавить явные правила allow `/` для:
@@ -640,6 +641,7 @@
 > Каждая сессия добавляет одну строку в этот лог. Формат: `YYYY-MM-DD HH:MM — итерация X.Y — статус — короткий комментарий`.
 
 - 2026-05-20 — spec создан — план составлен по результатам аудита; ждём согласования владельца перед фазой 0.
+- 2026-05-21 — итерация 2.4 — done — `app/robots.ts` теперь генерирует явные allow-правила для 13 LLM-side ботов (`GPTBot`, `ChatGPT-User`, `OAI-SearchBot`, `Google-Extended`, `ClaudeBot`, `anthropic-ai`, `claude-web`, `PerplexityBot`, `CCBot`, `Applebot-Extended`, `DuckAssistBot`, `MistralAI-User`, `cohere-ai`). Каждое именованное правило повторяет `disallow: ['/demo/', '/internal/', '/api/', '/_next/']`. `Bytespider`/`Amazonbot` НЕ добавлены — требуется решение владельца. Docs updated: `docs/editorial/seo-article-publication-standard.md` §16.
 - 2026-05-21 — итерация 2.3 (частично) — done — главная (`app/page.tsx`) получила `metadata.title='AI новости на русском'` (template добавляет `| Malakhov AI Дайджест`, итог ~44 chars), description с ключами «релизы/исследования/стартапы/инвестиции/AI в России», canonical=`/`, OG/Twitter. В `lib/site.ts` добавлены `SITE_TELEGRAM_URL='https://t.me/malakhovaidigest'` и `SITE_SAME_AS=[SITE_TELEGRAM_URL]`. В `app/layout.tsx` Organization JSON-LD получил `sameAs: SITE_SAME_AS`. Person-author НЕ менялся — spec требует подтверждения владельца. Docs updated: `docs/editorial/seo-article-publication-standard.md` §9 (Home page metadata) + §15 (`Organization … with sameAs`).
 - 2026-05-21 — итерация 2.2 — done — добавлен `/news-sitemap.xml` (`app/news-sitemap.xml/route.ts`) с протоколом Google News (`xmlns:news`, `news:publication`, `news:publication_date`, `news:title`), 48ч окно, лимит 1000 URL, ISR 10 мин. Новая функция `getArticlesForNewsSitemap` в `lib/articles.ts`. `app/robots.ts` теперь возвращает sitemap-массив с двумя URLs. Sitemap-split на index/articles/guides отложен (всего 1012 URL — далеко от 50k лимита). Docs updated: `docs/OPERATIONS.md` (Deploy → Sitemaps), `docs/editorial/seo-article-publication-standard.md` §16.
 - 2026-05-21 — итерация 2.1 — done — добавлен article-level `BreadcrumbList` JSON-LD на странице статьи (`app/categories/[category]/[slug]/page.tsx`); `jsonLd` const стал массивом `[NewsArticle, BreadcrumbList]`, оба сериализуются в один `<script>`. Items: Главная → categoryLabel → article title. Docs updated: `docs/editorial/seo-article-publication-standard.md` §15.

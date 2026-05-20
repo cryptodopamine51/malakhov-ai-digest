@@ -203,3 +203,31 @@
 - `docs/editorial/seo-article-publication-standard.md` §9 — added Home page metadata block.
 - `docs/editorial/seo-article-publication-standard.md` §15 — Organization line now notes
   `sameAs` reference to `lib/site.ts::SITE_SAME_AS`.
+
+---
+
+## Iteration 2.4 — AI bots explicit allow list (closed)
+
+**Files changed**:
+- `app/robots.ts` — refactored to generate explicit allow rules for 13 LLM-side bots:
+  `OAI-SearchBot`, `ChatGPT-User`, `GPTBot`, `Google-Extended`, `ClaudeBot`, `anthropic-ai`,
+  `claude-web`, `PerplexityBot`, `CCBot`, `Applebot-Extended`, `DuckAssistBot`,
+  `MistralAI-User`, `cohere-ai`. Each named rule mirrors the `*`-rule's
+  `disallow: ['/demo/', '/internal/', '/api/', '/_next/']` so internal/demo surfaces stay
+  blocked.
+
+**Bots NOT added (owner decision)**:
+- `Bytespider` (ByteDance)
+- `Amazonbot`
+
+Both are aggressive crawlers — leaving them on the default `*`-rule (which already allows
+public pages) without bumping their priority. If owner wants explicit allow for either,
+flip a flag here.
+
+**Why explicit allow improves LLM indexing**:
+- Several crawlers respect ONLY their named entry (or downgrade `*`).
+- Listing them explicitly gives our content the highest crawl priority.
+
+**Docs updated**:
+- `docs/editorial/seo-article-publication-standard.md` §16 — bullet describing the explicit
+  AI-bot allow list and the `Bytespider/Amazonbot` decision boundary.
