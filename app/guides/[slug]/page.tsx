@@ -8,6 +8,7 @@ import {
   getGuideAbsoluteUrl,
   getGuideBySlug,
   type Guide,
+  type GuideCta as GuideCtaConfig,
   type GuideImage,
 } from '../../../lib/guides'
 import { getGuideRelatedArticles } from '../../../lib/articles'
@@ -30,7 +31,7 @@ const TELEGRAM_URL = process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL ?? 'https://t.
 const CONTACTS_URL = 'https://malakhovai.ru/contacts'
 
 export function generateStaticParams() {
-  return getAllGuides().map((guide) => ({ slug: guide.slug }))
+  return getAllGuides({ includeNoindex: true }).map((guide) => ({ slug: guide.slug }))
 }
 
 export async function generateMetadata({
@@ -45,6 +46,16 @@ export async function generateMetadata({
   return {
     title: guide.seoTitle,
     description: guide.description,
+    robots: guide.noindex
+      ? {
+          index: false,
+          follow: false,
+          googleBot: {
+            index: false,
+            follow: false,
+          },
+        }
+      : undefined,
     alternates: { canonical: guide.path },
     openGraph: {
       title: guide.seoTitle,
@@ -146,7 +157,7 @@ export default async function GuideArticlePage({
 
           <div className={guideArticleStyles.content}>
             <MarkdownBlocks blocks={blocks} guide={guide} telegramUrl={TELEGRAM_URL} contactsUrl={CONTACTS_URL} />
-            <FinalGuideCta telegramUrl={TELEGRAM_URL} contactsUrl={CONTACTS_URL} />
+            <FinalGuideCta guide={guide} telegramUrl={TELEGRAM_URL} contactsUrl={CONTACTS_URL} />
             <RelatedLinks guide={guide} />
             <RelatedGuideArticles articles={relatedArticles} />
           </div>
@@ -249,12 +260,18 @@ function MarkdownBlocks({
 
     if (block.type === 'hr') {
       nodes.push(<hr key={`hr-${index}`} className={guideArticleStyles.separator} />)
-      if (currentH2 === 'краткое-резюме') {
-        nodes.push(<GuideCta key="summary-cta" variant="checklist" telegramUrl={telegramUrl} contactsUrl={contactsUrl} />)
-      }
-      if (currentH2 === 'как-выбрать-первый-ai-проект') {
-        nodes.push(<GuideCta key="audit-cta" variant="audit" telegramUrl={telegramUrl} contactsUrl={contactsUrl} />)
-      }
+      guide.inlineCtas
+        ?.filter((cta) => cta.afterHeading === currentH2)
+        .forEach((cta, ctaIndex) => {
+          nodes.push(
+            <GuideCta
+              key={`inline-cta-${currentH2}-${ctaIndex}`}
+              cta={cta}
+              telegramUrl={telegramUrl}
+              contactsUrl={contactsUrl}
+            />,
+          )
+        })
     }
   })
 
@@ -310,85 +327,103 @@ function GuideImageFigure({ image }: { image: GuideImage }) {
 }
 
 function GuideCta({
-  variant,
+  cta,
   telegramUrl,
   contactsUrl,
 }: {
-  variant: 'checklist' | 'audit'
+  cta: GuideCtaConfig
   telegramUrl: string
   contactsUrl: string
 }) {
-  const isChecklist = variant === 'checklist'
-  const href = isChecklist ? telegramUrl : contactsUrl
+  const href = resolveCtaHref(cta.href, telegramUrl, contactsUrl)
+  const isExternal = href.startsWith('http')
   return (
     <section className={guideArticleStyles.inlineCta}>
       <p className="mb-2 text-[12px] font-semibold uppercase text-accent">
-        {isChecklist ? 'Практический следующий шаг' : 'Когда нужен разбор'}
+        {cta.eyebrow ?? 'Следующий шаг'}
       </p>
       <h2 className="font-serif text-xl font-bold text-ink">
-        {isChecklist ? 'Забрать чеклист выбора первого AI-проекта' : 'Проверьте идею проекта до разработки'}
+        {cta.title}
       </h2>
       <p className="mt-2 text-[15px] leading-relaxed text-muted">
-        {isChecklist
-          ? 'Чеклист помогает за 30 минут выписать процессы-кандидаты, оценить эффект, данные, сложность и риск.'
-          : 'Для сложных процессов полезно сначала разложить данные, интеграции, экономику, риски и владельца результата.'}
+        {cta.text}
       </p>
       <a
         href={href}
-        target="_blank"
-        rel="noopener noreferrer"
+        target={isExternal ? '_blank' : undefined}
+        rel={isExternal ? 'noopener noreferrer' : undefined}
         className="mt-4 inline-flex rounded border border-ink px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-ink hover:text-[var(--base)]"
       >
-        {isChecklist ? 'Получить в Telegram' : 'Обсудить AI-проект'}
+        {cta.action}
       </a>
     </section>
   )
 }
 
-function FinalGuideCta({ telegramUrl, contactsUrl }: { telegramUrl: string; contactsUrl: string }) {
-  const items = [
-    {
-      title: 'Чеклист за 30 минут',
-      text: 'Быстро выберите первый AI-проект и подготовьте пилот на 30-90 дней.',
-      action: 'Получить чеклист',
-      href: telegramUrl,
-    },
-    {
-      title: 'AI-дайджест в ТГ',
-      text: 'Подписка на короткий дайджест главных событий, инструментов и кейсов ИИ.',
-      action: 'Подписаться',
-      href: telegramUrl,
-    },
-    {
-      title: 'Архитектурный AI-разбор',
-      text: 'Разберите процессы, данные, риски и экономику до старта разработки.',
-      action: 'Обсудить AI-проект',
-      href: contactsUrl,
-    },
-  ]
+const DEFAULT_FINAL_CTA_CARDS: GuideCtaConfig[] = [
+  {
+    title: 'Чеклист за 30 минут',
+    text: 'Быстро выберите первый AI-проект и подготовьте пилот на 30-90 дней.',
+    action: 'Получить чеклист',
+    href: 'telegram',
+  },
+  {
+    title: 'AI-дайджест в ТГ',
+    text: 'Подписка на короткий дайджест главных событий, инструментов и кейсов ИИ.',
+    action: 'Подписаться',
+    href: 'telegram',
+  },
+  {
+    title: 'Архитектурный AI-разбор',
+    text: 'Разберите процессы, данные, риски и экономику до старта разработки.',
+    action: 'Обсудить AI-проект',
+    href: 'contacts',
+  },
+]
+
+function FinalGuideCta({
+  guide,
+  telegramUrl,
+  contactsUrl,
+}: {
+  guide: Guide
+  telegramUrl: string
+  contactsUrl: string
+}) {
+  const items = guide.ctaCards?.length ? guide.ctaCards : DEFAULT_FINAL_CTA_CARDS
 
   return (
     <section className={guideArticleStyles.endSection}>
       <p className="mb-2 text-[12px] font-semibold uppercase text-accent">Дальше</p>
       <h2 className="font-serif text-[26px] font-bold text-ink">Что можно сделать после чтения</h2>
       <div className="mt-5 grid gap-4 md:grid-cols-3">
-        {items.map((item) => (
-          <div key={item.title} className="rounded border border-line bg-base p-5">
-            <h3 className="text-base font-semibold text-ink">{item.title}</h3>
-            <p className="mt-2 text-sm leading-relaxed text-muted">{item.text}</p>
-            <a
-              href={item.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-4 inline-flex text-sm font-semibold text-accent hover:underline"
-            >
-              {item.action}
-            </a>
-          </div>
-        ))}
+        {items.map((item) => {
+          const href = resolveCtaHref(item.href, telegramUrl, contactsUrl)
+          const isExternal = href.startsWith('http')
+          return (
+            <div key={item.title} className="rounded border border-line bg-base p-5">
+              <h3 className="text-base font-semibold text-ink">{item.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-muted">{item.text}</p>
+              <a
+                href={href}
+                target={isExternal ? '_blank' : undefined}
+                rel={isExternal ? 'noopener noreferrer' : undefined}
+                className="mt-4 inline-flex text-sm font-semibold text-accent hover:underline"
+              >
+                {item.action}
+              </a>
+            </div>
+          )
+        })}
       </div>
     </section>
   )
+}
+
+function resolveCtaHref(href: string, telegramUrl: string, contactsUrl: string): string {
+  if (href === 'telegram') return telegramUrl
+  if (href === 'contacts') return contactsUrl
+  return href
 }
 
 function RelatedLinks({ guide }: { guide: Guide }) {
@@ -636,60 +671,66 @@ function formatRuDate(value: string): string {
 
 function buildJsonLd(guide: Guide) {
   const url = getGuideAbsoluteUrl(guide)
-  return [
-    {
-      '@context': 'https://schema.org',
-      '@type': 'Article',
-      headline: guide.title,
-      description: guide.description,
-      image: [absoluteUrl(guide.cover.src)],
-      datePublished: guide.publishedAt,
-      dateModified: guide.updatedAt,
-      inLanguage: 'ru-RU',
-      mainEntityOfPage: url,
-      author: { '@type': 'Organization', name: SITE_NAME, url: SITE_URL },
-      publisher: {
-        '@type': 'Organization',
-        name: SITE_NAME,
-        url: SITE_URL,
-        logo: { '@type': 'ImageObject', url: SITE_LOGO_URL },
+  const articleSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: guide.title,
+    description: guide.description,
+    image: [absoluteUrl(guide.cover.src)],
+    datePublished: guide.publishedAt,
+    dateModified: guide.updatedAt,
+    inLanguage: 'ru-RU',
+    mainEntityOfPage: url,
+    author: { '@type': 'Organization', name: SITE_NAME, url: SITE_URL },
+    publisher: {
+      '@type': 'Organization',
+      name: SITE_NAME,
+      url: SITE_URL,
+      logo: { '@type': 'ImageObject', url: SITE_LOGO_URL },
+    },
+  }
+
+  const breadcrumbSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Главная',
+        item: SITE_URL,
       },
-    },
-    {
-      '@context': 'https://schema.org',
-      '@type': 'FAQPage',
-      mainEntity: guide.faq.map((item) => ({
-        '@type': 'Question',
-        name: item.question,
-        acceptedAnswer: {
-          '@type': 'Answer',
-          text: item.answer,
-        },
-      })),
-    },
-    {
-      '@context': 'https://schema.org',
-      '@type': 'BreadcrumbList',
-      itemListElement: [
-        {
-          '@type': 'ListItem',
-          position: 1,
-          name: 'Главная',
-          item: SITE_URL,
-        },
-        {
-          '@type': 'ListItem',
-          position: 2,
-          name: 'Гайды',
-          item: `${SITE_URL}/guides`,
-        },
-        {
-          '@type': 'ListItem',
-          position: 3,
-          name: guide.title,
-          item: url,
-        },
-      ],
-    },
-  ]
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'Гайды',
+        item: `${SITE_URL}/guides`,
+      },
+      {
+        '@type': 'ListItem',
+        position: 3,
+        name: guide.title,
+        item: url,
+      },
+    ],
+  }
+
+  if (guide.faq.length === 0) {
+    return [articleSchema, breadcrumbSchema]
+  }
+
+  const faqSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: guide.faq.map((item) => ({
+      '@type': 'Question',
+      name: item.question,
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: item.answer,
+      },
+    })),
+  }
+
+  return [articleSchema, faqSchema, breadcrumbSchema]
 }
