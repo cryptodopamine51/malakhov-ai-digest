@@ -515,7 +515,11 @@ Cтратегия рендеринга по типам страниц:
 - Runtime сайта: Vercel.
 - Production domain: `https://news.malakhovai.ru`.
 - News-домен должен быть отдельным property в Яндекс.Вебмастере и Google Search Console.
-- Sitemap для индексации: `https://news.malakhovai.ru/sitemap.xml`.
+- Sitemaps для индексации:
+  - основной `https://news.malakhovai.ru/sitemap.xml` (ISR 30 мин, все категории/статьи/гайды);
+  - Google News `https://news.malakhovai.ru/news-sitemap.xml` (ISR 10 мин, статьи опубликованные
+    за последние 48 часов, лимит 1000 URL, `xmlns:news`-разметка с `news:publication`,
+    `news:publication_date`, `news:title`). Оба sitemap-а перечислены в `robots.txt`.
 - `robots.txt` news-сайта разрешает публичные страницы и запрещает `/demo/`, `/internal/`,
   `/api/`, `/_next/`. `Host` и `Sitemap` указывают только на `news.malakhovai.ru`.
 - Yandex Metrika / Google Analytics для news должны быть отдельными счётчиками от лендинга

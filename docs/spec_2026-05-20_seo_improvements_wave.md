@@ -237,6 +237,7 @@
 
 #### Итерация 2.2: Google News sitemap
 
+- [x] **сделано 2026-05-21**.
 - **Files**: `app/sitemap.ts` или новый `app/news-sitemap.xml/route.ts`, `app/robots.ts` (добавить sitemap).
 - **Steps**:
   1. Создать новый route `app/news-sitemap.xml/route.ts` с протоколом Google News:
@@ -638,6 +639,7 @@
 > Каждая сессия добавляет одну строку в этот лог. Формат: `YYYY-MM-DD HH:MM — итерация X.Y — статус — короткий комментарий`.
 
 - 2026-05-20 — spec создан — план составлен по результатам аудита; ждём согласования владельца перед фазой 0.
+- 2026-05-21 — итерация 2.2 — done — добавлен `/news-sitemap.xml` (`app/news-sitemap.xml/route.ts`) с протоколом Google News (`xmlns:news`, `news:publication`, `news:publication_date`, `news:title`), 48ч окно, лимит 1000 URL, ISR 10 мин. Новая функция `getArticlesForNewsSitemap` в `lib/articles.ts`. `app/robots.ts` теперь возвращает sitemap-массив с двумя URLs. Sitemap-split на index/articles/guides отложен (всего 1012 URL — далеко от 50k лимита). Docs updated: `docs/OPERATIONS.md` (Deploy → Sitemaps), `docs/editorial/seo-article-publication-standard.md` §16.
 - 2026-05-21 — итерация 2.1 — done — добавлен article-level `BreadcrumbList` JSON-LD на странице статьи (`app/categories/[category]/[slug]/page.tsx`); `jsonLd` const стал массивом `[NewsArticle, BreadcrumbList]`, оба сериализуются в один `<script>`. Items: Главная → categoryLabel → article title. Docs updated: `docs/editorial/seo-article-publication-standard.md` §15.
 - 2026-05-21 — итерация 1.3 — done — runtime cover fallback. `lib/media-sanitizer.ts::sanitizeArticleMedia` теперь промоутит первую sanitized inline-картинку в cover-слот, когда исходный cover пустой или отброшен; новое поле `SanitizedMedia.coverPromotedFromInline`. `pipeline/fetcher.ts::extractOgImage` уже имеет full fallback chain (`og:image:secure_url` → `og:image:url` → `og:image` → `twitter:image` → `twitter:image:src` → JSON-LD `image` → inline-cover) — не трогал. В `app/categories/[category]/[slug]/page.tsx` заменил `/og-default.png` на `SITE_LOGO_URL` для `og:image`/`twitter:image`/`NewsArticle.image`/`NewsArticle.publisher.logo` (brand-fallback вместо generic). 4 новых теста в `tests/node/media-sanitizer.test.ts`, всего 23/23 pass. Docs updated: `docs/ARTICLE_SYSTEM.md` (Media sanitizer), `docs/editorial/seo-article-publication-standard.md` §11 (Cover fallback chain).
 - 2026-05-21 — итерация 1.2 — done — добавлен off-topic blocklist (`OFF_TOPIC_KEYWORDS` в `pipeline/keyword-filters.ts`) применяемый ко всем фидам ДО per-feed keyword filter; помечен `off_topic_filter` reason в `source_runs.items_rejected_breakdown`. `ZDNet AI` и `Wired AI` переведены на `needsKeywordFilter: true` + `EN_AI_CORE_KEYWORDS` + `keywordSearchFields:'title'`. `DEFAULT_MIN_SCORE_FOR_CLAUDE` НЕ поднят: блок-лист + per-feed keyword filter — более точные инструменты чем глобальный score-bar, а ai-research уже стоит 4. Тест `rss-parser-rejected.test.ts` дополнен кейсом «Android Auto» от ZDNet → отсев `off_topic_filter`, все 7 тестов проходят. Docs updated: `docs/ARTICLE_SYSTEM.md` (Sources and feed filters), `docs/editorial/seo-article-publication-standard.md` §7 (Off-topic gate).

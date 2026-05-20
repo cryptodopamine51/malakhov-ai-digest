@@ -684,6 +684,59 @@ export async function getSourceNameBySlug(slug: string): Promise<string | null> 
   return match?.source_name ?? null
 }
 
+/**
+ * Articles for Google News sitemap (`/news-sitemap.xml`).
+ *
+ * Google News rules:
+ * - publication_date should be within the last 2 days (we use 48h);
+ * - up to 1000 URLs per news sitemap;
+ * - we still emit only canonical category URLs.
+ */
+export async function getArticlesForNewsSitemap(
+  maxAgeHours = 48,
+  limit = 1000,
+): Promise<
+  { slug: string; primaryCategory: string; pub_date: string; title: string }[]
+> {
+  const cutoff = new Date(Date.now() - maxAgeHours * 60 * 60 * 1000).toISOString()
+  const { data, error } = await client()
+    .from('articles')
+    .select('slug, primary_category, pub_date, ru_title, original_title')
+    .eq('published', true)
+    .eq('quality_ok', true)
+    .eq('verified_live', true)
+    .eq('publish_status', 'live')
+    .not('slug', 'is', null)
+    .gte('pub_date', cutoff)
+    .order('pub_date', { ascending: false })
+    .limit(limit)
+
+  if (error) {
+    console.error('getArticlesForNewsSitemap error:', error.message)
+    return []
+  }
+
+  const unique = new Map<string, { primaryCategory: string; pub_date: string; title: string }>()
+  for (const row of data ?? []) {
+    if (!row.slug || !row.pub_date) continue
+    const publicSlug = toPublicArticleSlug(row.slug as string)
+    if (!unique.has(publicSlug)) {
+      unique.set(publicSlug, {
+        primaryCategory: (row.primary_category as string | null) ?? '',
+        pub_date: row.pub_date as string,
+        title: (row.ru_title as string | null) ?? (row.original_title as string | null) ?? '',
+      })
+    }
+  }
+
+  return Array.from(unique.entries()).map(([slug, value]) => ({
+    slug,
+    primaryCategory: value.primaryCategory,
+    pub_date: value.pub_date,
+    title: value.title,
+  }))
+}
+
 export async function getAllArticlesForSitemap(): Promise<
   { slug: string; primaryCategory: string; updated_at: string }[]
 > {

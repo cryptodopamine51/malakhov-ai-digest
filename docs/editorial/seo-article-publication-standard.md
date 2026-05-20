@@ -338,6 +338,7 @@ Mandatory for article/guide template changes:
 - `/demo/`, `/internal/`, `/api/`, `/_next/` stay blocked by robots;
 - sitemap includes only public canonical URLs;
 - sitemap has ISR when it reads from DB;
+- a Google News sitemap (`/news-sitemap.xml`) ships alongside the main sitemap, covers articles published within the last 48h, capped at 1000 URLs, and is referenced from `robots.txt`;
 - RSS and `llms.txt` use `news.malakhovai.ru`;
 - legacy article/topic routes redirect instead of duplicating content;
 - `publish-verify` remains the path from `publish_ready` to `live`;

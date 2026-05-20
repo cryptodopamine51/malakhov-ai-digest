@@ -152,3 +152,26 @@
 - `docs/editorial/seo-article-publication-standard.md` §15 — list now includes
   `news article: NewsArticle + BreadcrumbList`; "Future improvement" notes marked
   implemented (publisher logo, article-level BreadcrumbList).
+
+---
+
+## Iteration 2.2 — Google News sitemap (closed)
+
+**Files added/changed**:
+- `app/news-sitemap.xml/route.ts` — new XML route conforming to the Google News sitemap
+  protocol. ISR every 10 minutes. Articles within the last 48h, capped at 1000 URLs.
+  Emits `xmlns:news`, `news:publication` (name + language=ru), `news:publication_date`
+  (ISO-8601), `news:title`.
+- `lib/articles.ts` — new `getArticlesForNewsSitemap(maxAgeHours, limit)` reading
+  `pub_date >= now() - interval`. Deduplicates by public slug.
+- `app/robots.ts` — `sitemap` field switched from string to array, lists both
+  `sitemap.xml` and `news-sitemap.xml`.
+
+**Decisions**:
+- Did NOT split the main sitemap into `sitemap-index.xml + articles.xml + guides.xml`.
+  Total URLs = 1012, well below the 50k threshold; deferring per spec phase P3 guidance.
+
+**Docs updated**:
+- `docs/OPERATIONS.md` — Deploy section now lists both sitemaps with their ISR and rules.
+- `docs/editorial/seo-article-publication-standard.md` §16 — added bullet about Google News
+  sitemap.
