@@ -415,6 +415,7 @@
 
 #### Итерация 4.3: `/about` с E-E-A-T-сигналами
 
+- [x] **сделано 2026-05-21** (скелет; контент Person-биографии — после подтверждения).
 - **Files**: `app/about/page.tsx` (новый), `lib/site.ts` (опционально константы).
 - **Steps**:
   1. Создать страницу с биографией редактора, редакционными правилами, контактами, ссылками на соцсети.
@@ -648,6 +649,7 @@
 > Каждая сессия добавляет одну строку в этот лог. Формат: `YYYY-MM-DD HH:MM — итерация X.Y — статус — короткий комментарий`.
 
 - 2026-05-20 — spec создан — план составлен по результатам аудита; ждём согласования владельца перед фазой 0.
+- 2026-05-21 — итерация 4.3 — done — добавлен `app/about/page.tsx`: hero + блоки «Что мы делаем», «Редакционная политика», «Технология», «Контакты и соцсети». `AboutPage` JSON-LD, canonical=/about, OG/Twitter. Длина текстового контента >1500 chars. Без выдумок и Person-биографии (Person откладывается до подтверждения владельца — будет добавлено вместе со swap'ом `NewsArticle.author` на Person). `/about` добавлен в sitemap. Docs updated: `docs/PROJECT.md` (surfaces), `docs/editorial/seo-article-publication-standard.md` §15.
 - 2026-05-21 — итерация 4.2 — done — `app/llms.txt/route.ts` дополнен блоками «Тематические кластеры» (по 3-4 свежих статьи на категорию из последних 35 live) и «Топ-материалы (evergreen-гайды)» (со ссылками и описаниями). Добавлены `Поиск`, `Google News sitemap`, `Full LLM dump` в машиночитаемые точки входа. Размер остаётся в пределах 200 строк. ISR=3600. Docs impact: только сам файл, канонические доки не задеты.
 - 2026-05-21 — итерация 4.1 — done — добавлен `app/llms-full.txt/route.ts`. Header + canonical URL + язык + дата обновления → блок «Evergreen guides» с полной markdown-копией каждого гайда → блок «Recent news articles» (топ 100 live по `created_at desc`) с URL, lead, summary bullets, до 2 параграфов editorial body (truncate до 1200 chars). ISR=3600. `cache-control: public, s-maxage=3600, stale-while-revalidate=86400`. Размерный гард 5 МБ (truncate по UTF-8 byte length, если превышено). Docs updated: `docs/editorial/seo-article-publication-standard.md` §16, `docs/PROJECT.md` (новая surface).
 - 2026-05-21 — итерация 3.5 — done — `app/sources/page.tsx` теперь эмитит `CollectionPage` + `mainEntity: ItemList` JSON-LD с ссылками на `/sources/<slug>`. `app/archive/[date]/page.tsx` теперь возвращает `robots: { index: false, follow: true }` — per-date архив тонкий navigational surface, не индексируем, но краулер ходит по ссылкам на статьи. Docs updated: `docs/editorial/seo-article-publication-standard.md` §15.

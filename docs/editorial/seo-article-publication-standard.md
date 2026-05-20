@@ -325,6 +325,7 @@ Current implemented schema:
 - guide breadcrumbs: `BreadcrumbList`;
 - category/russia pages: `CollectionPage`;
 - `/sources`: `CollectionPage` with `mainEntity: ItemList` of source links;
+- `/about`: `AboutPage` JSON-LD; indexable surface with editorial policy and E-E-A-T signals;
 - search results (`/search`): `SearchResultsPage` (the page itself is `noindex, follow`);
 - `/archive/<date>`: `noindex, follow` (no JSON-LD — thin navigational surface).
 

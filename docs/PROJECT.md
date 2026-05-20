@@ -34,6 +34,7 @@ Malakhov AI Digest — русскоязычное AI-медиа, которое 
 | Legacy `/articles/[slug]` и `/topics/[topic]` | только 308-редирект на канонический URL (волна 2.2) |
 | Источники `/sources` и `/sources/[source]` | доверие, навигация по origins |
 | Архив `/archive/[date]` | доступ к историческим подборкам |
+| `/about` | E-E-A-T surface: что за издание, редакционная политика, технология, контакты. `AboutPage` JSON-LD |
 | `/search` | site-search по `ru_title/lead/teaser/body` для navigational запросов; `noindex, follow`. Завязан на WebSite SearchAction в JSON-LD |
 | `/llms.txt`, `/llms-full.txt` | LLM-консьюминг: первая — короткая карта сайта, вторая — full markdown dump (топ 100 статей + все гайды), ISR 1ч, лимит 5MB |
 | `/privacy-policy`, `/cookie-policy`, `/consent` | юридический контур по 152-ФЗ: политика ПД, политика cookies, согласие на обработку персональных данных |

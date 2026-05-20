@@ -26,6 +26,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${SITE_URL}/categories/ai-russia`,          changeFrequency: 'daily',  priority: 0.7 },
     { url: `${SITE_URL}/categories/coding`,             changeFrequency: 'daily',  priority: 0.7 },
     { url: `${SITE_URL}/sources`,                       changeFrequency: 'weekly', priority: 0.5 },
+    { url: `${SITE_URL}/about`,                         changeFrequency: 'monthly', priority: 0.4 },
   ]
 
   const articleRoutes: MetadataRoute.Sitemap = articles.map(({ slug, primaryCategory, updated_at }) => ({
