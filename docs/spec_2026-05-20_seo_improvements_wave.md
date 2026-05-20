@@ -168,6 +168,7 @@
 
 #### Итерация 1.2: Off-topic фильтрация в pipeline
 
+- [x] **сделано 2026-05-21**.
 - **Files**: `scorer.config.ts`, `pipeline/feeds.config.ts`, `pipeline/ingest.ts` или `pipeline/score.ts` (точное имя проверить локально), `tests/node/scorer.test.ts` (если есть).
 - **Steps**:
   1. Поднять `DEFAULT_MIN_SCORE_FOR_CLAUDE` для `ZDNet AI`, `CNet AI`, `vc.ru` (общий) и других tech-mix фидов до 4. Список фидов уточнить по факту через `pipeline/feeds.config.ts`.
@@ -635,6 +636,7 @@
 > Каждая сессия добавляет одну строку в этот лог. Формат: `YYYY-MM-DD HH:MM — итерация X.Y — статус — короткий комментарий`.
 
 - 2026-05-20 — spec создан — план составлен по результатам аудита; ждём согласования владельца перед фазой 0.
+- 2026-05-21 — итерация 1.2 — done — добавлен off-topic blocklist (`OFF_TOPIC_KEYWORDS` в `pipeline/keyword-filters.ts`) применяемый ко всем фидам ДО per-feed keyword filter; помечен `off_topic_filter` reason в `source_runs.items_rejected_breakdown`. `ZDNet AI` и `Wired AI` переведены на `needsKeywordFilter: true` + `EN_AI_CORE_KEYWORDS` + `keywordSearchFields:'title'`. `DEFAULT_MIN_SCORE_FOR_CLAUDE` НЕ поднят: блок-лист + per-feed keyword filter — более точные инструменты чем глобальный score-bar, а ai-research уже стоит 4. Тест `rss-parser-rejected.test.ts` дополнен кейсом «Android Auto» от ZDNet → отсев `off_topic_filter`, все 7 тестов проходят. Docs updated: `docs/ARTICLE_SYSTEM.md` (Sources and feed filters), `docs/editorial/seo-article-publication-standard.md` §7 (Off-topic gate).
 - 2026-05-21 — итерация 1.1 — done — listing-страницы (`/`, `/russia`, `/categories/[category]`) переведены с Dynamic на ISR. Корень MISS — чтение `await searchParams` в Next 15 (force-dynamic), не `cookies()`/`Header`. Решение: убрал `searchParams` со всех трёх страниц; pagination главной — новый client-side `HomeFeedList` + `/api/feed`; `/russia` и `/categories/<cat>` уже использовали client-side Load more. `npm run build` → `/` и `/russia` = `○ Static`, `/categories/[category]` = `● SSG`, revalidate=5m. `?page=N`-редиректы не вводил (canonical уже на base URL, нулевой риск для индекса). Прод-curl-проверка cache headers — после deploy. Docs updated: `docs/OPERATIONS.md` (новая секция «Rendering policy»), `docs/editorial/seo-article-publication-standard.md` §16 (блок про cacheable listing pages).
 - 2026-05-20 — итерации 0.1 + 0.2 — done — владелец дал «запусти», снят production snapshot «до»:
   - Cache headers (curl на проде): `/`, `/russia`, `/categories/ai-industry` → `cache-control: private, no-cache, no-store, max-age=0, must-revalidate`, `x-vercel-cache: MISS` на каждом запросе. Подтверждает основной P0-блокер.

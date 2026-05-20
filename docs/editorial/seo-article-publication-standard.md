@@ -136,6 +136,15 @@ Preferred Malakhov AI Digest angle:
 - concise explanation of technical terms;
 - connection to existing AI market, model or infrastructure trends.
 
+Off-topic gate (applied before enrichment):
+
+- An RSS item that matches the `OFF_TOPIC_KEYWORDS` blocklist in
+  `pipeline/keyword-filters.ts` (Android Auto, AirPods, dishwasher, gaming chair, etc.) is rejected
+  in `pipeline/rss-parser.ts` and never reaches Claude. The rejection reason is
+  `off_topic_filter` in `source_runs.items_rejected_breakdown`.
+- Broad tech feeds nominally tagged "AI" (ZDNet AI, Wired AI, CNet AI) must additionally pass
+  the per-feed keyword filter (`needsKeywordFilter: true` + `EN_AI_CORE_KEYWORDS` on the title).
+
 ## 8. Article structure requirements
 
 News article mandatory structure:

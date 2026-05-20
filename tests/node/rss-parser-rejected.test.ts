@@ -22,6 +22,52 @@ const feed: FeedConfig = {
   requireDateInUrl: true,
 }
 
+test('parseFeed rejects off-topic gadget items via OFF_TOPIC_KEYWORDS blocklist', async () => {
+  const zdnetFeed: FeedConfig = {
+    name: 'ZDNet AI',
+    url: 'https://www.zdnet.com/topic/artificial-intelligence/rss.xml',
+    lang: 'en',
+    topics: ['ai-industry'],
+    needsKeywordFilter: true,
+    keywords: ['ai', 'artificial intelligence', 'llm', 'openai'],
+    keywordSearchFields: 'title',
+  }
+  const originalFetch = global.fetch
+  global.fetch = (async () => new Response(`
+    <rss version="2.0">
+      <channel>
+        <item>
+          <title>4 Android Auto features worth turning on for safety</title>
+          <link>https://www.zdnet.com/article/android-auto-safety-2026</link>
+          <pubDate>Sat, 02 May 2026 10:00:00 GMT</pubDate>
+          <description>Driving tips and gadgets.</description>
+        </item>
+        <item>
+          <title>OpenAI ships new agentic workflows for enterprise</title>
+          <link>https://www.zdnet.com/article/openai-agentic-workflows</link>
+          <pubDate>Sat, 02 May 2026 10:30:00 GMT</pubDate>
+          <description>Enterprise AI.</description>
+        </item>
+      </channel>
+    </rss>
+  `, { status: 200 })) as typeof fetch
+
+  try {
+    const parser = new RSSParser()
+    const result = await parseFeed(parser, zdnetFeed, new Date('2026-05-02T09:00:00.000Z'))
+
+    assert.equal(result.items.length, 1)
+    assert.match(result.items[0]!.originalTitle, /OpenAI/)
+    const reasons = Object.fromEntries(
+      result.rejected.map((entry) => [entry.reason, entry.count]),
+    )
+    assert.equal(reasons.off_topic_filter, 1)
+    assert.ok(!('keyword_filter' in reasons))
+  } finally {
+    global.fetch = originalFetch
+  }
+})
+
 test('parseFeed returns rejected breakdown for keyword and URL-date filters', async () => {
   const originalFetch = global.fetch
   global.fetch = (async () => new Response(`

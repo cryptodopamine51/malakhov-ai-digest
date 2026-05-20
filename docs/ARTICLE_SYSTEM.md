@@ -358,6 +358,16 @@ Broad RSS feeds допускаются только с keyword filters:
 - `parseFeed` возвращает rejected summary: `keyword_filter` для items без нужных keyword-групп и
   `requireDateInUrl` для ru-feeds, где включён URL-date gate. `ingest` дополняет этот breakdown
   причиной `dedup`, когда item уже есть по `dedup_hash`, и пишет счётчики в `source_runs`.
+- **Off-topic blocklist** (`OFF_TOPIC_KEYWORDS` в `pipeline/keyword-filters.ts`) применяется ко
+  всем фидам до per-feed keyword filter и до Claude enrichment. Цель — не пускать гаджетный/
+  consumer-tech контент (`android auto`, `airpods`, `dishwasher`, `gaming chair`, ...) с broad
+  AI-тэгнутых feeds (ZDNet AI, Wired AI, CNet AI) в стадию enrichment, чтобы не тратить токены и
+  не размывать topical authority. Совпадение даёт reason `off_topic_filter` в
+  `source_runs.items_rejected_breakdown`. Список расширяется по мере наблюдаемых off-topic
+  кейсов.
+- `ZDNet AI` и `Wired AI` дополнительно переведены на `needsKeywordFilter: true` с
+  `EN_AI_CORE_KEYWORDS` и `keywordSearchFields: 'title'` — даже если RSS назван «AI», он де-факто
+  смешанный, поэтому требуется явный AI-токен в заголовке.
 - `Google DeepMind Blog` добавлен как официальный research/labs RSS. Проверенные стандартные RSS
   endpoints `anthropic.com` на момент проверки отвечали 404, поэтому Anthropic остаётся источником
   через broad AI feeds и keyword filters, а не через неофициальный агрегатор.

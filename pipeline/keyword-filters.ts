@@ -98,3 +98,42 @@ export const EN_AI_STARTUP_KEYWORDS: string[] = [
   ...EN_AI_CORE_KEYWORDS,
   ...EN_STARTUP_DEAL_KEYWORDS,
 ]
+
+// Off-topic blocklist applied to all feeds BEFORE per-feed keyword filtering.
+// Goal: prevent gadget/consumer-tech filler (Android Auto, AirPods, dishwashers, etc.)
+// from broad tech feeds (ZDNet AI, Wired AI, CNet) reaching enrichment.
+// Extend list as new off-topic clusters are observed in `article_attempts` /
+// `source_runs.items_rejected_breakdown.off_topic_filter` examples.
+//
+// Match policy: case-insensitive substring in the same normalised text used for
+// `needsKeywordFilter` (title + optional snippet). Single token is enough to
+// reject the item — there is no co-occurrence requirement.
+export const OFF_TOPIC_KEYWORDS: string[] = [
+  // Automotive / in-car gadgets
+  'android auto',
+  'apple carplay',
+  'car infotainment',
+  // Wearables / personal audio
+  'airpods',
+  'smartwatch',
+  'fitness tracker',
+  'headphones review',
+  'earbuds review',
+  // Home appliances
+  'dishwasher',
+  'vacuum cleaner',
+  'robot vacuum',
+  'air fryer',
+  'coffee maker',
+  // Consumer-grade hardware reviews
+  'tv review',
+  'gaming chair',
+  'gaming mouse',
+  'gaming keyboard',
+  'streaming stick',
+  // Misc lifestyle
+  'streaming deals',
+  'black friday deal',
+  'cyber monday deal',
+  'amazon prime day',
+]

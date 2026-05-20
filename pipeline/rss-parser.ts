@@ -2,7 +2,7 @@ import { createHash } from 'crypto'
 import RSSParser from 'rss-parser'
 import { decodeHTML } from 'entities'
 import { FEEDS, type FeedConfig } from './feeds.config'
-import { RU_AI_KEYWORDS } from './keyword-filters'
+import { OFF_TOPIC_KEYWORDS, RU_AI_KEYWORDS } from './keyword-filters'
 
 // ── Типы ─────────────────────────────────────────────────────────────────────
 
@@ -35,7 +35,7 @@ export interface FetchAllFeedsResult {
   rejected: RssRejectedSummary[]
 }
 
-export type RssRejectedReason = 'keyword_filter' | 'requireDateInUrl' | 'dedup'
+export type RssRejectedReason = 'keyword_filter' | 'requireDateInUrl' | 'dedup' | 'off_topic_filter'
 
 export interface RssRejectedSummary {
   reason: RssRejectedReason | string
@@ -262,6 +262,19 @@ export async function parseFeed(
       if (feed.lang === 'ru' && feed.needsKeywordFilter && feed.requireDateInUrl === true && !hasDateInUrl(url)) {
         addRejected(rejected, 'requireDateInUrl', rejectionExample(item.title, url))
         continue
+      }
+
+      // Off-topic blocklist: drop gadget/consumer-tech filler from broad tech
+      // feeds (ZDNet AI, Wired AI, CNet) before they reach enrichment. Applies
+      // to all feeds regardless of needsKeywordFilter so that broad AI-tagged
+      // feeds can not slip non-AI items through.
+      {
+        const fields = [item.title ?? '', item.contentSnippet ?? item.content ?? '']
+        const searchText = normalizeKeywordText(fields.join(' '))
+        if (OFF_TOPIC_KEYWORDS.some((kw) => keywordMatches(searchText, kw))) {
+          addRejected(rejected, 'off_topic_filter', rejectionExample(item.title, url))
+          continue
+        }
       }
 
       if (feed.needsKeywordFilter) {

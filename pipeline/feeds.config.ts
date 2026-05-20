@@ -55,16 +55,26 @@ export const FEEDS: FeedConfig[] = [
     topics: ['ai-industry'],
   },
   {
+    // ZDNet AI feed nominally tracks the AI section, but the RSS commonly
+    // mixes consumer-tech (Android Auto, AirPods, robot vacuums). Require
+    // an AI keyword in the title to keep the section topical.
     name: 'ZDNet AI',
     url: 'https://www.zdnet.com/topic/artificial-intelligence/rss.xml',
     lang: 'en',
     topics: ['ai-industry'],
+    needsKeywordFilter: true,
+    keywords: EN_AI_CORE_KEYWORDS,
+    keywordSearchFields: 'title',
   },
   {
+    // Same reasoning as ZDNet AI: Wired's AI feed is broader than the label.
     name: 'Wired AI',
     url: 'https://www.wired.com/feed/category/artificial-intelligence/rss',
     lang: 'en',
     topics: ['ai-industry'],
+    needsKeywordFilter: true,
+    keywords: EN_AI_CORE_KEYWORDS,
+    keywordSearchFields: 'title',
   },
   {
     name: 'Ars Technica',
