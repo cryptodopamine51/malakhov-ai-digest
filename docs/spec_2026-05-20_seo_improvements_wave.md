@@ -144,20 +144,27 @@
 
 #### Итерация 1.1: Включить кеш на главной, /russia, /categories/<cat>
 
-- **Files**: `app/page.tsx`, `app/russia/page.tsx`, `app/categories/[category]/page.tsx`, `src/components/ConsentManager.tsx`, `src/components/Header.tsx`.
+- [x] **сделано 2026-05-21**.
+- **Files**: `app/page.tsx`, `app/russia/page.tsx`, `app/categories/[category]/page.tsx`, `src/components/ConsentManager.tsx`, `src/components/Header.tsx`, **`app/api/feed/route.ts` (новый)**, **`src/components/HomeFeedList.tsx` (новый)**.
 - **Steps**:
   1. Запустить локально `curl -sI http://localhost:3000/` (или прод) и подтвердить `cache-control: private, no-cache, no-store, max-age=0, must-revalidate`.
   2. Grep по `app/`: `dynamic = 'force-dynamic'`, `cookies(`, `headers(`, `noStore(` — найти источник.
   3. Если ConsentManager или Header использует `cookies()` в RSC — вынести client-side; cookie проверять в browser через `localStorage` или client cookie.
   4. Добавить `export const revalidate = 300` в `app/page.tsx`, `app/russia/page.tsx`, `app/categories/[category]/page.tsx` (по аналогии с гайдами).
   5. Запустить `npm run build` локально — никаких новых warnings про dynamic rendering.
+- **Что фактически пришлось сделать (отличается от Steps)**:
+  - Step 2-3 — НЕ ConsentManager/Header виноваты (оба `'use client'`). Корень: `await searchParams` в Next.js 15 принудительно переводит роут в Dynamic rendering независимо от `revalidate`. Подтверждено: все три страницы уже имели `revalidate=300`, но всё равно были `ƒ Dynamic`.
+  - Step 4 — `revalidate=300` уже стоял до итерации; не помогало.
+  - Решение: убрать `searchParams` со всех трёх listing-страниц. `/russia` и `/categories/<cat>` уже использовали client-side Load more через `CategoryArticleList` (`/api/categories/<cat>/articles`), просто удалил серверное чтение `?page=`. На главной server-side pagination заменена на новый client-side Load more (`src/components/HomeFeedList.tsx` + `app/api/feed/route.ts`).
+  - `?page=N` URL не редиректятся 301 — canonical уже указывает на base URL, поисковики не индексировали paginated URL как отдельные; решено не вводить риск и оставить URL как есть. При reload `/russia?page=2` сервер игнорирует `?page=` и отдаёт page 1 (canonical=base).
 - **Acceptance**:
-  - `curl -sI https://news.malakhovai.ru/` после деплоя: `cache-control: public, max-age=0, must-revalidate` и через несколько запросов `x-vercel-cache: HIT`.
-  - То же для `/russia`, `/categories/ai-industry`, `/categories/ai-research`.
-  - На странице по-прежнему рендерится свежий список статей (cache не залипает дольше 5 мин).
-  - ConsentManager продолжает работать в браузере.
+  - `curl -sI https://news.malakhovai.ru/` после деплоя: `cache-control: public, max-age=0, must-revalidate` и через несколько запросов `x-vercel-cache: HIT`. ⏳ проверить после промоушена.
+  - То же для `/russia`, `/categories/ai-industry`, `/categories/ai-research`. ⏳ проверить после промоушена.
+  - На странице по-прежнему рендерится свежий список статей (cache не залипает дольше 5 мин). ⏳ проверить после промоушена.
+  - ConsentManager продолжает работать в браузере. ✅ (не трогался, остался client-side).
+  - **Локально**: `npm run build` показал `○ Static` для `/` и `/russia`, `● SSG` для `/categories/[category]` (revalidate 5m, expire 1y) — это и есть искомое состояние. До рефактора: `ƒ Dynamic`.
 - **API spend**: 0
-- **Docs impact**: `docs/OPERATIONS.md` — секция «Rendering policy» (что главная/категории живут на ISR `revalidate=300`); `docs/editorial/seo-article-publication-standard.md` §16 — добавить пункт «category and home pages must be cacheable on Vercel CDN».
+- **Docs impact**: `docs/OPERATIONS.md` — добавлена секция «Rendering policy»; `docs/editorial/seo-article-publication-standard.md` §16 — добавлен блок «Listing pages must stay cacheable on the Vercel CDN».
 
 #### Итерация 1.2: Off-topic фильтрация в pipeline
 
@@ -628,6 +635,7 @@
 > Каждая сессия добавляет одну строку в этот лог. Формат: `YYYY-MM-DD HH:MM — итерация X.Y — статус — короткий комментарий`.
 
 - 2026-05-20 — spec создан — план составлен по результатам аудита; ждём согласования владельца перед фазой 0.
+- 2026-05-21 — итерация 1.1 — done — listing-страницы (`/`, `/russia`, `/categories/[category]`) переведены с Dynamic на ISR. Корень MISS — чтение `await searchParams` в Next 15 (force-dynamic), не `cookies()`/`Header`. Решение: убрал `searchParams` со всех трёх страниц; pagination главной — новый client-side `HomeFeedList` + `/api/feed`; `/russia` и `/categories/<cat>` уже использовали client-side Load more. `npm run build` → `/` и `/russia` = `○ Static`, `/categories/[category]` = `● SSG`, revalidate=5m. `?page=N`-редиректы не вводил (canonical уже на base URL, нулевой риск для индекса). Прод-curl-проверка cache headers — после deploy. Docs updated: `docs/OPERATIONS.md` (новая секция «Rendering policy»), `docs/editorial/seo-article-publication-standard.md` §16 (блок про cacheable listing pages).
 - 2026-05-20 — итерации 0.1 + 0.2 — done — владелец дал «запусти», снят production snapshot «до»:
   - Cache headers (curl на проде): `/`, `/russia`, `/categories/ai-industry` → `cache-control: private, no-cache, no-store, max-age=0, must-revalidate`, `x-vercel-cache: MISS` на каждом запросе. Подтверждает основной P0-блокер.
   - Sitemap: `https://news.malakhovai.ru/sitemap.xml` содержит 1012 `<loc>`.

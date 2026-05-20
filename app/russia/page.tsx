@@ -1,7 +1,5 @@
 import type { Metadata } from 'next'
-import { redirect } from 'next/navigation'
 import { CATEGORY_PAGE_SIZE, getArticlesByCategoryPage, getInterestingArticlesByCategory } from '../../lib/articles'
-import { getPaginationMeta, normalizePositivePage } from '../../lib/pagination'
 import { SITE_URL, absoluteUrl } from '../../lib/site'
 import CategoryArticleList from '../../src/components/CategoryArticleList'
 import InterestingArticles from '../../src/components/InterestingArticles'
@@ -38,22 +36,13 @@ const jsonLd = {
   publisher: { '@type': 'Organization', name: 'Malakhov AI Дайджест', url: SITE_URL },
 }
 
-export default async function RussiaPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ page?: string }>
-}) {
-  const resolvedSearchParams = await searchParams
-  const page = normalizePositivePage(resolvedSearchParams.page)
-  const { articles, total } = await getArticlesByCategoryPage('ai-russia', page, CATEGORY_PAGE_SIZE)
-  const interestingArticles = page === 1
-    ? await getInterestingArticlesByCategory('ai-russia', 4, articles.map((article) => article.id))
-    : []
-  const pagination = getPaginationMeta(total, page, CATEGORY_PAGE_SIZE)
-
-  if (pagination.totalPages > 0 && page > pagination.totalPages) {
-    redirect(pagination.totalPages === 1 ? '/russia' : `/russia?page=${pagination.totalPages}`)
-  }
+export default async function RussiaPage() {
+  const { articles, total } = await getArticlesByCategoryPage('ai-russia', 1, CATEGORY_PAGE_SIZE)
+  const interestingArticles = await getInterestingArticlesByCategory(
+    'ai-russia',
+    4,
+    articles.map((article) => article.id),
+  )
 
   return (
     <>
@@ -100,14 +89,14 @@ export default async function RussiaPage({
 
         <TopicTabs activeHref="/russia" className="mb-8" />
 
-        {page === 1 && <InterestingArticles articles={interestingArticles} />}
+        <InterestingArticles articles={interestingArticles} />
 
         <CategoryArticleList
           category="ai-russia"
           basePath="/russia"
           initialArticles={articles}
           total={total}
-          initialPage={page}
+          initialPage={1}
           perPage={CATEGORY_PAGE_SIZE}
         />
 

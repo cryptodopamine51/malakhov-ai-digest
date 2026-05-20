@@ -1,10 +1,9 @@
-import { notFound, redirect } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import { CATEGORY_PAGE_SIZE, getArticlesByCategoryPage, getInterestingArticlesByCategory } from '../../../lib/articles'
 import { getCategoryMeta } from '../../../lib/category-meta'
 import { CATEGORY_SLUGS } from '../../../lib/categories'
-import { getPaginationMeta, normalizePositivePage } from '../../../lib/pagination'
 import { SITE_URL, absoluteUrl } from '../../../lib/site'
 import CategoryArticleList from '../../../src/components/CategoryArticleList'
 import InterestingArticles from '../../../src/components/InterestingArticles'
@@ -185,28 +184,19 @@ export async function generateMetadata({
 
 export default async function CategoryPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ category: string }>
-  searchParams: Promise<{ page?: string }>
 }) {
   const { category } = await params
-  const resolvedSearchParams = await searchParams
-  const page = normalizePositivePage(resolvedSearchParams.page)
   const meta = getCategoryMeta(category)
   if (!meta) notFound()
 
-  const { articles, total } = await getArticlesByCategoryPage(category, page, CATEGORY_PAGE_SIZE)
-  const interestingArticles = page === 1
-    ? await getInterestingArticlesByCategory(category, 4, articles.map((article) => article.id))
-    : []
-  const pagination = getPaginationMeta(total, page, CATEGORY_PAGE_SIZE)
-
-  if (pagination.totalPages > 0 && page > pagination.totalPages) {
-    redirect(pagination.totalPages === 1
-      ? `/categories/${category}`
-      : `/categories/${category}?page=${pagination.totalPages}`)
-  }
+  const { articles, total } = await getArticlesByCategoryPage(category, 1, CATEGORY_PAGE_SIZE)
+  const interestingArticles = await getInterestingArticlesByCategory(
+    category,
+    4,
+    articles.map((article) => article.id),
+  )
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -247,14 +237,14 @@ export default async function CategoryPage({
 
         <TopicTabs activeHref={tabsActiveHref} className="mb-8" />
 
-        {page === 1 && <InterestingArticles articles={interestingArticles} />}
+        <InterestingArticles articles={interestingArticles} />
 
         <CategoryArticleList
           category={category}
           basePath={`/categories/${category}`}
           initialArticles={articles}
           total={total}
-          initialPage={page}
+          initialPage={1}
           perPage={CATEGORY_PAGE_SIZE}
         />
       </div>

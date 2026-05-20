@@ -11,6 +11,8 @@
 ```bash
 npm run context
 npm run build
+npm run evergreen:new -- --topic-id=<id>
+npm run evergreen:check -- --slug=<slug>
 npm run ingest
 npm run enrich
 npm run enrich-submit-batch
@@ -26,6 +28,16 @@ npm run image:style-lab
 npm run tg-digest
 npm run docs:check
 ```
+
+### Evergreen content utilities
+
+Evergreen-гайды готовятся локально и не требуют production env.
+
+- `npm run evergreen:new -- --topic-id=<id>` создаёт редакционный пакет из `content/evergreen/topics.json` в `content/evergreen/packages/<slug>/`.
+- `npm run evergreen:new -- --topic-id=<id> --dry-run` показывает будущие файлы без записи.
+- `npm run evergreen:check -- --slug=<slug>` проверяет package-файлы, `00-topic.json`, ASCII slug, metadata JSON, production guide/metadata consistency, cover metadata, FAQ и локальные `/guides/...` ссылки.
+
+Эти команды не публикуют материал. Production-публикация evergreen-гайда начинается только после переноса approved Markdown в `content/guides/<slug>.md`, metadata в `content/guides/meta/<slug>.json` и изображений в `public/images/guides/<slug>/`.
 
 ## Переменные окружения
 
@@ -467,6 +479,36 @@ Operational правило:
 - Не подключать неофициальные агрегаторы как замену source-owned RSS без отдельного решения:
   например, стандартные RSS endpoints `anthropic.com` сейчас отвечают 404, поэтому Anthropic
   покрывается broad feeds/filters до появления официального feed endpoint.
+
+## Rendering policy
+
+Cтратегия рендеринга по типам страниц:
+
+| Surface | Mode | Revalidate |
+|---|---|---|
+| `/` | Static (ISR) | 300s |
+| `/russia` | Static (ISR) | 300s |
+| `/categories/<category>` | SSG (через `generateStaticParams`) + ISR | 300s |
+| `/categories/<category>/<slug>` | SSG + ISR | 1h |
+| `/guides`, `/guides/<slug>` | SSG/Static | 1d |
+| `/sources`, `/sources/<source>` | Static / SSG | 1h |
+| `/sitemap.xml`, `/rss.xml`, `/llms.txt`, `/indexnow.txt`, `/robots.txt` | Static (ISR) | 30m–1h |
+| `/api/feed`, `/api/categories/<cat>/articles` | Dynamic (Load-more endpoint) | — |
+| `/archive/<date>`, `/articles/<slug>`, `/topics/<topic>`, `/internal/*`, `/demo/*` | Dynamic | — |
+
+Инварианты:
+
+1. Главная (`/`), `/russia` и `/categories/<category>` НЕ должны читать `searchParams` или
+   `cookies()/headers()` на сервере — это force-dynamic-ит роут и убивает CDN-кеш на Vercel
+   (`cache-control: private, no-cache, no-store`). Pagination там — client-side через Load more,
+   подгрузка через `/api/feed` или `/api/categories/<cat>/articles`.
+2. Если на странице нужны cookies/headers/searchParams — выносить их в Client Component или
+   в отдельный Dynamic route, не размывая основной surface.
+3. После изменений listing-страниц обязательно проверить `npm run build`: метки в Route summary
+   должны быть `○` Static или `●` SSG, **не** `ƒ` Dynamic.
+4. Прод-проверка cache headers (часть smoke check): `curl -sI https://news.malakhovai.ru/` после
+   деплоя должен показать `cache-control: public, max-age=0, must-revalidate` (или аналогичный
+   public-вариант) и `x-vercel-cache: HIT` после повторного запроса.
 
 ## Deploy
 
