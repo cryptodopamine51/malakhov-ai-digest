@@ -287,6 +287,7 @@ npx tsx scripts/backfill-stock-covers.ts --latest-day --limit=12
 ```bash
 npx tsx scripts/generate-ai-covers.ts --category=ai-russia --limit=8
 npm run covers:ai-low -- --category=all --latest-day --limit=8
+npm run covers:ai-low -- --category=all --latest-day --days=2 --limit=12
 npm run covers:ai-priority -- --daily-budget=1
 npm run covers:ai-priority -- --apply --daily-budget=1
 npx tsx scripts/generate-ai-covers.ts --category=ai-russia --limit=8 --apply --quality=medium
@@ -295,7 +296,7 @@ npx tsx scripts/generate-ai-covers.ts --category=ai-russia --limit=8 --apply --q
 Правила:
 
 - default mode — dry-run, без OpenAI вызовов, DB writes и Storage upload;
-- scheduled workflow `ai-covers.yml` включён каждые 2 часа на 10-й минуте и запускает только low-quality path с `--daily-budget=1`;
+- scheduled workflow `ai-covers.yml` включён каждые 2 часа на 10-й минуте и запускает low-quality path только для последних двух московских дней с `--daily-budget=1`;
 - default model — `gpt-image-1.5`, потому что `gpt-image-2` требует verified organization;
 - default quality — `low` для автоматического дешёвого cover fallback; `medium`/`high` остаются ручным override для важных карточек;
 - homepage-priority command `npm run covers:ai-priority -- --daily-budget=1` — dry-run/apply режим
@@ -317,11 +318,19 @@ npx tsx scripts/generate-ai-covers.ts --category=ai-russia --limit=8 --apply --q
 Локальный fallback:
 
 ```bash
+npm run covers:template -- --older-than-days=2 --days=30 --limit=30
+npm run covers:template -- --older-than-days=2 --days=30 --limit=30 --apply
 npx tsx scripts/replace-test-covers-with-editorial-templates.ts --top-russia=30 --apply
 ```
 
-Скрипт не должен перезаписывать URL из `article-images/ai-covers/` и выбирает статьи в порядке
-production category page (`pub_date`, `created_at`, `score`, `id`).
+`scripts/backfill-template-covers.ts` закрывает старые live-статьи без видимой карточной
+обложки бесплатными локальными SVG/WebP template cover-ами. Scheduled `ai-covers.yml`
+запускает его после AI-step с `--older-than-days=2 --days=30 --limit=30 --apply`, чтобы
+платный AI budget оставался только для свежих карточек. Скрипт не вызывает OpenAI и обновляет
+только `articles.cover_image_url`.
+
+Legacy `replace-test-covers-with-editorial-templates.ts` оставлен для точечных старых наборов
+slug-ов / top-russia backfill; для общего закрытия дыр использовать `npm run covers:template`.
 
 ### Image style lab
 

@@ -29,6 +29,7 @@
     "image:style-lab": "tsx scripts/image-style-lab.ts",
     "covers:ai-low": "tsx scripts/generate-ai-covers.ts --quality=low",
     "covers:ai-priority": "tsx scripts/generate-ai-covers.ts --homepage --quality=medium --limit=2",
+    "covers:template": "tsx scripts/backfill-template-covers.ts",
     "publish-verify": "tsx pipeline/publish-verify.ts",
     "tg-digest": "tsx bot/daily-digest.ts",
     "bot": "tsx bot/bot.ts",

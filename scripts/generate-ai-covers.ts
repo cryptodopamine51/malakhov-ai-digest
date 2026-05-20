@@ -7,7 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 import sharp from 'sharp'
 import { writeLlmUsageLog } from '../pipeline/llm-usage'
 import { estimateOpenAiImageCostUsd, type ImageQuality, type ImageSize } from '../pipeline/model-pricing'
-import { sanitizeArticleMedia } from '../lib/media-sanitizer'
+import { isArticleImagesStorageUrl, sanitizeArticleMedia } from '../lib/media-sanitizer'
 
 loadDotenv({ path: resolve(process.cwd(), '.env.local') })
 loadDotenv({ path: resolve(process.cwd(), '.env') })
@@ -83,6 +83,7 @@ const imageSize: ImageSize = '1536x1024'
 const dailyBudgetUsd = nonNegativeNumberArg('daily-budget', Number(process.env.OPENAI_IMAGE_DAILY_BUDGET_USD ?? 0))
 const date = stringArg('date', '')
 const latestDay = args.has('latest-day') || Boolean(date)
+const dayWindow = positiveIntegerArg('days', 1)
 const onlyGenerated = !args.has('include-source-covers')
 const slugs = stringArg('slugs', '')
   .split(',')
@@ -114,6 +115,7 @@ async function main() {
     category,
     homepage_priority: homepagePriority,
     latest_day: latestDay,
+    days: latestDay ? dayWindow : null,
     selected_count: articles.length,
     out_dir: outDir,
     selected: articles.map((article) => ({
@@ -304,7 +306,7 @@ async function selectArticles(supabase: any): Promise<ArticleRow[]> {
 
   if (latestDay) {
     const targetDate = date || await getLatestLiveCreatedDateMsk(supabase)
-    const { startIso, endIso } = getMoscowDayBounds(targetDate)
+    const { startIso, endIso } = getMoscowDayWindowBounds(targetDate, dayWindow)
     query = query.gte('created_at', startIso).lt('created_at', endIso)
   }
 
@@ -384,8 +386,8 @@ function liveArticleQuery(supabase: any) {
 
 function needsAiCover(article: ArticleRow): boolean {
   if (!article.cover_image_url) return true
-  if (!getUsableCoverUrl(article)) return true
   if (article.cover_image_url.includes('/article-images/ai-covers/')) return false
+  if (!getUsableCoverUrl(article)) return true
   if (article.cover_image_url.includes('/article-images/template-covers/')) return true
   if (article.cover_image_url.includes('/article-images/stock-covers/')) return true
   return ['Habr AI', 'vc.ru', 'vc.ru AI/стартапы', 'CNews'].includes(article.source_name)
@@ -412,6 +414,7 @@ function classifyCover(value: string | null): string {
   if (value.includes('/article-images/ai-covers/')) return 'ai-cover'
   if (value.includes('/article-images/template-covers/')) return 'template-cover'
   if (value.includes('/article-images/stock-covers/')) return 'stock-cover'
+  if (isArticleImagesStorageUrl(value)) return 'article-images-storage'
   return 'source-cover'
 }
 
@@ -649,6 +652,14 @@ async function getTodayOpenAiImageSpend(supabase: any): Promise<number> {
 function getMoscowDayBounds(targetDate: string) {
   const start = new Date(`${targetDate}T00:00:00${MOSCOW_OFFSET}`)
   const end = new Date(start.getTime() + 24 * 60 * 60 * 1000)
+  return { startIso: start.toISOString(), endIso: end.toISOString() }
+}
+
+function getMoscowDayWindowBounds(targetDate: string, days: number) {
+  const safeDays = Math.max(1, Math.floor(days))
+  const end = new Date(`${targetDate}T00:00:00${MOSCOW_OFFSET}`)
+  end.setUTCDate(end.getUTCDate() + 1)
+  const start = new Date(end.getTime() - safeDays * 24 * 60 * 60 * 1000)
   return { startIso: start.toISOString(), endIso: end.toISOString() }
 }
 

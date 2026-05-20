@@ -107,6 +107,16 @@ function normalizedUrl(value: string | null | undefined): string {
   return normalizeText(value).replace(/%2f/g, '/')
 }
 
+export function isArticleImagesStorageUrl(value: string | null | undefined): boolean {
+  if (!value) return false
+  try {
+    const url = new URL(value)
+    return url.pathname.includes('/storage/v1/object/public/article-images/')
+  } catch {
+    return false
+  }
+}
+
 function looksLikeTextCover(url: string, sourceName: string): boolean {
   if (!TEXT_COVER_SOURCE_NAMES.has(sourceName)) return false
   return /(?:\/share\/|\/social\/|\/cover\/|\/covers\/|og[-_]?image|share[-_]?image|card[-_]?image|default[-_]?cover|placeholder|no[-_]?image|noimage)/i.test(url)
@@ -208,6 +218,7 @@ function rejectReasonForCandidate(
   const isSvg = /\.svg(?:[?#]|$)/i.test(src)
 
   if (!src || /^data:/i.test(src) || /^javascript:/i.test(src)) return 'invalid_url'
+  if (mode === 'cover' && isArticleImagesStorageUrl(src)) return null
   if (HARD_URL_RE.test(urlText)) return 'ad_url'
   if (UI_ICON_URL_RE.test(urlText) || UI_ICON_URL_RE.test(normalizedCandidateText)) return 'ui_icon'
   if (PROMO_TEXT_RE.test(normalizedCandidateText)) return 'promo_text'
