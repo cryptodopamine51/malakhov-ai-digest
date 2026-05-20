@@ -2,9 +2,21 @@
 
 > Главный управляющий файл проекта.
 > Он не подгружается автоматически “из памяти” между сессиями: в начале каждой новой работы его нужно открыть явно или запустить `npm run context`.
-> Последнее обновление: 2026-05-07
+> Последнее обновление: 2026-05-21
 
-Последняя закрытая инициатива: **Site improvements wave (2026-05-06)** — см. `docs/spec_2026-05-06_site_improvements.md` и `docs/execution_plan_2026-05-06_site_improvements.md`. Включает: cover cascade и UI-icon sanitizer без API spend, sort by `created_at desc` в основных лентах, окно «Самого интересного» 72ч, удаление sticky-заголовка, accent-ссылка на источник, vc.ru keyword variants, editorial clarity rule. Backfill 21 cover применён 2026-05-07 через `scripts/backfill-cover-images.ts --apply`; rollback-snapshot — `articles_cover_snapshot_20260507`.
+Последняя закрытая инициатива: **SEO improvements wave (2026-05-20→05-21)** — см. `docs/spec_2026-05-20_seo_improvements_wave.md` (план + лог сессий) и `docs/spec_2026-05-20_seo_improvements_wave_progress.md` (подробный per-iteration журнал). Включает (API spend = 0):
+- ISR-кеш для главной, `/russia`, `/categories/[category]` через убирание `searchParams` со страниц + Load-more клиент (`HomeFeedList` + `/api/feed`);
+- off-topic blocklist (`OFF_TOPIC_KEYWORDS`) перед per-feed keyword filter; `ZDNet AI` / `Wired AI` получили `needsKeywordFilter: true`;
+- runtime cover fallback в `sanitizeArticleMedia` (промоут первой sanitized inline в cover) + `SITE_LOGO_URL` brand-fallback для `og:image` / `NewsArticle.image` / `publisher.logo`; article cover теперь 1200×630;
+- article-level `BreadcrumbList` JSON-LD + `NewsArticle.abstract` / `wordCount` / `articleSection`;
+- `/news-sitemap.xml` (Google News, 48h окно, ISR 10м); SEO-title главной + Organization `sameAs` (Telegram); `WebSite.potentialAction: SearchAction` + страница `/search`;
+- `robots.txt` с явными allow для 13 LLM-ботов; `/llms.txt` дополнен кластерами и гайдами; `/llms-full.txt` (топ 100 статей + все гайды); `/about` (`AboutPage`); `/sources` (`CollectionPage` / `ItemList`); `/archive/<date>` теперь `noindex, follow`;
+- system prompt Claude: `link_anchors 3–5` (soft warning gate); slug cap 75 с word-boundary cut (`pipeline/slug.ts::capSlugAtWordBoundary`);
+- `scripts/indexnow-batch.ts` для post-deploy ping (готов к запуску владельцем).
+
+Предыдущая инициатива: **Site improvements wave (2026-05-06)** — `docs/spec_2026-05-06_site_improvements.md`.
+
+Отложено до подтверждения владельца (см. §6 spec): Person-author swap, evergreen guide generation (🟡 API), card_teaser regen Опция B (🟡 API), alt-text generation Опция B (🟡 API), cover-image generation для остатка (🟡 API).
 
 ## Как читать проект
 
@@ -50,6 +62,7 @@
 | Архитектурные решения | `docs/DECISIONS.md` |
 | Дизайн-система | `docs/DESIGN.md` |
 | Редакционные правила | `docs/editorial_style_guide.md` |
+| SEO-стандарт статей и evergreen-гайдов | `docs/editorial/seo-article-publication-standard.md` |
 | Планирование и backlog | `docs/ORCHESTRATOR.md` |
 
 Правило: одна тема = один канонический файл. Временные `spec_*`, `task_*`, `execution_plan_*`, `roadmap_*` не заменяют канонические документы.
@@ -77,6 +90,10 @@
 - Источником статьи является строка в `articles`; сайт не генерирует контент “на лету”.
 - Публичные article URLs должны быть чистыми; legacy-slug адреса только редиректят.
 - Новые статьи должны получать релевантные media из исходника, включая видео, если оно тематически подходит.
+- Для новых или существенно редактируемых evergreen/manual материалов обязательно применять `docs/editorial/seo-article-publication-standard.md`: SEO-бриф, intent, anti-cannibalization, metadata, image alt, source/fact-checking, internal links и publication checklist.
+- Для автоматических RSS-news статей SEO-стандарт применяется только в рамках текущего pipeline contract (`original_url`, categories, `ru_title`, `card_teaser`, `lead`, `slug`, `cover_image_url`, `quality_ok`, `publish_status`). Не требовать ручной SERP/competitor brief перед каждой cron-публикацией.
+- Canonical для news-сайта всегда `https://news.malakhovai.ru`; не использовать `malakhovai.ru` или env-derived URL в canonical, sitemap, RSS, `llms.txt`, `og:url` и article links.
+- FAQPage schema разрешена только там, где FAQ видим на странице. Для news articles FAQ не добавлять без отдельного изменения render/schema.
 - `legacy/` не использовать для нового функционала.
 - Продакшен-деплой идёт через Vercel и GitHub/Vercel flow, не ручным копированием файлов.
 

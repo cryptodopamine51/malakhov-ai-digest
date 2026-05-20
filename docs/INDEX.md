@@ -25,6 +25,7 @@ npm run context
 | `docs/DECISIONS.md` | Принятые решения и их мотивация |
 | `docs/DESIGN.md` | Дизайн-система и визуальные паттерны |
 | `docs/editorial_style_guide.md` | Редакционные правила текста |
+| `docs/editorial/seo-article-publication-standard.md` | SEO-стандарт подготовки news articles, evergreen-гайдов и manual long-form материалов |
 
 ## Рабочие, а не канонические документы
 
@@ -46,10 +47,15 @@ npm run context
 
 Также допустимы временные `docs/ORCHESTRATOR_<initiative>_<date>.md` для крупных инициатив, требующих отдельного оркестратора (примеры: `ORCHESTRATOR_fixes_2026-04-24.md`, `ORCHESTRATOR_observability_publication_2026-05-01.md`). Они также не каноничны и заменяются переносом итогов в канонические доки после завершения.
 
+## Active initiatives
+
+(no active initiatives — last wave closed 2026-05-21)
+
 ## Completed initiatives
 
 | Инициатива | Orchestrator | Spec / Tasks / DoD |
 |---|---|---|
+| SEO improvements wave (2026-05-20→05-21) | — | `docs/spec_2026-05-20_seo_improvements_wave.md`, `docs/spec_2026-05-20_seo_improvements_wave_progress.md` |
 | Observability и публикация (2026-05-01) | `docs/ORCHESTRATOR_observability_publication_2026-05-01.md` | `docs/spec_observability_publication_2026-05-01.md`, `docs/file_map_observability_publication_2026-05-01.md`, `docs/task_breakdown_observability_publication_2026-05-01.md`, `docs/acceptance_criteria_observability_publication_2026-05-01.md` |
 
 ## Правила обновления
@@ -65,6 +71,7 @@ npm run context
 | Новое принципиальное решение или смену правила | `docs/DECISIONS.md` |
 | Визуальную систему | `docs/DESIGN.md` |
 | Тон и редакционный стандарт | `docs/editorial_style_guide.md` |
+| SEO-правила статей, evergreen-гайдов, metadata, canonical, schema, image alt, indexing checklist | `docs/editorial/seo-article-publication-standard.md` |
 
 ## Doc Impact Matrix
 

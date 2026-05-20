@@ -437,15 +437,21 @@ Already implemented:
 - redirects from legacy `/articles/<slug>` and `/topics/<topic>`;
 - article metadata: title, description, canonical, Open Graph, Twitter;
 - file-based guide metadata registry and local guide image model;
-- `NewsArticle`, guide `Article`, guide `FAQPage`, root `Organization`/`WebSite`;
-- sitemap with live articles, guides and static routes;
-- sitemap ISR every 30 minutes;
-- robots rules for public/internal/demo/API surfaces;
-- RSS and `llms.txt`;
-- media sanitizer for source images;
-- editorial prompt, validator, repair and quality gate;
+- `NewsArticle` (with `abstract`, `wordCount`, `articleSection`, `inLanguage: 'ru'`) + article-level `BreadcrumbList`; guide `Article`, guide `FAQPage`; root `Organization` (with `sameAs` to brand channels) + `WebSite` (with `potentialAction: SearchAction`);
+- `/sources` `CollectionPage` + `ItemList`; `/about` `AboutPage`; `/search` `SearchResultsPage`;
+- sitemap with live articles, guides and static routes (including `/about`);
+- sitemap ISR every 30 minutes; Google News sitemap at `/news-sitemap.xml` (ISR 10 min, 48h window, ≤1000 URLs);
+- robots rules for public/internal/demo/API surfaces; explicit allow-list for 13 LLM bots (GPTBot, ClaudeBot, PerplexityBot, Google-Extended, …);
+- listing pages (home, `/russia`, `/categories/<cat>`) are cacheable on the Vercel CDN — no server-side `searchParams`; pagination is client-side Load more (`/api/feed`, `/api/categories/<cat>/articles`);
+- RSS, `llms.txt` (with cluster map + guides + machine entry points) and `/llms-full.txt` (top 100 articles + all guides in full Markdown, ISR 1h, capped at 5 MB);
+- WebSite SearchAction + `/search` page (force-dynamic, noindex/follow);
+- media sanitizer for source images, with runtime cover fallback (promotes the first sanitized inline image into the cover slot when source cover is empty/rejected) and `SITE_LOGO_URL` brand-fallback for `og:image` / `NewsArticle.image` / `NewsArticle.publisher.logo`;
+- article cover renders at 1200×630 (Open Graph / Twitter Card standard);
+- editorial prompt, validator, repair and quality gate; link_anchors target 3–5 with a soft 2-anchor warning gate;
+- off-topic blocklist (`OFF_TOPIC_KEYWORDS`) applied to every RSS feed before per-feed keyword filter; ZDNet AI / Wired AI require `EN_AI_CORE_KEYWORDS` on the title;
+- slug length cap 75 with word-boundary cut (`pipeline/slug.ts::capSlugAtWordBoundary`);
 - publish readiness statuses and `publish-verify`;
-- IndexNow ping for newly verified live articles;
+- IndexNow ping for newly verified live articles + post-deploy batch (`scripts/indexnow-batch.ts`);
 - related articles, category links and Telegram CTA.
 
 ## 20. What is planned for later
@@ -461,4 +467,6 @@ Future improvements, not mandatory for the current standard:
 - automated mobile screenshot smoke for article/guide templates;
 - Search Console / Yandex Webmaster API integration;
 - scheduled evergreen review workflow;
-- public digest issue pages, if the product adds them later.
+- public digest issue pages, if the product adds them later;
+- Person-author swap for `NewsArticle.author` (replace Organization with an editor `Person` linked to `/about`) — pending owner publishing a public editor bio;
+- additional `sameAs` channels (x.com, YouTube) once owner makes those public.
