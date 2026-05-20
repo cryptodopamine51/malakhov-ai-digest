@@ -404,6 +404,7 @@
 
 #### Итерация 4.2: Расширить /llms.txt — карта гайдов и категорий
 
+- [x] **сделано 2026-05-21**.
 - **Files**: `app/llms.txt/route.ts`.
 - **Steps**:
   1. Добавить раздел «Топ-материалы»: список 5-10 ключевых гайдов и evergreen статей с одной строкой описания.
@@ -647,6 +648,7 @@
 > Каждая сессия добавляет одну строку в этот лог. Формат: `YYYY-MM-DD HH:MM — итерация X.Y — статус — короткий комментарий`.
 
 - 2026-05-20 — spec создан — план составлен по результатам аудита; ждём согласования владельца перед фазой 0.
+- 2026-05-21 — итерация 4.2 — done — `app/llms.txt/route.ts` дополнен блоками «Тематические кластеры» (по 3-4 свежих статьи на категорию из последних 35 live) и «Топ-материалы (evergreen-гайды)» (со ссылками и описаниями). Добавлены `Поиск`, `Google News sitemap`, `Full LLM dump` в машиночитаемые точки входа. Размер остаётся в пределах 200 строк. ISR=3600. Docs impact: только сам файл, канонические доки не задеты.
 - 2026-05-21 — итерация 4.1 — done — добавлен `app/llms-full.txt/route.ts`. Header + canonical URL + язык + дата обновления → блок «Evergreen guides» с полной markdown-копией каждого гайда → блок «Recent news articles» (топ 100 live по `created_at desc`) с URL, lead, summary bullets, до 2 параграфов editorial body (truncate до 1200 chars). ISR=3600. `cache-control: public, s-maxage=3600, stale-while-revalidate=86400`. Размерный гард 5 МБ (truncate по UTF-8 byte length, если превышено). Docs updated: `docs/editorial/seo-article-publication-standard.md` §16, `docs/PROJECT.md` (новая surface).
 - 2026-05-21 — итерация 3.5 — done — `app/sources/page.tsx` теперь эмитит `CollectionPage` + `mainEntity: ItemList` JSON-LD с ссылками на `/sources/<slug>`. `app/archive/[date]/page.tsx` теперь возвращает `robots: { index: false, follow: true }` — per-date архив тонкий navigational surface, не индексируем, но краулер ходит по ссылкам на статьи. Docs updated: `docs/editorial/seo-article-publication-standard.md` §15.
 - 2026-05-21 — итерация 3.4 — done — WebSite JSON-LD в `app/layout.tsx` получил `potentialAction: SearchAction` с urlTemplate `/search?q={search_term_string}`. Новая страница `app/search/page.tsx` (force-dynamic, noindex follow) с simple-form поиском по `ru_title/lead/card_teaser/editorial_body` через новый helper `searchArticlesByQuery` в `lib/articles.ts` (ILIKE per-word, OR-of-AND, лимит 30 результатов). Search-результаты также эмитят `SearchResultsPage` JSON-LD. Docs updated: `docs/editorial/seo-article-publication-standard.md` §15 (WebSite SearchAction), `docs/PROJECT.md` (новая surface /search).
