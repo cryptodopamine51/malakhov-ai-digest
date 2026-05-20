@@ -6,6 +6,12 @@ export const SITE_DESCRIPTION =
 export const SITE_LOGO_PATH = '/icon-512x512.png'
 export const SITE_LOGO_URL = `${SITE_URL}${SITE_LOGO_PATH}`
 
+// Brand social profile used in Organization JSON-LD `sameAs`. Keep this list
+// in sync with the actual published channels; add x.com / youtube / github
+// when they become public.
+export const SITE_TELEGRAM_URL = 'https://t.me/malakhovaidigest'
+export const SITE_SAME_AS: string[] = [SITE_TELEGRAM_URL]
+
 export function absoluteUrl(path = '/'): string {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   return `${SITE_URL}${normalizedPath}`

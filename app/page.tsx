@@ -1,7 +1,9 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import Image from 'next/image'
 import { getHotStoryOfTheDay, getRecentHeadlines, getArticlesFeed } from '../lib/articles'
 import { getAllGuides } from '../lib/guides'
+import { SITE_URL, absoluteUrl } from '../lib/site'
 import { getMoscowDateKey, shiftMoscowDateKey, pluralize } from '../lib/utils'
 import ArticleCard from '../src/components/ArticleCard'
 import HomeFeedList from '../src/components/HomeFeedList'
@@ -9,6 +11,33 @@ import PulseList from '../src/components/PulseList'
 import TopicTabs from '../src/components/TopicTabs'
 
 export const revalidate = 300
+
+// Home-page metadata override the layout defaults so the SERP title carries
+// the primary navigational query ("AI новости на русском"). The brand suffix
+// is appended via the title template in app/layout.tsx.
+const HOME_TITLE = 'AI новости на русском'
+const HOME_DESCRIPTION =
+  'Свежие новости об искусственном интеллекте на русском: модели, лаборатории, стартапы, инвестиции и AI в России. Ежедневные редакционные обзоры.'
+
+export const metadata: Metadata = {
+  title: HOME_TITLE,
+  description: HOME_DESCRIPTION,
+  alternates: { canonical: '/' },
+  openGraph: {
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
+    url: SITE_URL,
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
+  },
+  other: {
+    'twitter:url': absoluteUrl('/'),
+  },
+}
 
 const PER_PAGE = 12
 const HEADLINES_COUNT = 12

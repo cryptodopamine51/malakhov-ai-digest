@@ -175,3 +175,31 @@
 - `docs/OPERATIONS.md` — Deploy section now lists both sitemaps with their ISR and rules.
 - `docs/editorial/seo-article-publication-standard.md` §16 — added bullet about Google News
   sitemap.
+
+---
+
+## Iteration 2.3 — Home metadata + Organization sameAs (partial; Person-author deferred)
+
+**Files changed**:
+- `lib/site.ts` — added `SITE_TELEGRAM_URL = 'https://t.me/malakhovaidigest'` and
+  `SITE_SAME_AS: string[] = [SITE_TELEGRAM_URL]`.
+- `app/layout.tsx` — Organization JSON-LD gained `sameAs: SITE_SAME_AS`.
+- `app/page.tsx` — added `export const metadata`:
+  - `title: 'AI новости на русском'` (template in layout appends ` | Malakhov AI Дайджест`,
+    final SERP title ~44 chars);
+  - `description`: spec text emphasising категории релизов/исследований/стартапов/инвестиций/Россия;
+  - `alternates.canonical: '/'`;
+  - Open Graph + Twitter cards matching the title/description.
+
+**Deferred**:
+- Person-author (replacing `NewsArticle.author = Organization` with a `Person` linked to
+  `/about`). Spec explicitly says "Спросить владельца перед изменением author". Awaiting
+  owner confirmation. This becomes Phase 4.3 (build `/about`) + a follow-up commit to
+  swap the author block on the article page.
+- Additional `sameAs` URLs (x.com, YouTube). Only Telegram is publicly known; rest depend
+  on owner adding them.
+
+**Docs updated**:
+- `docs/editorial/seo-article-publication-standard.md` §9 — added Home page metadata block.
+- `docs/editorial/seo-article-publication-standard.md` §15 — Organization line now notes
+  `sameAs` reference to `lib/site.ts::SITE_SAME_AS`.

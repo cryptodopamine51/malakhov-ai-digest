@@ -174,6 +174,13 @@ FAQ must be visible on the page if `FAQPage` JSON-LD is emitted.
 
 ## 9. Metadata requirements
 
+Home page:
+
+- Title: `AI новости на русском` (template appends `| Malakhov AI Дайджест` → ≤ 50 chars).
+- Description: targets "AI новости на русском" + key category mix (релизы, исследования, стартапы, инвестиции, AI в России).
+- Canonical: `/` (SITE_URL).
+- Set via `app/page.tsx::metadata`.
+
 News article:
 
 - `ru_title` is both H1 and page title.
@@ -305,7 +312,7 @@ Digest issue links are not mandatory because public digest issue pages do not ex
 
 Current implemented schema:
 
-- root layout: `Organization` and `WebSite`;
+- root layout: `Organization` (with `sameAs` linking to public brand channels — see `lib/site.ts::SITE_SAME_AS`) and `WebSite`;
 - news article: `NewsArticle` + `BreadcrumbList` (Главная → категория → статья);
 - news video: `VideoObject` inside `NewsArticle` when video exists;
 - guide: `Article`;
