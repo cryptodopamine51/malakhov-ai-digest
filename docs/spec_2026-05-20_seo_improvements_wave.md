@@ -603,6 +603,7 @@
 
 #### Итерация 7.2: Post-mortem / Final report владельцу
 
+- [x] **сделано 2026-05-21** — §9 заполнен.
 - **Steps**:
   1. Заполнить раздел 9 «Финальный отчёт».
   2. Послать владельцу.
@@ -653,6 +654,7 @@
 > Каждая сессия добавляет одну строку в этот лог. Формат: `YYYY-MM-DD HH:MM — итерация X.Y — статус — короткий комментарий`.
 
 - 2026-05-20 — spec создан — план составлен по результатам аудита; ждём согласования владельца перед фазой 0.
+- 2026-05-21 — итерация 7.1 + 7.2 — done — каноны обновлены (`CLAUDE.md`, `docs/INDEX.md`, SEO-стандарт §19/§20); финальный отчёт владельцу заполнен в §9. `npm run docs:check` падает из-за чужого WIP (другая инициатива evergreen) — мои каноны актуальны, проверка станет зелёной после коммита их работы.
 - 2026-05-21 — итерация 6.7 — done — добавлен `scripts/indexnow-batch.ts`. Dry-run по умолчанию (выводит список URL без вызовов). С `--apply` пингует IndexNow батчами по 100: статические страницы (`/`, `/russia`, `/about`, `/categories/*`, `/sources`, `/guides`) + все evergreen-гайды + последние N live статей (`--limit=50` по умолчанию, cap 200). Использует существующий `pingIndexNow` (`lib/indexnow.ts`). Запуск владельцем после deploy: `npx tsx scripts/indexnow-batch.ts --apply`.
 - 2026-05-21 — итерация 6.1 — отложено — runtime fallback из iter 1.3 уже закрывает UX для оставшихся 3 NULL-cover статей; backfill на 3 строки не окупает rollback snapshot и согласование.
 - 2026-05-21 — итерация 5.1 — done — `npm run build` exit=0; все нужные surfaces — Static / SSG; никаких новых dynamic warnings.
@@ -682,20 +684,80 @@
 
 ---
 
-## 9. Финальный отчёт владельцу (заполняется после Фазы 7)
+## 9. Финальный отчёт владельцу (закрыто 2026-05-21)
 
-Заполнить после полного завершения волны:
+### Что сделано (всё API spend = 0)
 
-- Что сделано (список закрытых итераций).
-- Что отложено и почему.
-- API spend по факту: $X.YZ (детализация).
-- Снимки production метрик «до / после»:
-  - % статей с `og-default.png`: было N% → стало M%.
-  - cache hit rate главной: было MISS → стало HIT.
-  - количество URLs в sitemap: было N → стало M (+news-sitemap).
-  - количество AI-ботов с явным allow: было 3 → стало 13+.
-- Что улучшилось в индексации (через 2-4 недели после deploy): impressions / clicks по Yandex Webmaster и Google Search Console.
-- Следующая волна (если есть кандидаты).
+| Фаза | Итерация | Результат |
+|---|---|---|
+| 0 | 0.1, 0.2 | scope approved + production snapshot «до» |
+| 1 | 1.1 | ISR cache для `/`, `/russia`, `/categories/[category]` (убран `searchParams`, новый `HomeFeedList` + `/api/feed`) |
+| 1 | 1.2 | `OFF_TOPIC_KEYWORDS` blocklist + `needsKeywordFilter: true` для ZDNet AI / Wired AI |
+| 1 | 1.3 | runtime cover promotion в `sanitizeArticleMedia` + `SITE_LOGO_URL` brand-fallback |
+| 2 | 2.1 | article-level `BreadcrumbList` JSON-LD |
+| 2 | 2.2 | `/news-sitemap.xml` (Google News protocol) + второй sitemap в `robots.txt` |
+| 2 | 2.3 (частично) | SEO-title главной + `Organization.sameAs` (Telegram). Person-author отложен |
+| 2 | 2.4 | явный allow-list для 13 LLM-ботов в `robots.txt` |
+| 3 | 3.1 | article cover 1200×630 (Open Graph / Twitter Card) |
+| 3 | 3.2 | system prompt: `link_anchors 3–5` + soft warning gate в `validateEditorialDetailed` |
+| 3 | 3.3 | slug cap 60 → 75 + word-boundary cut (`capSlugAtWordBoundary`) |
+| 3 | 3.4 | `WebSite.potentialAction: SearchAction` + страница `/search` (`SearchResultsPage`, noindex/follow) |
+| 3 | 3.5 | `/sources` → `CollectionPage` + `ItemList`; `/archive/<date>` → `noindex, follow` |
+| 4 | 4.1 | `/llms-full.txt` (топ 100 статей + все гайды, ISR 1h, ≤ 5 MB) |
+| 4 | 4.2 | `/llms.txt` дополнен «Тематическими кластерами» и «Топ-материалами» |
+| 4 | 4.3 | `/about` (`AboutPage` JSON-LD; ≥ 1500 chars осмысленного текста) |
+| 4 | 4.4 | `NewsArticle` получил `abstract`, `wordCount`, `articleSection` |
+| 5 | 5.1 | локальный `npm run build` — exit=0, все нужные surfaces Static/SSG |
+| 6 | 6.7 | `scripts/indexnow-batch.ts` (готов к запуску владельцем post-deploy) |
+| 7 | 7.1 | каноны обновлены: `CLAUDE.md`, `docs/INDEX.md`, SEO-стандарт §19/§20, `docs/OPERATIONS.md` (Rendering policy + Sitemaps), `docs/ARTICLE_SYSTEM.md` (off-topic + sanitizer + slug + sources) |
+
+### Что отложено (требует подтверждения владельца или API spend)
+
+- **Phase 2.3 (Person-author swap)** — заменить `NewsArticle.author = Organization` на `Person`, связанный с `/about`. Требует публичной редакторской биографии. API spend = 0 (только код), но риск — изменяется E-E-A-T-сигнал, поэтому ждём явное «да».
+- **Phase 4.5 (новый evergreen-guide)** — 🟡 если генерировать через Claude. Можно сделать вручную владельцем.
+- **Phase 5.2 (promote to production)** — выполняется владельцем через Vercel UI; смок-чек инструкций уже описан в spec'е.
+- **Phase 6.1 (cover backfill из source images)** — отложено: остаток 3 статьи с NULL cover; runtime fallback из iter 1.3 закрывает UX. Backfill ради 3 строк не окупает rollback snapshot и согласование.
+- **Phase 6.3 (cover generation для остатка)** — 🟡 image generation API. Не требуется после phase 0.2 (live `og-default` = 0) и runtime fallback.
+- **Phase 6.5 опция B (card_teaser regen через Claude)** — 🟡. Не двигаем без сигнала из аналитики.
+- **Phase 6.6 опция B (alt-text generation)** — 🟡. Опция A не имеет ясного выигрыша без аналитики.
+
+### API spend по факту
+
+**$0.00.** Все деплои/изменения сделаны без вызовов Anthropic / OpenAI / image-generation. Готовые к pipeline-pickup правки (off-topic filter, link_anchors 3–5) повлияют на следующий cron-цикл, но при тех же per-article бюджетах, что и сейчас — не дополнительный спенд.
+
+### Снимки production метрик
+
+| Метрика | До (snapshot 2026-05-20) | После (целевое после deploy + 5–10 мин) |
+|---|---|---|
+| Cache headers `/`, `/russia`, `/categories/<cat>` | `private, no-cache, no-store, max-age=0, must-revalidate`; `x-vercel-cache: MISS` | `public, ...`; `x-vercel-cache: HIT` (после 2-го запроса). Проверяется curl-ом после promote |
+| Sitemap URL count | 1012 | 1013 (+/about). Плюс отдельный `/news-sitemap.xml` (≤ 1000 за 48h) |
+| AI-bot allow в `robots.txt` | 3 (OAI-SearchBot, Googlebot, Bingbot) | 15 (тот же стартовый набор + 13 LLM-ботов, включая GPTBot, ClaudeBot, PerplexityBot, Google-Extended, anthropic-ai, …) |
+| `NewsArticle` JSON-LD | NewsArticle (без abstract/wordCount/articleSection) | NewsArticle + BreadcrumbList + abstract + wordCount + articleSection |
+| `Organization` JSON-LD | без `sameAs` | sameAs включает Telegram-канал |
+| `WebSite` JSON-LD | без `potentialAction` | SearchAction → `/search?q={search_term_string}` |
+| Article cover render | 1200×460 | 1200×630 (1.91:1, OG/Twitter Card) |
+| Article `og:image` fallback | `/og-default.png` (generic) | promoted inline image → `SITE_LOGO_URL` (brand) |
+| `live AND cover_image_url ILIKE '%og-default%'` | 0 | 0 (predшествующий backfill 2026-05-07 + runtime fallback закрывают) |
+| `live AND cover_image_url IS NULL` | 3 | 3 (runtime fallback скрывает на странице) |
+| Поверхности | основные + /guides + /archive + /sources | + `/about`, `/search`, `/news-sitemap.xml`, `/llms-full.txt` |
+
+### Что улучшится в индексации (горизонт 2–4 недели после deploy)
+
+Ожидания (мерять в Yandex Webmaster / Google Search Console):
+
+- LCP / TTFB главной и категорий: значительное падение (CDN HIT вместо on-demand SSR на каждый запрос).
+- Yandex impressions для navigational запросов («новости ИИ», «AI новости на русском») — рост за счёт SEO-title главной и SearchAction.
+- Google Rich Results на статьях покажет `NewsArticle + BreadcrumbList`.
+- Google News потенциально начнёт собирать `/news-sitemap.xml`.
+- LLM-side crawlers (ChatGPT, Perplexity, Claude.ai web search) получат явный allow и `/llms-full.txt` — больше включений нашего контента в RAG-сводки.
+
+### Следующая волна (кандидаты)
+
+1. Person-author + публичная биография редактора, если владелец готов выступать публично.
+2. SERP-аудит после индексации — что отъезжает в нерелевант, где есть низкий CTR.
+3. Расширение off-topic blocklist по факту наблюдений в `source_runs.items_rejected_breakdown.off_topic_filter`.
+4. Sitemap split (`sitemap-index.xml` + `articles.xml` + `guides.xml`) — только когда общее число URL подойдёт к 50k.
+5. Server Components Cache (Next.js 16 `cacheComponents`) после апгрейда Next — позволит сохранить server-side pagination без MISS.
 
 ---
 
