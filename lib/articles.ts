@@ -685,6 +685,60 @@ export async function getSourceNameBySlug(slug: string): Promise<string | null> 
 }
 
 /**
+ * Lightweight site search over live articles. Used by `/search?q=...`.
+ *
+ * - Tokenises the query and matches each word against `ru_title`, `card_teaser`,
+ *   `lead` and `editorial_body` (OR-of-AND: every word must appear somewhere).
+ * - No fulltext index — relies on `ILIKE` and the existing live filter. With
+ *   ~1100 live articles this is fast enough; if the corpus grows past ~10k we
+ *   should switch to a proper FTS or external search.
+ */
+export async function searchArticlesByQuery(query: string, limit = 30): Promise<Article[]> {
+  const cleaned = (query ?? '').trim()
+  if (cleaned.length === 0 || cleaned.length > 200) return []
+
+  const words = cleaned
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter((word) => word.length >= 2)
+    .slice(0, 5)
+  if (words.length === 0) return []
+
+  let queryBuilder = client()
+    .from('articles')
+    .select('*')
+    .eq('published', true)
+    .eq('quality_ok', true)
+    .eq('verified_live', true)
+    .eq('publish_status', 'live')
+
+  for (const word of words) {
+    const safe = word.replace(/[\\%_]/g, '')
+    if (!safe) continue
+    const pattern = `%${safe}%`
+    queryBuilder = queryBuilder.or(
+      [
+        `ru_title.ilike.${pattern}`,
+        `card_teaser.ilike.${pattern}`,
+        `lead.ilike.${pattern}`,
+        `editorial_body.ilike.${pattern}`,
+      ].join(','),
+    )
+  }
+
+  const { data, error } = await queryBuilder
+    .order('pub_date', { ascending: false, nullsFirst: false })
+    .limit(limit)
+
+  if (error) {
+    console.error('searchArticlesByQuery error:', error.message)
+    return []
+  }
+
+  return (data ?? []) as Article[]
+}
+
+/**
  * Articles for Google News sitemap (`/news-sitemap.xml`).
  *
  * Google News rules:
