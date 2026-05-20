@@ -29,7 +29,7 @@ jobs:
         run: npm ci
 
       - name: Generate missing AI covers
-        run: npm run covers:ai-low -- --category=all --latest-day --limit=12 --apply --daily-budget=1
+        run: npm run covers:ai-low -- --category=all --latest-day --days=2 --limit=12 --apply --daily-budget=1
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
@@ -38,3 +38,10 @@ jobs:
           OPENAI_IMAGE_DAILY_BUDGET_USD: '1'
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+
+      - name: Generate template covers for older gaps
+        run: npm run covers:template -- --older-than-days=2 --days=30 --limit=30 --apply
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}

@@ -97,6 +97,23 @@ test('sanitizeArticleMedia rejects default cover for text-cover sources', () => 
   assert.equal(result.rejects[0]?.reason, 'text_cover')
 })
 
+test('sanitizeArticleMedia keeps generated article-images covers with promo-like titles', () => {
+  const coverUrl = 'https://oziddrpkwzsdtsibauon.supabase.co/storage/v1/object/public/article-images/ai-covers/2026-05-16/kak-ekspert-po-reklame-avtomatiziroval-prodazhi-kursov-chere.webp'
+  const result = sanitizeArticleMedia({
+    coverImageUrl: coverUrl,
+    articleImages: null,
+    context: {
+      ...context,
+      sourceName: 'Habr AI',
+      originalTitle: 'Как эксперт по рекламе автоматизировал продажи курсов через ИИ-чатбот',
+      ruTitle: 'Как эксперт по рекламе автоматизировал продажи курсов через ИИ-чатбот',
+    },
+  })
+
+  assert.equal(result.coverImageUrl, coverUrl)
+  assert.equal(result.rejects.length, 0)
+})
+
 test('sanitizeArticleMedia rejects Ars Technica author portraits', () => {
   const result = sanitizeArticleMedia({
     coverImageUrl: null,
