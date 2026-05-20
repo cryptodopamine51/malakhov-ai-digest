@@ -226,6 +226,9 @@ Slug requirements:
 - Human-readable.
 - No random UUID/hex suffix in public URL.
 - Collision suffixes like `-2`, `-3` are acceptable.
+- Hard length cap: 75 chars (`pipeline/slug.ts::MAX_SLUG_LENGTH`). When the transliterated title
+  exceeds the cap, the slug is cut at the last `-` (word boundary) so it never ends on a
+  mid-root stub. Existing slugs are not retroactively re-cut.
 
 ## 11. Image and alt requirements
 

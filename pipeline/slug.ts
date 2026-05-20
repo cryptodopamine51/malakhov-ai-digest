@@ -17,7 +17,26 @@ const TRANSLIT_MAP: Record<string, string> = {
   э: 'e',  ю: 'yu', я: 'ya',
 }
 
-const MAX_SLUG_LENGTH = 60
+// SEO-wave 2026-05-21: bumped from 60 → 75 so longer titles ("AI-агенты в
+// корпоративных закупках: что меняется в 2026 году") survive without
+// mid-root chops like "-bezopas". Word-boundary slicing keeps the trailing
+// fragment readable.
+const MAX_SLUG_LENGTH = 75
+
+// When the slug is cut at the length limit, prefer the last `-` before the
+// limit so we end on a word boundary. Falls back to the hard cut if the
+// nearest dash is too far back (avoids producing a stub like "ai-").
+function capSlugAtWordBoundary(base: string, maxLength: number): string {
+  if (base.length <= maxLength) return base
+  const truncated = base.slice(0, maxLength)
+  const lastDash = truncated.lastIndexOf('-')
+  // Require the dash to leave at least 60% of the maxLength so we don't
+  // cut back to a short stub.
+  if (lastDash > Math.floor(maxLength * 0.6)) {
+    return truncated.slice(0, lastDash)
+  }
+  return truncated
+}
 
 export function generateSlug(ruTitle: string): string {
   const transliterated = ruTitle
@@ -26,11 +45,12 @@ export function generateSlug(ruTitle: string): string {
     .map((ch) => TRANSLIT_MAP[ch] ?? ch)
     .join('')
 
-  const base = transliterated
+  const cleaned = transliterated
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/-{2,}/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, MAX_SLUG_LENGTH)
+
+  const base = capSlugAtWordBoundary(cleaned, MAX_SLUG_LENGTH)
     .replace(/^-+|-+$/g, '')
 
   return base || 'article'
@@ -49,15 +69,15 @@ export function normalizeSlug(slug: string): string {
     .split('')
     .map((ch) => TRANSLIT_MAP[ch] ?? ch)
     .join('')
-  return translit
+  const cleaned = translit
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9-]+/g, '-')
     .replace(/-{2,}/g, '-')
     .replace(/^-+|-+$/g, '')
     .replace(/-{1,2}[a-f0-9]{6}$/i, '')
-    .slice(0, MAX_SLUG_LENGTH)
-    .replace(/^-+|-+$/g, '')
+
+  return capSlugAtWordBoundary(cleaned, MAX_SLUG_LENGTH).replace(/^-+|-+$/g, '')
 }
 
 /**

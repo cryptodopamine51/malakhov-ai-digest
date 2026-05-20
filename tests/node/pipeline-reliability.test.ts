@@ -189,9 +189,11 @@ test('publish verify uses internal preview URL for pre-live candidates', () => {
 })
 
 test('generateSlug keeps clean urls without uuid tails', () => {
+  // SEO-wave 2026-05-21: cap raised 60 → 75, so this title keeps one more
+  // semantic token ("rekorda") than the previous slug version did.
   assert.equal(
     generateSlug('Робот Honor пробежал полумарафон в Пекине быстрее мирового рекорда человека'),
-    'robot-honor-probezhal-polumarafon-v-pekine-bystree-mirovogo',
+    'robot-honor-probezhal-polumarafon-v-pekine-bystree-mirovogo-rekorda',
   )
 })
 
@@ -224,6 +226,26 @@ test('ensureUniqueSlug falls back to numeric suffix on collision', async () => {
 
   const slug = await ensureUniqueSlug(supabase as never, 'Робот Honor пробежал полумарафон', 'article-1')
   assert.equal(slug, 'robot-honor-probezhal-polumarafon-2')
+})
+
+test('generateSlug caps at 75 chars and cuts at a word boundary (SEO-wave 2026-05-21)', () => {
+  // Long Russian title that would clearly exceed both the old 60 and the new
+  // 75 caps. Expect the slug to fit ≤ 75 chars AND not end in a half-cut word.
+  const slug = generateSlug(
+    'Четыре функции Android Auto, которые стоит включить для безопасности и удобства водителя',
+  )
+  assert.ok(slug.length <= 75, `slug length ${slug.length} > 75`)
+  // Should not end on a mid-root stub like "-bezopas".
+  assert.ok(!/-bezopas$/.test(slug), `slug ended on mid-root stub: ${slug}`)
+  // And should end on a full word (no trailing dash, last segment is a real word).
+  assert.ok(!slug.endsWith('-'), `slug ended with trailing dash: ${slug}`)
+})
+
+test('generateSlug leaves short slugs untouched', () => {
+  assert.equal(
+    generateSlug('OpenAI запускает агентский браузер для бизнеса'),
+    'openai-zapuskaet-agentskiy-brauzer-dlya-biznesa',
+  )
 })
 
 test('toPublicArticleSlug strips legacy hex suffixes', () => {

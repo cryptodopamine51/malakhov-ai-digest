@@ -182,8 +182,8 @@ validator failures и reviewer rejects по-прежнему создают об
 
 ### Slug validation gate
 
-- `pipeline/slug.ts::generateSlug` транслитерирует ru-заголовок в ASCII через TRANSLIT_MAP и стрипит всё, кроме `[a-z0-9-]`.
-- `pipeline/slug.ts::normalizeSlug` — defensive helper, который приводит slug из любого источника (legacy backfill, ручной импорт) к каноническому виду.
+- `pipeline/slug.ts::generateSlug` транслитерирует ru-заголовок в ASCII через TRANSLIT_MAP и стрипит всё, кроме `[a-z0-9-]`. Жёсткий лимит длины — 75 символов (`MAX_SLUG_LENGTH`); при превышении slug режется по последнему `-` (граница слова), чтобы не заканчиваться на mid-root («-bezopas»). Существующие slug-и не пересчитываются.
+- `pipeline/slug.ts::normalizeSlug` — defensive helper, который приводит slug из любого источника (legacy backfill, ручной импорт) к каноническому виду. Использует тот же 75-символьный cap и word-boundary cut.
 - `pipeline/slug.ts::assertAsciiSlug` — runtime guard, бросает на slug-ах с не-ASCII символами или с битой структурой. Вызывается в `pipeline/enrich-collect-batch.ts` после `ensureUniqueSlug`. Невалидный slug приводит item в `apply_failed_terminal` и НЕ записывается в `articles.slug` — это защита от регрессий вроде incident 2026-05-01.
 
 ### Telegram digest и pipeline-health detection

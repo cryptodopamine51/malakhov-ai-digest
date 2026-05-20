@@ -335,6 +335,7 @@
 
 #### Итерация 3.3: Slug лимит до 75-80 chars
 
+- [x] **сделано 2026-05-21** (cap=75).
 - **Files**: `pipeline/slug.ts` или `lib/article-slugs.ts` (где формируется), `tests/node/slug.test.ts`.
 - **Steps**:
   1. Найти текущий cap (видимо 60 chars). Поднять до 75.
@@ -643,6 +644,7 @@
 > Каждая сессия добавляет одну строку в этот лог. Формат: `YYYY-MM-DD HH:MM — итерация X.Y — статус — короткий комментарий`.
 
 - 2026-05-20 — spec создан — план составлен по результатам аудита; ждём согласования владельца перед фазой 0.
+- 2026-05-21 — итерация 3.3 — done — `MAX_SLUG_LENGTH` в `pipeline/slug.ts` поднят с 60 до 75. Добавлен helper `capSlugAtWordBoundary` — режет на последнем `-` перед лимитом, fallback на hard cut если последний dash дальше 60% maxLength. Применяется в `generateSlug` и `normalizeSlug`. Существующие slug-и в БД не пересчитываются. Обновлён тест `generateSlug keeps clean urls` (новый ожидаемый slug длиннее на 1 token) + 2 новых теста на 75-cap и word boundary. 14/14 pipeline-reliability тестов pass. Docs updated: `docs/editorial/seo-article-publication-standard.md` §10, `docs/ARTICLE_SYSTEM.md` Slug validation gate.
 - 2026-05-21 — итерация 3.2 — done — system prompt в `pipeline/claude.ts` обновлён: `link_anchors 0–3` → `3–5` (минимум 2), требование «если меньше 2 — quality_ok=false после честной попытки». `validateEditorialDetailed` теперь добавляет warning при count<2 или >5 (не error — не блокирует публикацию мягким fallback). Новый тест в `tests/node/batch-enrich.test.ts` (count warning). 18 тестов batch-enrich pass. Касается только НОВЫХ статей через следующий enrichment cycle; старые не трогаем. Docs updated: `docs/editorial/seo-article-publication-standard.md` §14.
 - 2026-05-21 — итерация 3.1 — done — cover на странице статьи рендерится 1200×630 (1.91:1, OG/Twitter Card стандарт). Раньше было 1200×460. `maxHeight` тоже обновлён. `pipeline/generate-images.ts` не трогал — это runtime render change, не генерация. Docs updated: `docs/editorial/seo-article-publication-standard.md` §11.
 - 2026-05-21 — итерация 2.4 — done — `app/robots.ts` теперь генерирует явные allow-правила для 13 LLM-side ботов (`GPTBot`, `ChatGPT-User`, `OAI-SearchBot`, `Google-Extended`, `ClaudeBot`, `anthropic-ai`, `claude-web`, `PerplexityBot`, `CCBot`, `Applebot-Extended`, `DuckAssistBot`, `MistralAI-User`, `cohere-ai`). Каждое именованное правило повторяет `disallow: ['/demo/', '/internal/', '/api/', '/_next/']`. `Bytespider`/`Amazonbot` НЕ добавлены — требуется решение владельца. Docs updated: `docs/editorial/seo-article-publication-standard.md` §16.
