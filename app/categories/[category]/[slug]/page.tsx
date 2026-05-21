@@ -8,7 +8,16 @@ import { getArticlePath, toPublicArticleSlug } from '../../../../lib/article-slu
 import { getCategoryMeta } from '../../../../lib/category-meta'
 import { isKnownCategory, DEFAULT_CATEGORY } from '../../../../lib/categories'
 import { selectInlineImageSlots } from '../../../../lib/article-media-placement'
-import { SITE_LOGO_URL, SITE_URL, absoluteUrl } from '../../../../lib/site'
+import {
+  EDITOR_IMAGE_URL,
+  EDITOR_JOB_TITLE,
+  EDITOR_NAME,
+  EDITOR_URL,
+  SITE_LOGO_URL,
+  SITE_NAME,
+  SITE_URL,
+  absoluteUrl,
+} from '../../../../lib/site'
 import { formatRelativeTime } from '../../../../lib/utils'
 import TopicBadge from '../../../../src/components/TopicBadge'
 import ArticleRecommendations from '../../../../src/components/ArticleRecommendations'
@@ -508,10 +517,18 @@ export default async function CategoryArticlePage({
         contentUrl: primaryVideo.sourceUrl,
         thumbnailUrl: primaryVideo.poster ?? sanitizedMedia.coverImageUrl ?? undefined,
       } : undefined,
-      author: { '@type': 'Organization', name: 'Malakhov AI Дайджест', url: SITE_URL },
+      author: {
+        '@type': 'Person',
+        '@id': `${EDITOR_URL}#person`,
+        name: EDITOR_NAME,
+        url: EDITOR_URL,
+        jobTitle: EDITOR_JOB_TITLE,
+        image: EDITOR_IMAGE_URL,
+        worksFor: { '@type': 'Organization', name: SITE_NAME, url: SITE_URL },
+      },
       publisher: {
         '@type': 'Organization',
-        name: 'Malakhov AI Дайджест',
+        name: SITE_NAME,
         url: SITE_URL,
         logo: { '@type': 'ImageObject', url: SITE_LOGO_URL },
       },

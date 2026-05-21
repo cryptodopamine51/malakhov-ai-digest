@@ -12,11 +12,12 @@
 - `/news-sitemap.xml` (Google News, 48h окно, ISR 10м); SEO-title главной + Organization `sameAs` (Telegram); `WebSite.potentialAction: SearchAction` + страница `/search`;
 - `robots.txt` с явными allow для 13 LLM-ботов; `/llms.txt` дополнен кластерами и гайдами; `/llms-full.txt` (топ 100 статей + все гайды); `/about` (`AboutPage`); `/sources` (`CollectionPage` / `ItemList`); `/archive/<date>` теперь `noindex, follow`;
 - system prompt Claude: `link_anchors 3–5` (soft warning gate); slug cap 75 с word-boundary cut (`pipeline/slug.ts::capSlugAtWordBoundary`);
-- `scripts/indexnow-batch.ts` для post-deploy ping (готов к запуску владельцем).
+- `scripts/indexnow-batch.ts` для post-deploy ping (готов к запуску владельцем);
+- Person-author swap: `NewsArticle.author`, `Organization.founder` и `/about` mainEntity ссылаются на одного Person (Иван Малахов) с jobTitle, описанием и портретом (`public/about/editor.jpg`).
 
 Предыдущая инициатива: **Site improvements wave (2026-05-06)** — `docs/spec_2026-05-06_site_improvements.md`.
 
-Отложено до подтверждения владельца (см. §6 spec): Person-author swap, evergreen guide generation (🟡 API), card_teaser regen Опция B (🟡 API), alt-text generation Опция B (🟡 API), cover-image generation для остатка (🟡 API).
+Отложено до подтверждения владельца (см. §6 spec): evergreen guide generation (🟡 API), card_teaser regen Опция B (🟡 API), alt-text generation Опция B (🟡 API), cover-image generation для остатка (🟡 API).
 
 ## Как читать проект
 

@@ -317,15 +317,15 @@ Digest issue links are not mandatory because public digest issue pages do not ex
 
 Current implemented schema:
 
-- root layout: `Organization` (with `sameAs` linking to public brand channels — see `lib/site.ts::SITE_SAME_AS`) and `WebSite` (with `potentialAction: SearchAction` pointing at `/search?q={search_term_string}`);
-- news article: `NewsArticle` (with `abstract`, `wordCount`, `articleSection`, `inLanguage: 'ru'`) + `BreadcrumbList` (Главная → категория → статья);
+- root layout: `Organization` (with `sameAs` linking to public brand channels — see `lib/site.ts::SITE_SAME_AS`, and `founder: Person` referencing `/about#person`) and `WebSite` (with `potentialAction: SearchAction` pointing at `/search?q={search_term_string}`);
+- news article: `NewsArticle` (with `abstract`, `wordCount`, `articleSection`, `inLanguage: 'ru'`, `author` Person linked to `/about#person`) + `BreadcrumbList` (Главная → категория → статья);
 - news video: `VideoObject` inside `NewsArticle` when video exists;
 - guide: `Article`;
 - guide FAQ: `FAQPage`;
 - guide breadcrumbs: `BreadcrumbList`;
 - category/russia pages: `CollectionPage`;
 - `/sources`: `CollectionPage` with `mainEntity: ItemList` of source links;
-- `/about`: `AboutPage` JSON-LD; indexable surface with editorial policy and E-E-A-T signals;
+- `/about`: `AboutPage` JSON-LD with `mainEntity: Person` (editor) — indexable surface with editorial policy and E-E-A-T signals; the Person record is also referenced from `NewsArticle.author` and `Organization.founder`;
 - search results (`/search`): `SearchResultsPage` (the page itself is `noindex, follow`);
 - `/archive/<date>`: `noindex, follow` (no JSON-LD — thin navigational surface).
 
@@ -438,7 +438,7 @@ Already implemented:
 - article metadata: title, description, canonical, Open Graph, Twitter;
 - file-based guide metadata registry and local guide image model;
 - `NewsArticle` (with `abstract`, `wordCount`, `articleSection`, `inLanguage: 'ru'`) + article-level `BreadcrumbList`; guide `Article`, guide `FAQPage`; root `Organization` (with `sameAs` to brand channels) + `WebSite` (with `potentialAction: SearchAction`);
-- `/sources` `CollectionPage` + `ItemList`; `/about` `AboutPage`; `/search` `SearchResultsPage`;
+- `/sources` `CollectionPage` + `ItemList`; `/about` `AboutPage` + editor `Person`; `/search` `SearchResultsPage`;
 - sitemap with live articles, guides and static routes (including `/about`);
 - sitemap ISR every 30 minutes; Google News sitemap at `/news-sitemap.xml` (ISR 10 min, 48h window, ≤1000 URLs);
 - robots rules for public/internal/demo/API surfaces; explicit allow-list for 13 LLM bots (GPTBot, ClaudeBot, PerplexityBot, Google-Extended, …);
@@ -468,5 +468,4 @@ Future improvements, not mandatory for the current standard:
 - Search Console / Yandex Webmaster API integration;
 - scheduled evergreen review workflow;
 - public digest issue pages, if the product adds them later;
-- Person-author swap for `NewsArticle.author` (replace Organization with an editor `Person` linked to `/about`) — pending owner publishing a public editor bio;
 - additional `sameAs` channels (x.com, YouTube) once owner makes those public.

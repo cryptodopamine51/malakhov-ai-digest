@@ -1,6 +1,18 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { SITE_NAME, SITE_TELEGRAM_URL, SITE_URL, absoluteUrl } from '../../lib/site'
+import {
+  EDITOR_DESCRIPTION,
+  EDITOR_IMAGE_PATH,
+  EDITOR_IMAGE_URL,
+  EDITOR_JOB_TITLE,
+  EDITOR_KNOWS_ABOUT,
+  EDITOR_NAME,
+  EDITOR_URL,
+  SITE_NAME,
+  SITE_TELEGRAM_URL,
+  SITE_URL,
+  absoluteUrl,
+} from '../../lib/site'
 
 export const revalidate = 86400
 
@@ -29,7 +41,25 @@ export const metadata: Metadata = {
 }
 
 export default function AboutPage() {
-  const jsonLd = {
+  const editorJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Person',
+    '@id': `${EDITOR_URL}#person`,
+    name: EDITOR_NAME,
+    jobTitle: EDITOR_JOB_TITLE,
+    description: EDITOR_DESCRIPTION,
+    url: EDITOR_URL,
+    image: EDITOR_IMAGE_URL,
+    knowsAbout: EDITOR_KNOWS_ABOUT,
+    sameAs: [SITE_TELEGRAM_URL],
+    worksFor: {
+      '@type': 'Organization',
+      name: SITE_NAME,
+      url: SITE_URL,
+    },
+  }
+
+  const aboutPageJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'AboutPage',
     name: TITLE,
@@ -45,14 +75,16 @@ export default function AboutPage() {
       name: SITE_NAME,
       url: SITE_URL,
       sameAs: [SITE_TELEGRAM_URL],
+      founder: { '@id': `${EDITOR_URL}#person` },
     },
+    mainEntity: editorJsonLd,
   }
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 md:py-14">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify([aboutPageJsonLd, editorJsonLd]) }}
       />
 
       <h1 className="mb-6 font-serif text-3xl font-bold text-ink md:text-4xl">
@@ -68,7 +100,60 @@ export default function AboutPage() {
           с фактической первоисточниковой опорой.
         </p>
 
-        <h2 className="mt-8 font-serif text-2xl font-bold text-ink">Редакционная политика</h2>
+        <h2 className="mt-10 font-serif text-2xl font-bold text-ink">Редактор</h2>
+
+        <div className="md:flex md:items-start md:gap-6">
+          {EDITOR_IMAGE_PATH && (
+            // Plain <img> on purpose: this asset is small, served from the
+            // same Vercel domain and shipped only once. next/image would add
+            // a Vercel image-optimisation hop we don't need here.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={EDITOR_IMAGE_PATH}
+              alt={EDITOR_NAME}
+              width={160}
+              height={160}
+              className="mb-4 h-40 w-40 shrink-0 rounded border border-line object-cover md:mb-0"
+              loading="lazy"
+            />
+          )}
+          <div className="space-y-4">
+            <p>
+              <strong>{EDITOR_NAME}</strong> — {EDITOR_DESCRIPTION}
+            </p>
+            <p>
+              Из практических результатов за последнее время: 50+ AI/software-решений для бизнеса,
+              участие в развитии продукта с 100k+ пользователей за 3 месяца, запуск AI-медиа с 3000+
+              органических пользователей за 4 месяца, работа с рекламными бюджетами и системами
+              трафика в Telegram, Яндексе и других каналах.
+            </p>
+            <p>
+              {SITE_NAME} создан как AI-медиа нового типа, где сбор и комплектация новостей
+              отданы нейросетям. Каждая новость формируется по моему личному редакционному шаблону.
+              Личная задача — превратить сайт в трафик-машину без участия человека на ежедневной
+              рутине.
+            </p>
+            <p>
+              Задача проекта — помогать предпринимателям, специалистам и создателям продуктов быстро
+              понимать, какие изменения в ИИ действительно влияют на бизнес, рынок и будущие
+              возможности.
+            </p>
+            <p>
+              Подписывайтесь на{' '}
+              <a
+                href={SITE_TELEGRAM_URL}
+                className="text-accent hover:underline"
+                target="_blank"
+                rel="noopener"
+              >
+                Telegram-канал
+              </a>{' '}
+              и следите за актуальными новостями каждый день.
+            </p>
+          </div>
+        </div>
+
+        <h2 className="mt-10 font-serif text-2xl font-bold text-ink">Редакционная политика</h2>
         <p>
           Мы строим материалы вокруг фактов из первоисточника: компании, продукта, числа, даты,
           модели, института или конкретного метода. Цифры, имена, цитаты и оценки не выдумываются;
@@ -82,7 +167,7 @@ export default function AboutPage() {
           стандарт фиксирует эти правила и обновляется одновременно с изменениями pipeline.
         </p>
 
-        <h2 className="mt-8 font-serif text-2xl font-bold text-ink">Технология</h2>
+        <h2 className="mt-10 font-serif text-2xl font-bold text-ink">Технология</h2>
         <p>
           Сайт работает на Next.js 15 и развёрнут на Vercel. Контент хранится в PostgreSQL (Supabase),
           обогащение материалов происходит через Anthropic Claude по строгому редакционному
@@ -90,7 +175,7 @@ export default function AboutPage() {
           sitemap живут на канонично-фиксированном домене `news.malakhovai.ru`.
         </p>
 
-        <h2 className="mt-8 font-serif text-2xl font-bold text-ink">Контакты и соцсети</h2>
+        <h2 className="mt-10 font-serif text-2xl font-bold text-ink">Контакты и соцсети</h2>
         <ul className="list-disc space-y-1 pl-6">
           <li>
             Telegram-канал:{' '}

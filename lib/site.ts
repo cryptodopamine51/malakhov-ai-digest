@@ -12,6 +12,30 @@ export const SITE_LOGO_URL = `${SITE_URL}${SITE_LOGO_PATH}`
 export const SITE_TELEGRAM_URL = 'https://t.me/malakhovaidigest'
 export const SITE_SAME_AS: string[] = [SITE_TELEGRAM_URL]
 
+// Editor identity for E-E-A-T signals: used by NewsArticle.author (Person),
+// the AboutPage block, and Organization.founder. Keep these in sync with the
+// `/about` page copy — they are the single source of truth.
+export const EDITOR_NAME = 'Иван Малахов'
+export const EDITOR_JOB_TITLE = 'Главный редактор Malakhov AI Дайджест'
+export const EDITOR_DESCRIPTION =
+  'Предприниматель, AI-архитектор и продуктовый маркетолог. 11+ лет работы на стыке маркетинга, трафика, разработки и внедрения ИИ в бизнес.'
+export const EDITOR_PATH = '/about'
+export const EDITOR_URL = `${SITE_URL}${EDITOR_PATH}`
+// Public portrait. The file is shipped at /public/about/editor.jpg so it is
+// served from the canonical news.malakhovai.ru domain. If the file is
+// missing the page just renders without the portrait — JSON-LD still cites
+// the URL (Google will degrade gracefully).
+export const EDITOR_IMAGE_PATH = '/about/editor.jpg'
+export const EDITOR_IMAGE_URL = `${SITE_URL}${EDITOR_IMAGE_PATH}`
+export const EDITOR_KNOWS_ABOUT: string[] = [
+  'искусственный интеллект',
+  'AI в бизнесе',
+  'внедрение ИИ',
+  'продуктовая разработка',
+  'продуктовый маркетинг',
+  'трафик и реклама',
+]
+
 export function absoluteUrl(path = '/'): string {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   return `${SITE_URL}${normalizedPath}`

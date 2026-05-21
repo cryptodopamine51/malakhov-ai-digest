@@ -5,7 +5,15 @@ import Header from '../src/components/Header'
 import Footer from '../src/components/Footer'
 import Analytics from '../src/components/Analytics'
 import ConsentManager from '../src/components/ConsentManager'
-import { SITE_DESCRIPTION, SITE_LOGO_URL, SITE_NAME, SITE_SAME_AS, SITE_URL } from '../lib/site'
+import {
+  EDITOR_NAME,
+  EDITOR_URL,
+  SITE_DESCRIPTION,
+  SITE_LOGO_URL,
+  SITE_NAME,
+  SITE_SAME_AS,
+  SITE_URL,
+} from '../lib/site'
 
 const onest = Onest({
   subsets: ['latin', 'cyrillic'],
@@ -112,6 +120,12 @@ export default function RootLayout({
       url: SITE_URL,
       logo: SITE_LOGO_URL,
       sameAs: SITE_SAME_AS,
+      founder: {
+        '@type': 'Person',
+        '@id': `${EDITOR_URL}#person`,
+        name: EDITOR_NAME,
+        url: EDITOR_URL,
+      },
     },
     {
       '@context': 'https://schema.org',

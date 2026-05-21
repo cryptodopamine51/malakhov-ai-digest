@@ -255,7 +255,7 @@
 
 #### Итерация 2.3: SEO title главной + Organization sameAs + Person-author
 
-- [x] **частично сделано 2026-05-21** (title + sameAs). Person-author — отложено: spec предписывает «спросить владельца перед изменением author», ждём подтверждения.
+- [x] **полностью сделано 2026-05-21**: title + sameAs (Telegram) + Person-author swap (после того как владелец прислал bio и портрет, см. follow-up commit).
 - **Files**: `app/layout.tsx`, `app/page.tsx`, `lib/site.ts`, (опционально) `app/about/page.tsx` (новая страница).
 - **Steps**:
   1. В `app/layout.tsx` или собственный `generateMetadata` в `app/page.tsx` поставить SEO-title главной:
@@ -654,6 +654,7 @@
 > Каждая сессия добавляет одну строку в этот лог. Формат: `YYYY-MM-DD HH:MM — итерация X.Y — статус — короткий комментарий`.
 
 - 2026-05-20 — spec создан — план составлен по результатам аудита; ждём согласования владельца перед фазой 0.
+- 2026-05-21 — Person-author follow-up — done — владелец прислал bio + портрет. Добавлены константы `EDITOR_*` в `lib/site.ts` (`EDITOR_NAME='Иван Малахов'`, `EDITOR_JOB_TITLE`, `EDITOR_DESCRIPTION`, `EDITOR_PATH=/about`, `EDITOR_IMAGE_PATH=/about/editor.jpg`, `EDITOR_KNOWS_ABOUT`). `app/about/page.tsx` расширен: блок «Редактор» с фото 160×160 + текст; AboutPage JSON-LD имеет `mainEntity: Person`. `NewsArticle.author` в `app/categories/[category]/[slug]/page.tsx` теперь `Person` (со ссылкой на `/about#person`), а не Organization. Organization JSON-LD в `app/layout.tsx` получил `founder: Person`. Файл `public/about/editor.jpg` владелец кладёт сам — `public/about/` создана. Docs updated: `docs/editorial/seo-article-publication-standard.md` §15.
 - 2026-05-21 — итерация 7.1 + 7.2 — done — каноны обновлены (`CLAUDE.md`, `docs/INDEX.md`, SEO-стандарт §19/§20); финальный отчёт владельцу заполнен в §9. `npm run docs:check` падает из-за чужого WIP (другая инициатива evergreen) — мои каноны актуальны, проверка станет зелёной после коммита их работы.
 - 2026-05-21 — итерация 6.7 — done — добавлен `scripts/indexnow-batch.ts`. Dry-run по умолчанию (выводит список URL без вызовов). С `--apply` пингует IndexNow батчами по 100: статические страницы (`/`, `/russia`, `/about`, `/categories/*`, `/sources`, `/guides`) + все evergreen-гайды + последние N live статей (`--limit=50` по умолчанию, cap 200). Использует существующий `pingIndexNow` (`lib/indexnow.ts`). Запуск владельцем после deploy: `npx tsx scripts/indexnow-batch.ts --apply`.
 - 2026-05-21 — итерация 6.1 — отложено — runtime fallback из iter 1.3 уже закрывает UX для оставшихся 3 NULL-cover статей; backfill на 3 строки не окупает rollback snapshot и согласование.
