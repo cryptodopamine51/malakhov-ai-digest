@@ -7,7 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { getServerClient, type AnthropicBatchItem, type Article } from '../lib/supabase'
 import { listBatchResults, parseBatchCustomId, retrieveBatch, type NormalizedBatchResult } from './anthropic-batch'
 import { createEnrichRun, finishEnrichRun, getOldestPendingAgeMinutes, log, writeEnrichAttempt } from './enrich-runtime'
-import { fireAlert } from './alerts'
+import { fireAlert, resolveAlert } from './alerts'
 import { isExhausted, isRetryable, nextRetryAt, type ErrorCode } from './types'
 import { addUsageTotals, formatUsageSummary, refreshAnthropicBatchUsageTotals, writeLlmUsageLog, ZERO_USAGE_TOTALS, type UsageTotals } from './llm-usage'
 import { parseRepairValidateEditorial, prepareEditorialApplication } from './editorial-apply'
@@ -33,10 +33,11 @@ export async function fireClaudeParseFailedAlert(
   },
 ): Promise<void> {
   const entityKey = params.batchId ?? params.itemId
+  const isValidationFailure = params.reason.startsWith('editorial validation failed:')
   await fireAlert({
     supabase,
     alertType: 'claude_parse_failed',
-    severity: 'warning',
+    severity: isValidationFailure ? 'info' : 'warning',
     entityKey,
     message: `Claude batch parse failed for ${params.batchId ? `batch ${params.batchId}` : `item ${params.itemId}`}: ${params.reason}`,
     payload: {
@@ -609,6 +610,8 @@ async function pollBatches(
         .eq('status', 'batch_submitted')
       continue
     }
+
+    await resolveAlert(supabase, 'batch_poll_stuck', batchRow.id)
 
     const imported = await importBatchResults(supabase, runId, batchRow)
     retryable += imported.retryable

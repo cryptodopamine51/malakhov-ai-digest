@@ -118,6 +118,22 @@ test('evaluateOpsStatus returns green when core pipeline is healthy', () => {
   assert.equal(status.emoji, '🟢')
 })
 
+test('evaluateOpsStatus does not keep yellow only for recovered source failures', () => {
+  const summary = baseSummary({
+    sources: {
+      runs24h: 20,
+      failedRuns24h: 5,
+      itemsSeen24h: 200,
+      itemsInserted24h: 12,
+      itemsRejected24h: 30,
+      fetchErrors24h: 0,
+      topProblemSources: [{ key: 'The Decoder', count: 5 }],
+    },
+  })
+  const status = evaluateOpsStatus(summary)
+  assert.equal(status.level, 'green')
+})
+
 test('evaluateOpsStatus returns yellow for warning alerts without critical conditions', () => {
   const summary = baseSummary({
     openAlerts: [{

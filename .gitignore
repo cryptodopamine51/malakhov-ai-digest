@@ -52,3 +52,8 @@ local_dev.db
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Raw editorial drafts and unoptimized source images
+# (these are working materials, not committed assets — final WebP lives in public/images/)
+articles/
+content/evergreen/packages/*/raw-images/

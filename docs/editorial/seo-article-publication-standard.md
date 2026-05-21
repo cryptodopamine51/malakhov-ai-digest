@@ -136,6 +136,33 @@ Preferred Malakhov AI Digest angle:
 - concise explanation of technical terms;
 - connection to existing AI market, model or infrastructure trends.
 
+### Evergreen quality bar (mandatory for guides and manual long-form)
+
+Beyond the news-article value rules, every evergreen guide must hit the following minimum bar
+(enforced by `scripts/evergreen-check.ts` — `error` blocks, `warn` is non-blocking but visible):
+
+- **Lead anchor.** First 700 chars after the H1 must contain a number, date or proper-noun
+  acronym. Generic prose without an anchor triggers `lead_has_anchor` warn.
+- **Visible `verifiedAt`.** Metadata must include `verifiedAt: <ISO date>`. The guide page renders
+  «Актуальность проверена: <дата>» in the header. `verifiedAt` older than 180 days warns.
+- **Numerical worked example.** Guides with a numerical intent (cost, ROI, payback, metrics,
+  comparisons) must include at least one expanded calculation in the body — not a category table.
+  Template: situation → data → formula → result → takeaway.
+- **Case block.** At least one H3 starting with «Кейс / Сценарий / Ситуация / Мини-кейс», or an
+  inline paragraph marked «Редакционный пример». Editorial cases must carry that marker
+  explicitly. Source hierarchy: public (McKinsey/BCG/Gartner/Habr/vc.ru/«Яков и Партнёры»/IDC/НИУ ВШЭ)
+  → anonymized → editorial example.
+- **Counter-strategy.** A dedicated H2 «Когда не стоит / не окупится / не подходит / когда не / Ошибки внедрения»
+  with 3–5 concrete criteria. Generic «когда нет бюджета» is not enough — name the constraint
+  (no process repeatability, no result owner, no SLA, regulator boundary, monthly process churn).
+- **Russian context.** For business/agents/marketing clusters: mention 152-ФЗ when data, clients,
+  HR or contracts are involved; GigaChat / YandexGPT as local alternatives for pricing comparisons;
+  Яндекс.Директ / ВКонтакте / OK as local marketing surfaces.
+- **No forbidden moves.** Do not link to unpublished guides, fabricate prices/cases/quotes,
+  emit FAQPage without visible FAQ, use marketing-hype clichés («секрет успешного внедрения»,
+  «3 шага к ИИ-трансформации», «прорыв»), or duplicate a markdown TOC when the page renders
+  the sticky aside `«В статье»`.
+
 Off-topic gate (applied before enrichment):
 
 - An RSS item that matches the `OFF_TOPIC_KEYWORDS` blocklist in
@@ -240,6 +267,30 @@ Mandatory:
 - News articles use sanitized source/fallback media and must not render ads, author portraits, UI icons or promo images.
 - `og:image` must resolve to a real image, the promoted inline image (see fallback chain), or `SITE_LOGO_URL` as the brand-level fallback.
 
+### Evergreen image workflow
+
+Evergreen-guide images are produced **only through the ChatGPT subscription** (Plus / Pro / Codex).
+No image API is called — neither OpenAI Images, nor Anthropic, nor any runtime generator. This is
+a project-level policy; do not work around it.
+
+Workflow:
+
+1. Codex/agent fills `09-image-brief.md` (template
+   `content/evergreen/templates/image-brief.template.md`): `prompt`, `negative_prompt`, `alt`,
+   `caption`, `aspect`, `filename_png`, `filename_webp` for cover and every inline image.
+2. Owner/editor opens ChatGPT, copies the prompt, generates a PNG and saves it as
+   `content/evergreen/packages/<slug>/raw-images/<filename>.png` (filename must match the brief).
+3. `npm run images:prep -- --slug=<slug>` (`scripts/images-prep.ts`) reads `raw-images/*.png`,
+   matches each file against `08-metadata.json`, resizes to the target size (1200×675 cover,
+   1200×800 inline rect, 1200×1200 inline square) using `sharp`, writes WebP at quality 82 into
+   `public/images/guides/<slug>/<filename>.webp`. A PNG larger than 5 MB raises a warn.
+4. `npm run evergreen:check -- --slug=<slug>` enforces metadata, cover size (≥ 80 KB) and image
+   presence.
+
+Local SVG / Canvas diagrams are allowed as inline replacements for matrices, 30/60/90 roadmaps,
+pilot-vs-production comparisons and calculator visualisations. Covers always come from ChatGPT,
+never from SVG.
+
 Cover fallback chain (news articles, computed at render time):
 
 1. `articles.cover_image_url` if it survives `sanitizeArticleMedia` in `lib/media-sanitizer.ts`.
@@ -307,9 +358,16 @@ News article:
 
 Evergreen guide:
 
-- Include 2-5 relevant internal links to categories, guides or important articles.
+- Include 2-5 relevant internal links to categories, guides or important articles in the body
+  (≥ 2 inline links to `/guides/...`, `/categories/<cat>` or `/russia`, not counting the
+  related-block in metadata). `evergreen:check` warns when fewer than 2 inline links are found.
 - Prefer links that help a reader continue the task, not links inserted only for SEO.
 - Link to `/russia` and category pages when they are the right topical cluster.
+- Do not link to unpublished guides as if they exist — `evergreen:check` blocks links to missing
+  guide markdown via `forbidden_future_links`.
+- CTA cap: ≤ 2 inline-CTAs (`inlineCtas`) + 1 final-CTA block with 3 cards (`ctaCards`).
+  `evergreen:check` warns when `inlineCtas > 2` or total CTA > 5; the guide page also warns at
+  build time when more than 2 inline CTAs are configured.
 
 Digest issue links are not mandatory because public digest issue pages do not exist in the current architecture.
 
@@ -320,7 +378,7 @@ Current implemented schema:
 - root layout: `Organization` (with `sameAs` linking to public brand channels — see `lib/site.ts::SITE_SAME_AS`, and `founder: Person` referencing `/about#person`) and `WebSite` (with `potentialAction: SearchAction` pointing at `/search?q={search_term_string}`);
 - news article: `NewsArticle` (with `abstract`, `wordCount`, `articleSection`, `inLanguage: 'ru'`, `author` Person linked to `/about#person`) + `BreadcrumbList` (Главная → категория → статья);
 - news video: `VideoObject` inside `NewsArticle` when video exists;
-- guide: `Article`;
+- guide: `Article` with `author` Person (`@id: /about#person`, name «Иван Малахов», jobTitle «Editor, Malakhov AI Digest»), `wordCount` (computed from markdown at build), `articleSection: guide.category`, `keywords: guide.tags.join(', ')`, `inLanguage: 'ru-RU'`;
 - guide FAQ: `FAQPage`;
 - guide breadcrumbs: `BreadcrumbList`;
 - category/russia pages: `CollectionPage`;
@@ -399,12 +457,19 @@ Evergreen/manual article is publishable only when:
 - cannibalization check is done;
 - title and meta description are unique and factual;
 - slug is human-readable;
-- guide metadata is registered in `content/guides/meta/<slug>.json`;
+- guide metadata is registered in `content/guides/meta/<slug>.json` (including `verifiedAt`; `caseSourcing` optional but recommended);
 - content exists in `content/guides/<slug>.md`;
-- cover and inline images have alt text;
-- JSON-LD matches visible content;
+- lead has a factual anchor in the first sentence;
+- the body has at least one expanded numerical worked example (for numerical intents);
+- the body has at least one case block (public source / anonymized / editorial example with marker);
+- the body has a counter-strategy H2 («когда не стоит / не окупится / Ошибки внедрения»);
+- ≥ 2 inline internal links to `/guides`, `/categories`, `/russia` in the body;
+- ≤ 2 inline-CTAs + 1 final CTA-block (3 cards);
+- cover and inline images have alt text and cover file is ≥ 80 KB (regenerate via ChatGPT subscription if smaller);
+- JSON-LD matches visible content (author Person, wordCount, articleSection, keywords);
 - internal links are relevant;
 - mobile render is checked;
+- `npm run evergreen:check -- --slug=<slug>` passes without errors;
 - sitemap entry is expected.
 
 For a temporary review link, the guide may be available on the production route with `noindex: true`.

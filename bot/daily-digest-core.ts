@@ -508,27 +508,6 @@ export async function runDailyDigest(): Promise<DigestResult> {
 async function runClaimedDigest(ctx: ClaimedContext): Promise<DigestResult> {
   const { supabase, runId, force, botToken, channelId, siteUrl, adminChatId, digestDate } = ctx
 
-  // Сохраняем старый tg_sent guard как fallback, но atomic claim теперь основной lock.
-  if (!force) {
-    const eightHoursAgo = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString()
-    const { count: recentlySent } = await supabase
-      .from('articles')
-      .select('*', { count: 'exact', head: true })
-      .eq('tg_sent', true)
-      .gte('updated_at', eightHoursAgo)
-
-    if ((recentlySent ?? 0) > 0) {
-      log(`Дайджест за сегодня уже отправлен (${recentlySent} статей) — пропускаем`)
-      await finalizeDigestNonDelivery(supabase, runId, 'skipped_already_claimed', {
-        site_url: siteUrl,
-        error_message: `tg_sent fallback: ${recentlySent} статей за окно 8h`,
-      })
-      return { status: 'skipped_already_claimed', reason: `tg_sent fallback: ${recentlySent}` }
-    }
-  } else {
-    log('FORCE_DIGEST=1 подтверждён — продолжаем с atomic claim')
-  }
-
   // Окно выборки: вчерашний день по МСК
   const MSK_OFFSET = 3 * 60 * 60 * 1000
   const moscowNow = new Date(Date.now() + MSK_OFFSET)
@@ -545,6 +524,29 @@ async function runClaimedDigest(ctx: ClaimedContext): Promise<DigestResult> {
   const dateStr = formatDateRu(yesterday)
   const dateUtm = yesterday.toISOString().slice(0, 10).replace(/-/g, '')
 
+  // Сохраняем старый tg_sent guard как fallback, но atomic claim теперь основной lock.
+  // Важно: fallback должен смотреть на то же pub_date-окно, что и сам дайджест.
+  // updated_at меняется от publish-verify/backfill и даёт ложные skip'ы на старых статьях.
+  if (!force) {
+    const { count: recentlySent } = await supabase
+      .from('articles')
+      .select('*', { count: 'exact', head: true })
+      .eq('tg_sent', true)
+      .gte('pub_date', from.toISOString())
+      .lte('pub_date', to.toISOString())
+
+    if ((recentlySent ?? 0) > 0) {
+      log(`Дайджест за окно уже отправлен (${recentlySent} статей) — пропускаем`)
+      await finalizeDigestNonDelivery(supabase, runId, 'skipped_already_claimed', {
+        site_url: siteUrl,
+        error_message: `tg_sent fallback: ${recentlySent} статей за digest window`,
+      })
+      return { status: 'skipped_already_claimed', reason: `tg_sent fallback: ${recentlySent}` }
+    }
+  } else {
+    log('FORCE_DIGEST=1 подтверждён — продолжаем с atomic claim')
+  }
+
   log(`Выборка за ${yesterday.toISOString().slice(0, 10)} МСК`)
 
   // Основной запрос с запасом
@@ -560,12 +562,10 @@ async function runClaimedDigest(ctx: ClaimedContext): Promise<DigestResult> {
       .eq('tg_sent', false)
       .not('tg_teaser', 'is', null)
       .not('slug', 'is', null)
+      .gte('pub_date', from.toISOString())
+      .lte('pub_date', to.toISOString())
       .order('score', { ascending: false })
       .order('pub_date', { ascending: false })
-
-    if (!force) {
-      q.gte('pub_date', from.toISOString()).lte('pub_date', to.toISOString())
-    }
 
     const { data, error } = await q.limit(8)
     if (error) throw error
@@ -653,10 +653,8 @@ async function runClaimedDigest(ctx: ClaimedContext): Promise<DigestResult> {
       .eq('quality_ok', true)
       .eq('verified_live', true)
       .eq('publish_status', 'live')
-
-    if (!force) {
-      countQuery.gte('pub_date', from.toISOString()).lte('pub_date', to.toISOString())
-    }
+      .gte('pub_date', from.toISOString())
+      .lte('pub_date', to.toISOString())
 
     const { count } = await countQuery
     totalToday = count ?? digest.length

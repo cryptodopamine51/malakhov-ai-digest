@@ -55,6 +55,7 @@ npm run context
 
 | Инициатива | Orchestrator | Spec / Tasks / DoD |
 |---|---|---|
+| Evergreen quality wave (2026-05-21) | — | `docs/spec_2026-05-21_evergreen-quality-standard.md` |
 | SEO improvements wave (2026-05-20→05-21) | — | `docs/spec_2026-05-20_seo_improvements_wave.md`, `docs/spec_2026-05-20_seo_improvements_wave_progress.md` |
 | Observability и публикация (2026-05-01) | `docs/ORCHESTRATOR_observability_publication_2026-05-01.md` | `docs/spec_observability_publication_2026-05-01.md`, `docs/file_map_observability_publication_2026-05-01.md`, `docs/task_breakdown_observability_publication_2026-05-01.md`, `docs/acceptance_criteria_observability_publication_2026-05-01.md` |
 

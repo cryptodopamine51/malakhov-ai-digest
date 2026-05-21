@@ -37,6 +37,14 @@ export function repairEditorialOutput(input: EditorialOutput): EditorialRepairRe
     }
   }
 
+  if (output.lead.length > 400) {
+    const shortened = shortenLead(output.lead)
+    if (shortened !== output.lead) {
+      output.lead = shortened
+      fixes.push('shorten_lead')
+    }
+  }
+
   if (Array.isArray(output.summary)) {
     output.summary = output.summary.map((item, index) => {
       const repaired = removeBannedPhrases(replaceStandaloneAi(item))
@@ -76,8 +84,8 @@ export function repairEditorialOutput(input: EditorialOutput): EditorialRepairRe
 
 function replaceStandaloneAi(value: string): string {
   return value
-    .replace(/\bAI-(?=[\p{L}\p{N}])/giu, 'ИИ-')
-    .replace(/\bAI\b/gu, 'ИИ')
+    .replace(/\bAI[-‑–—](?=[\p{L}\p{N}])/giu, 'ИИ-')
+    .replace(/(?<![.@])\bAI\b/giu, 'ИИ')
 }
 
 function removeBannedPhrases(value: string): string {
@@ -110,6 +118,28 @@ function shortenTitle(value: string): string {
     result = next
   }
   return result.length >= 20 ? result.replace(/[,:;.-]+$/, '') : normalized.slice(0, 87).trim()
+}
+
+function shortenLead(value: string): string {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= 400) return normalized
+
+  const sentences = normalized
+    .match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g)
+    ?.map((sentence) => sentence.trim())
+    .filter(Boolean) ?? []
+
+  if (sentences.length > 1 && sentences[0] && sentences[0].length >= 100 && sentences[0].length <= 400) {
+    return sentences[0]
+  }
+
+  let result = ''
+  for (const word of normalized.split(/\s+/)) {
+    const next = result ? `${result} ${word}` : word
+    if (next.length > 397) break
+    result = next
+  }
+  return result.length >= 100 ? `${result.replace(/[,:;.-]+$/, '')}.` : normalized.slice(0, 397).trim()
 }
 
 function restoreParagraphs(value: string): string {

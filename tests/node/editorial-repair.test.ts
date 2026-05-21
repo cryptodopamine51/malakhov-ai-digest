@@ -48,6 +48,29 @@ test('repairEditorialOutput removes banned phrases and shortens long titles', ()
   assert.ok(repaired.fixes.includes('shorten_ru_title'))
 })
 
+test('repairEditorialOutput shortens overlong lead without cutting mid-word', () => {
+  const draft = output()
+  draft.lead =
+    'Соло-разработчик, поддерживающий четыре продукта одновременно — мессенджер, ИИ-платформу, marketing-автоматизацию и desktop-приложение на Rust — провёл год с Claude Code в агентском режиме и зафиксировал, что около 70% кода в его репозиториях теперь написано с участием ИИ. ' +
+    'Это не означает делегирование задач машине: роль разработчика сместилась от написания кода к формулированию задач и архитектурным решениям.'
+
+  const repaired = repairEditorialOutput(draft)
+
+  assert.ok(repaired.output.lead.length <= 400)
+  assert.match(repaired.output.lead, /70% кода/)
+  assert.ok(repaired.fixes.includes('shorten_lead'))
+})
+
+test('repairEditorialOutput preserves dot-ai handles while repairing standalone AI', () => {
+  const draft = output()
+  draft.lead = 'Threads тестирует Meta AI через упоминание @meta.ai в публичных обсуждениях.'
+
+  const repaired = repairEditorialOutput(draft)
+
+  assert.match(repaired.output.lead, /@meta\.ai/)
+  assert.match(repaired.output.lead, /Meta ИИ/)
+})
+
 test('repairEditorialOutput restores paragraphs for long single-paragraph body', () => {
   const draft = output()
   draft.editorial_body = Array.from({ length: 12 }, (_, index) =>

@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://news.malakhovai.ru/schemas/evergreen-topic.json",
+  "title": "Malakhov AI Digest evergreen topic",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "status",
+    "cluster",
+    "title",
+    "primaryKeyword",
+    "supportingKeywords",
+    "intent",
+    "audience",
+    "targetSlug",
+    "priority",
+    "cta",
+    "notes"
+  ],
+  "properties": {
+    "id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "planned",
+        "researching",
+        "drafted",
+        "editing",
+        "ready_for_codex",
+        "published",
+        "needs_update",
+        "blocked"
+      ]
+    },
+    "cluster": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "primaryKeyword": {
+      "type": "string",
+      "minLength": 1
+    },
+    "supportingKeywords": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "intent": {
+      "type": "string",
+      "enum": [
+        "informational",
+        "practical",
+        "news/context",
+        "commercial-adjacent"
+      ]
+    },
+    "audience": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "targetSlug": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    },
+    "cta": {
+      "type": "string",
+      "minLength": 1
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}

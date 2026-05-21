@@ -8,6 +8,7 @@ import {
   getGuideAbsoluteUrl,
   getGuideBySlug,
   type Guide,
+  type GuideCta as GuideCtaConfig,
   type GuideImage,
 } from '../../../lib/guides'
 import { absoluteUrl, SITE_LOGO_URL, SITE_NAME, SITE_URL } from '../../../lib/site'
@@ -25,7 +26,7 @@ type MarkdownBlock = HeadingBlock | ParagraphBlock | QuoteBlock | ListBlock | Ta
 const TELEGRAM_URL = process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL ?? 'https://t.me/malakhovai'
 
 export function generateStaticParams() {
-  return getAllGuides().map((guide) => ({ slug: guide.slug }))
+  return getAllGuides({ includeNoindex: true }).map((guide) => ({ slug: guide.slug }))
 }
 
 export async function generateMetadata({
@@ -40,6 +41,16 @@ export async function generateMetadata({
   return {
     title: guide.seoTitle,
     description: guide.description,
+    robots: guide.noindex
+      ? {
+          index: false,
+          follow: false,
+          googleBot: {
+            index: false,
+            follow: false,
+          },
+        }
+      : undefined,
     alternates: { canonical: guide.path },
     openGraph: {
       title: guide.seoTitle,
@@ -78,9 +89,18 @@ export default async function GuideArticlePage({
   const guide = getGuideBySlug(slug)
   if (!guide) notFound()
 
-  const blocks = parseMarkdown(guide.markdown)
+  const rawBlocks = parseMarkdown(guide.markdown)
+  const blocks = stripInlineToc(rawBlocks)
+  if ((guide.inlineCtas?.length ?? 0) > 2) {
+    console.warn(`[guides] ${guide.slug}: inlineCtas.length=${guide.inlineCtas?.length}, expected ≤ 2`)
+  }
   const updatedDate = formatRuDate(guide.updatedAt)
-  const jsonLd = buildJsonLd(guide)
+  const verifiedDate = formatRuDate(guide.verifiedAt)
+  const wordCount = countWords(guide.markdown)
+  const jsonLd = buildJsonLd(guide, wordCount)
+  const tocHeadings = blocks.filter(
+    (block): block is HeadingBlock => block.type === 'heading' && block.level === 2,
+  )
 
   return (
     <>
@@ -110,6 +130,7 @@ export default async function GuideArticlePage({
           </p>
           <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted">
             <span>Обновлено: {updatedDate}</span>
+            <span>Актуальность проверена: {verifiedDate}</span>
             <span>{guide.readingMinutes} мин чтения</span>
             <span>{guide.tags.slice(0, 2).join(' · ')}</span>
           </div>
@@ -130,10 +151,27 @@ export default async function GuideArticlePage({
           </figcaption>
         </figure>
 
+        <details className="mb-8 rounded border border-line bg-surface px-4 py-3 lg:hidden">
+          <summary className="cursor-pointer text-[12px] font-semibold uppercase text-muted">
+            В статье
+          </summary>
+          <nav className="mt-3 space-y-2 text-sm">
+            {tocHeadings.map((heading) => (
+              <a
+                key={heading.id}
+                href={`#${heading.id}`}
+                className="block text-muted transition-colors hover:text-ink"
+              >
+                {heading.text}
+              </a>
+            ))}
+          </nav>
+        </details>
+
         <div className="grid gap-12 lg:grid-cols-[minmax(0,760px)_280px] lg:items-start">
           <div className="min-w-0">
             <MarkdownBlocks blocks={blocks} guide={guide} telegramUrl={TELEGRAM_URL} />
-            <FinalGuideCta telegramUrl={TELEGRAM_URL} />
+            <FinalGuideCta guide={guide} telegramUrl={TELEGRAM_URL} />
             <RelatedLinks guide={guide} />
           </div>
 
@@ -141,17 +179,15 @@ export default async function GuideArticlePage({
             <div className="sticky top-[88px] border-l border-line pl-6">
               <p className="mb-3 text-[11px] font-semibold uppercase text-muted">В статье</p>
               <nav className="space-y-2 text-sm">
-                {blocks
-                  .filter((block): block is HeadingBlock => block.type === 'heading' && block.level === 2 && block.text !== 'Оглавление')
-                  .map((heading) => (
-                    <a
-                      key={heading.id}
-                      href={`#${heading.id}`}
-                      className="block text-muted transition-colors hover:text-ink"
-                    >
-                      {heading.text}
-                    </a>
-                  ))}
+                {tocHeadings.map((heading) => (
+                  <a
+                    key={heading.id}
+                    href={`#${heading.id}`}
+                    className="block text-muted transition-colors hover:text-ink"
+                  >
+                    {heading.text}
+                  </a>
+                ))}
               </nav>
             </div>
           </aside>
@@ -240,12 +276,17 @@ function MarkdownBlocks({
 
     if (block.type === 'hr') {
       nodes.push(<hr key={`hr-${index}`} className="my-9 border-line" />)
-      if (currentH2 === 'краткое-резюме') {
-        nodes.push(<GuideCta key="summary-cta" variant="checklist" telegramUrl={telegramUrl} />)
-      }
-      if (currentH2 === 'как-выбрать-первый-ai-проект') {
-        nodes.push(<GuideCta key="audit-cta" variant="audit" telegramUrl={telegramUrl} />)
-      }
+      guide.inlineCtas
+        ?.filter((cta) => cta.afterHeading === currentH2)
+        .forEach((cta, ctaIndex) => {
+          nodes.push(
+            <GuideCta
+              key={`inline-cta-${currentH2}-${ctaIndex}`}
+              cta={cta}
+              telegramUrl={telegramUrl}
+            />,
+          )
+        })
     }
   })
 
@@ -301,79 +342,87 @@ function GuideImageFigure({ image }: { image: GuideImage }) {
 }
 
 function GuideCta({
-  variant,
+  cta,
   telegramUrl,
 }: {
-  variant: 'checklist' | 'audit'
+  cta: GuideCtaConfig
   telegramUrl: string
 }) {
-  const isChecklist = variant === 'checklist'
+  const href = resolveCtaHref(cta.href, telegramUrl)
+  const isExternal = href.startsWith('http')
+
   return (
     <section className="my-9 rounded border border-line bg-surface px-5 py-5 md:px-6">
       <p className="mb-2 text-[12px] font-semibold uppercase text-accent">
-        {isChecklist ? 'Практический следующий шаг' : 'Когда нужен разбор'}
+        {cta.eyebrow ?? 'Следующий шаг'}
       </p>
       <h2 className="font-serif text-xl font-bold text-ink">
-        {isChecklist ? 'Забрать чеклист выбора первого AI-проекта' : 'Проверьте идею проекта до разработки'}
+        {cta.title}
       </h2>
       <p className="mt-2 text-[15px] leading-relaxed text-muted">
-        {isChecklist
-          ? 'Чеклист помогает за 30 минут выписать процессы-кандидаты, оценить эффект, данные, сложность и риск.'
-          : 'Для сложных процессов полезно сначала разложить данные, интеграции, экономику, риски и владельца результата.'}
+        {cta.text}
       </p>
       <a
-        href={telegramUrl}
-        target="_blank"
-        rel="noopener noreferrer"
+        href={href}
+        target={isExternal ? '_blank' : undefined}
+        rel={isExternal ? 'noopener noreferrer' : undefined}
         className="mt-4 inline-flex rounded border border-ink px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-ink hover:text-[var(--base)]"
       >
-        {isChecklist ? 'Получить в Telegram' : 'Обсудить AI-проект'}
+        {cta.action}
       </a>
     </section>
   )
 }
 
-function FinalGuideCta({ telegramUrl }: { telegramUrl: string }) {
-  const items = [
-    {
-      title: 'Чеклист за 30 минут',
-      text: 'Быстро выберите первый AI-проект и подготовьте пилот на 30-90 дней.',
-      action: 'Получить чеклист',
-    },
-    {
-      title: 'AI-сигналы без шума',
-      text: 'Подписка на короткий дайджест главных событий, инструментов и кейсов ИИ.',
-      action: 'Подписаться',
-    },
-    {
-      title: 'Архитектурный AI-разбор',
-      text: 'Разберите процессы, данные, риски и экономику до старта разработки.',
-      action: 'Обсудить проект',
-    },
-  ]
+const DEFAULT_FINAL_CTA_CARDS: GuideCtaConfig[] = [
+  {
+    title: 'AI-сигналы без шума',
+    text: 'Короткий дайджест главных событий, инструментов и кейсов ИИ.',
+    action: 'Подписаться',
+    href: 'telegram',
+  },
+  {
+    title: 'Разбор AI-процесса',
+    text: 'Проверьте процесс, данные, риски и экономику до старта внедрения.',
+    action: 'Обсудить проект',
+    href: 'telegram',
+  },
+]
+
+function FinalGuideCta({ guide, telegramUrl }: { guide: Guide; telegramUrl: string }) {
+  const items = guide.ctaCards?.length ? guide.ctaCards : DEFAULT_FINAL_CTA_CARDS
 
   return (
     <section className="mt-12 border-t border-line pt-9">
       <p className="mb-2 text-[12px] font-semibold uppercase text-accent">Дальше</p>
       <h2 className="font-serif text-[26px] font-bold text-ink">Что можно сделать после чтения</h2>
       <div className="mt-5 grid gap-4 md:grid-cols-3">
-        {items.map((item) => (
-          <div key={item.title} className="rounded border border-line bg-base p-5">
-            <h3 className="text-base font-semibold text-ink">{item.title}</h3>
-            <p className="mt-2 text-sm leading-relaxed text-muted">{item.text}</p>
-            <a
-              href={telegramUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-4 inline-flex text-sm font-semibold text-accent hover:underline"
-            >
-              {item.action}
-            </a>
-          </div>
-        ))}
+        {items.map((item) => {
+          const href = resolveCtaHref(item.href, telegramUrl)
+          const isExternal = href.startsWith('http')
+          return (
+            <div key={item.title} className="rounded border border-line bg-base p-5">
+              <h3 className="text-base font-semibold text-ink">{item.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-muted">{item.text}</p>
+              <a
+                href={href}
+                target={isExternal ? '_blank' : undefined}
+                rel={isExternal ? 'noopener noreferrer' : undefined}
+                className="mt-4 inline-flex text-sm font-semibold text-accent hover:underline"
+              >
+                {item.action}
+              </a>
+            </div>
+          )
+        })}
       </div>
     </section>
   )
+}
+
+function resolveCtaHref(href: string, telegramUrl: string): string {
+  if (href === 'telegram') return telegramUrl
+  return href
 }
 
 function RelatedLinks({ guide }: { guide: Guide }) {
@@ -605,62 +654,110 @@ function formatRuDate(value: string): string {
   }).format(new Date(value))
 }
 
-function buildJsonLd(guide: Guide) {
+function countWords(markdown: string): number {
+  const tokens = markdown
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/[#>*_|\-]+/g, ' ')
+    .split(/\s+/)
+    .filter((token) => /[\p{L}\p{N}]/u.test(token))
+  return tokens.length
+}
+
+function stripInlineToc(blocks: MarkdownBlock[]): MarkdownBlock[] {
+  const result: MarkdownBlock[] = []
+  let i = 0
+  while (i < blocks.length) {
+    const block = blocks[i]
+    if (block.type === 'heading' && block.text === 'Оглавление') {
+      let j = i + 1
+      if (blocks[j]?.type === 'list') j += 1
+      if (result[result.length - 1]?.type === 'hr' && blocks[j]?.type === 'hr') {
+        j += 1
+      }
+      i = j
+      continue
+    }
+    result.push(block)
+    i += 1
+  }
+  return result
+}
+
+function buildJsonLd(guide: Guide, wordCount: number) {
   const url = getGuideAbsoluteUrl(guide)
-  return [
-    {
-      '@context': 'https://schema.org',
-      '@type': 'Article',
-      headline: guide.title,
-      description: guide.description,
-      image: [absoluteUrl(guide.cover.src)],
-      datePublished: guide.publishedAt,
-      dateModified: guide.updatedAt,
-      inLanguage: 'ru-RU',
-      mainEntityOfPage: url,
-      author: { '@type': 'Organization', name: SITE_NAME, url: SITE_URL },
-      publisher: {
-        '@type': 'Organization',
-        name: SITE_NAME,
-        url: SITE_URL,
-        logo: { '@type': 'ImageObject', url: SITE_LOGO_URL },
+  const personId = `${SITE_URL}/about#person`
+  const articleSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: guide.title,
+    description: guide.description,
+    image: [absoluteUrl(guide.cover.src)],
+    datePublished: guide.publishedAt,
+    dateModified: guide.updatedAt,
+    inLanguage: 'ru-RU',
+    mainEntityOfPage: url,
+    articleSection: guide.category,
+    keywords: guide.tags.join(', '),
+    wordCount,
+    author: {
+      '@type': 'Person',
+      '@id': personId,
+      name: 'Иван Малахов',
+      url: `${SITE_URL}/about`,
+      jobTitle: 'Editor, Malakhov AI Digest',
+    },
+    publisher: {
+      '@type': 'Organization',
+      name: SITE_NAME,
+      url: SITE_URL,
+      logo: { '@type': 'ImageObject', url: SITE_LOGO_URL },
+    },
+  }
+
+  const breadcrumbSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Главная',
+        item: SITE_URL,
       },
-    },
-    {
-      '@context': 'https://schema.org',
-      '@type': 'FAQPage',
-      mainEntity: guide.faq.map((item) => ({
-        '@type': 'Question',
-        name: item.question,
-        acceptedAnswer: {
-          '@type': 'Answer',
-          text: item.answer,
-        },
-      })),
-    },
-    {
-      '@context': 'https://schema.org',
-      '@type': 'BreadcrumbList',
-      itemListElement: [
-        {
-          '@type': 'ListItem',
-          position: 1,
-          name: 'Главная',
-          item: SITE_URL,
-        },
-        {
-          '@type': 'ListItem',
-          position: 2,
-          name: 'Гайды',
-          item: `${SITE_URL}/guides`,
-        },
-        {
-          '@type': 'ListItem',
-          position: 3,
-          name: guide.title,
-          item: url,
-        },
-      ],
-    },
-  ]
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'Гайды',
+        item: `${SITE_URL}/guides`,
+      },
+      {
+        '@type': 'ListItem',
+        position: 3,
+        name: guide.title,
+        item: url,
+      },
+    ],
+  }
+
+  if (guide.faq.length === 0) {
+    return [articleSchema, breadcrumbSchema]
+  }
+
+  const faqSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: guide.faq.map((item) => ({
+      '@type': 'Question',
+      name: item.question,
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: item.answer,
+      },
+    })),
+  }
+
+  return [articleSchema, faqSchema, breadcrumbSchema]
 }

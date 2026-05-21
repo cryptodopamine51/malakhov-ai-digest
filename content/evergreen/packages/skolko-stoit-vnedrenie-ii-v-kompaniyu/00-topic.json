@@ -1,0 +1,25 @@
+{
+  "id": 2,
+  "status": "ready_for_codex",
+  "cluster": "ИИ для бизнеса",
+  "title": "Сколько стоит внедрение ИИ в компанию",
+  "primaryKeyword": "сколько стоит внедрение ИИ",
+  "supportingKeywords": [
+    "стоимость внедрения ИИ в бизнес",
+    "цена AI автоматизации",
+    "сколько стоит нейросеть для компании",
+    "бюджет AI проекта"
+  ],
+  "intent": "practical",
+  "audience": [
+    "предприниматель",
+    "собственник",
+    "CEO",
+    "COO",
+    "финансовый директор"
+  ],
+  "targetSlug": "skolko-stoit-vnedrenie-ii-v-kompaniyu",
+  "priority": "high",
+  "cta": "architectural_ai_audit",
+  "notes": "Production preview подготовлен с noindex до редакторских правок. Сильный калькулятор бюджета: пилот, интеграции, данные, поддержка, API, ошибки."
+}

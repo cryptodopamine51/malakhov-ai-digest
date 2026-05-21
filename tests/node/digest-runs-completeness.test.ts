@@ -182,6 +182,41 @@ test('runClaimedDigest() использует новые точные коды �
   }
 })
 
+test('tg_sent fallback ограничен digest pub_date-окном, а не updated_at', () => {
+  const src = readFileSync(resolve(__dirname, '..', '..', 'bot', 'daily-digest-core.ts'), 'utf8')
+  const fnStart = src.indexOf('async function runClaimedDigest(')
+  const fnEnd = src.indexOf('\n}\n', fnStart)
+  const fnBody = src.slice(fnStart, fnEnd)
+  const fallbackIdx = fnBody.indexOf(".eq('tg_sent', true)")
+  assert.ok(fallbackIdx > 0, 'tg_sent fallback query not found')
+  const fallbackQuery = fnBody.slice(fallbackIdx, fallbackIdx + 500)
+
+  assert.match(fallbackQuery, /\.gte\('pub_date'/)
+  assert.match(fallbackQuery, /\.lte\('pub_date'/)
+  assert.doesNotMatch(fallbackQuery, /updated_at/)
+})
+
+test('FORCE_DIGEST не снимает digest pub_date-окно с выборки и счётчика', () => {
+  const src = readFileSync(resolve(__dirname, '..', '..', 'bot', 'daily-digest-core.ts'), 'utf8')
+  const fnStart = src.indexOf('async function runClaimedDigest(')
+  const fnEnd = src.indexOf('\n}\n', fnStart)
+  const fnBody = src.slice(fnStart, fnEnd)
+
+  const articleQueryIdx = fnBody.indexOf(".eq('tg_sent', false)")
+  assert.ok(articleQueryIdx > 0, 'article selection query not found')
+  const articleQuery = fnBody.slice(articleQueryIdx, articleQueryIdx + 700)
+  assert.match(articleQuery, /\.gte\('pub_date'/)
+  assert.match(articleQuery, /\.lte\('pub_date'/)
+  assert.doesNotMatch(articleQuery, /if \(!force\)/)
+
+  const countQueryIdx = fnBody.indexOf('const countQuery = supabase')
+  assert.ok(countQueryIdx > 0, 'total count query not found')
+  const countQuery = fnBody.slice(countQueryIdx, countQueryIdx + 700)
+  assert.match(countQuery, /\.gte\('pub_date'/)
+  assert.match(countQuery, /\.lte\('pub_date'/)
+  assert.doesNotMatch(countQuery, /if \(!force\)/)
+})
+
 test('runDailyDigest() оборачивает runClaimedDigest в safety-net try/catch с finalizeDigestFailure', () => {
   const src = readFileSync(resolve(__dirname, '..', '..', 'bot', 'daily-digest-core.ts'), 'utf8')
   const fnStart = src.indexOf('export async function runDailyDigest()')

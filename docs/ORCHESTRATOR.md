@@ -2,7 +2,13 @@
 
 > Единый файл управления разработкой. Обновляется по мере выполнения задач.  
 > Статусы: 🔲 pending · 🔄 in progress · ✅ done  
-> Последнее обновление: 2026-04-19
+> Последнее обновление: 2026-05-20
+
+---
+
+## Активные инициативы
+
+🔄 **SEO improvements wave (2026-05-20)** — детальный план в `docs/spec_2026-05-20_seo_improvements_wave.md`. Все итерации разбиты на фазы P0/P1/P2/P3, deploy и backfill. Жёсткое правило: API-бюджет = 0 без явного подтверждения владельца. Каждый шаг с API spend помечен 🟡. Канонические доки для апдейта по завершении: `docs/editorial/seo-article-publication-standard.md`, `docs/ARTICLE_SYSTEM.md`, `docs/OPERATIONS.md`.
 
 ---
 

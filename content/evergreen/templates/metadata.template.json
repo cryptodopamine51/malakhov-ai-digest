@@ -1,0 +1,66 @@
+{
+  "slug": "{{slug}}",
+  "path": "/guides/{{slug}}",
+  "title": "{{title}}",
+  "seoTitle": "{{title}}",
+  "description": "TBD: 140-170 characters, factual, no clickbait.",
+  "ogDescription": "TBD: factual social description.",
+  "category": "{{cluster}}",
+  "tags": [
+    "{{cluster}}",
+    "{{primaryKeyword}}"
+  ],
+  "publishedAt": "{{date}}T00:00:00+03:00",
+  "updatedAt": "{{date}}T00:00:00+03:00",
+  "readingMinutes": 10,
+  "heroLead": "TBD: one or two sentences that state the practical promise.",
+  "cover": {
+    "src": "/images/guides/{{slug}}/cover.webp",
+    "width": 1200,
+    "height": 675,
+    "alt": "TBD",
+    "caption": "TBD"
+  },
+  "inlineImagesByHeading": {},
+  "relatedLinks": [
+    {
+      "title": "Как внедрить ИИ в бизнес в 2026 году",
+      "description": "Опорный гайд по выбору первого AI-проекта, данным, экономике и рискам.",
+      "href": "/guides/kak-vnedrit-ii-v-biznes-2026"
+    },
+    {
+      "title": "ИИ в России",
+      "description": "Новости российского рынка ИИ, государственные инициативы, модели и кейсы компаний.",
+      "href": "/russia"
+    }
+  ],
+  "ctaCards": [
+    {
+      "title": "AI-сигналы без шума",
+      "text": "Короткий дайджест главных событий, инструментов и кейсов ИИ.",
+      "action": "Подписаться",
+      "href": "telegram"
+    },
+    {
+      "title": "Разбор AI-проекта",
+      "text": "Проверьте процесс, данные, риски и экономику до старта разработки.",
+      "action": "Обсудить проект",
+      "href": "telegram"
+    }
+  ],
+  "inlineCtas": [
+    {
+      "afterHeading": "краткое-резюме",
+      "title": "Практический следующий шаг",
+      "text": "Сохраните материал и разберите один процесс по чеклисту из статьи.",
+      "action": "Получить в Telegram",
+      "href": "telegram"
+    }
+  ],
+  "faq": [
+    {
+      "question": "TBD?",
+      "answer": "TBD"
+    }
+  ]
+}

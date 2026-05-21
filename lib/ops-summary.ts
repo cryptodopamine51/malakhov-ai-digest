@@ -389,6 +389,7 @@ export function evaluateOpsStatus(summary: Omit<OpsSummary, 'status'>): OpsStatu
   const yellowReasons: string[] = []
   const criticalAlerts = summary.openAlerts.filter((alert) => alert.severity === 'critical')
   const warningAlerts = summary.openAlerts.filter((alert) => alert.severity === 'warning')
+  const sourceDownWarnings = warningAlerts.filter((alert) => alert.alert_type === 'source_down')
   const latestDigest = summary.digestToday ?? summary.latestDigest
 
   if (criticalAlerts.length > 0) {
@@ -425,7 +426,7 @@ export function evaluateOpsStatus(summary: Omit<OpsSummary, 'status'>): OpsStatu
   if (warningAlerts.length > 0) {
     yellowReasons.push(`открытых предупреждений: ${warningAlerts.length}`)
   }
-  if (summary.sources.failedRuns24h > 0) {
+  if (summary.sources.failedRuns24h > 0 && sourceDownWarnings.length > 0) {
     yellowReasons.push(`ошибок источников за 24 часа: ${summary.sources.failedRuns24h}`)
   }
 
@@ -440,7 +441,12 @@ export function evaluateOpsStatus(summary: Omit<OpsSummary, 'status'>): OpsStatu
   if (yellowReasons.length > 0) {
     return { level: 'yellow', emoji: '🟡', label: 'желтый', reasons: yellowReasons.slice(0, 5) }
   }
-  return { level: 'green', emoji: '🟢', label: 'зеленый', reasons: ['всё ок: дайджест отправлен, публикации идут, критических ошибок нет'] }
+  return {
+    level: 'green',
+    emoji: '🟢',
+    label: 'зеленый',
+    reasons: ['всё ок: публикации идут, критических ошибок и открытых предупреждений нет'],
+  }
 }
 
 export function formatOpsSummaryForTelegram(summary: OpsSummary): string {
@@ -556,7 +562,7 @@ export function formatOpsCostForTelegram(summary: OpsSummary): string {
 function formatAdminOverview(summary: OpsSummary): string[] {
   if (summary.status.level === 'green') {
     return [
-      '<b>Итог:</b> всё ок. Дайджест отправлен, статьи публикуются, критических ошибок нет.',
+      '<b>Итог:</b> всё ок. Статьи публикуются, критических ошибок и открытых предупреждений нет.',
       `• Почему зелёный: ${escapeHtml(summary.status.reasons.join('; '))}`,
     ]
   }
@@ -605,7 +611,7 @@ function formatDeliveryOverview(summary: OpsSummary): string[] {
 function formatProblemOverview(summary: OpsSummary): string[] {
   const lines = ['<b>Проблемы</b>']
   if (summary.status.level === 'green') {
-    lines.push('• Проблем не вижу: сбор источников, обработка, публикации и дайджест в норме.')
+    lines.push('• Проблем не вижу: сбор источников, обработка и публикации в норме.')
     return lines
   }
 
@@ -667,7 +673,12 @@ function buildGreenPathActions(summary: OpsSummary): string[] {
   if (warningAlerts.length) {
     actions.push(`разобрать и закрыть ${warningAlerts.length} warning ${pluralize(warningAlerts.length, 'алёрт', 'алёрта', 'алёртов')}: ${formatAlertGroups(summary.alertGroups.filter((group) => group.severity === 'warning'))}`)
   }
-  if (summary.sources.failedRuns24h > 0) actions.push('починить источники, которые падали за последние 24 часа')
+  if (
+    summary.sources.failedRuns24h > 0 &&
+    warningAlerts.some((alert) => alert.alert_type === 'source_down')
+  ) {
+    actions.push('починить источники, которые падали за последние 24 часа')
+  }
 
   return actions
 }

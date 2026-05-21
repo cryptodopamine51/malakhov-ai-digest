@@ -59,10 +59,24 @@ async function checkSourceHealth(): Promise<void> {
   }
 
   // Group by source name
-  const bySource = new Map<string, { ok: number; failed: number; empty: number; lastError: string | null }>()
+  const bySource = new Map<string, {
+    ok: number
+    failed: number
+    empty: number
+    lastError: string | null
+    latestStatus: string | null
+  }>()
   for (const run of runs) {
     const name = run.source_name as string
-    if (!bySource.has(name)) bySource.set(name, { ok: 0, failed: 0, empty: 0, lastError: null })
+    if (!bySource.has(name)) {
+      bySource.set(name, {
+        ok: 0,
+        failed: 0,
+        empty: 0,
+        lastError: null,
+        latestStatus: run.status as string | null,
+      })
+    }
     const s = bySource.get(name)!
     if (run.status === 'ok') s.ok++
     else if (run.status === 'failed') { s.failed++; s.lastError = run.error_message as string | null }
@@ -74,7 +88,9 @@ async function checkSourceHealth(): Promise<void> {
     const totalRuns = stats.ok + stats.failed + stats.empty
     const failureRate = totalRuns > 0 ? stats.failed / totalRuns : 0
 
-    if (stats.failed >= MIN_FAILURES_TO_ALERT && (isHighPriority || failureRate > 0.5)) {
+    const latestRecovered = stats.latestStatus === 'ok' || stats.latestStatus === 'empty'
+
+    if (!latestRecovered && stats.failed >= MIN_FAILURES_TO_ALERT && (isHighPriority || failureRate > 0.5)) {
       const severity = isHighPriority ? 'critical' : 'warning'
       const sent = await fireAlert({
         supabase,
@@ -87,7 +103,7 @@ async function checkSourceHealth(): Promise<void> {
         adminChatId,
       })
       if (sent) log(`🔴 Alert fired for source: ${sourceName} (${stats.failed} failures)`)
-    } else if (stats.ok > 0 && stats.failed === 0) {
+    } else if (latestRecovered) {
       // Source recovered — resolve any open alert
       await resolveAlert(supabase, 'source_down', sourceName)
     }

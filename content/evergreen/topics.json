@@ -1,0 +1,734 @@
+[
+  {
+    "id": 1,
+    "status": "published",
+    "cluster": "ИИ для бизнеса",
+    "title": "Как внедрить ИИ в бизнес в 2026 году",
+    "primaryKeyword": "как внедрить ИИ в бизнес",
+    "supportingKeywords": [
+      "внедрение ИИ в бизнес",
+      "ИИ для бизнеса 2026",
+      "AI implementation для бизнеса",
+      "как выбрать первый AI проект"
+    ],
+    "intent": "practical",
+    "audience": [
+      "предприниматель",
+      "собственник",
+      "CEO",
+      "COO",
+      "руководитель отдела"
+    ],
+    "targetSlug": "kak-vnedrit-ii-v-biznes-2026",
+    "priority": "high",
+    "cta": "architectural_ai_audit",
+    "notes": "Существующий опубликованный guide. Для этого интента готовить update package, а не новую страницу."
+  },
+  {
+    "id": 2,
+    "status": "ready_for_codex",
+    "cluster": "ИИ для бизнеса",
+    "title": "Сколько стоит внедрение ИИ в компанию",
+    "primaryKeyword": "сколько стоит внедрение ИИ",
+    "supportingKeywords": [
+      "стоимость внедрения ИИ в бизнес",
+      "цена AI автоматизации",
+      "сколько стоит нейросеть для компании",
+      "бюджет AI проекта"
+    ],
+    "intent": "practical",
+    "audience": [
+      "предприниматель",
+      "собственник",
+      "CEO",
+      "COO",
+      "финансовый директор"
+    ],
+    "targetSlug": "skolko-stoit-vnedrenie-ii-v-kompaniyu",
+    "priority": "high",
+    "cta": "architectural_ai_audit",
+    "notes": "Production preview подготовлен с noindex до редакторских правок. Сильный калькулятор бюджета: пилот, интеграции, данные, поддержка, API, ошибки."
+  },
+  {
+    "id": 3,
+    "status": "planned",
+    "cluster": "ИИ для бизнеса",
+    "title": "ИИ для малого бизнеса: с чего начать",
+    "primaryKeyword": "ИИ для малого бизнеса",
+    "supportingKeywords": [
+      "нейросети для малого бизнеса",
+      "как использовать ИИ в малом бизнесе",
+      "ИИ инструменты для малого бизнеса",
+      "автоматизация малого бизнеса с ИИ"
+    ],
+    "intent": "practical",
+    "audience": [
+      "предприниматель",
+      "владелец малого бизнеса",
+      "руководитель отдела",
+      "маркетолог"
+    ],
+    "targetSlug": "ii-dlya-malogo-biznesa-s-chego-nachat",
+    "priority": "high",
+    "cta": "ai_project_checklist",
+    "notes": "Сфокусироваться на недорогих сценариях без тяжёлой разработки: продажи, поддержка, маркетинг, документы."
+  },
+  {
+    "id": 4,
+    "status": "planned",
+    "cluster": "ИИ для бизнеса",
+    "title": "Какие бизнес-процессы автоматизировать с помощью ИИ",
+    "primaryKeyword": "какие процессы автоматизировать с помощью ИИ",
+    "supportingKeywords": [
+      "автоматизация бизнес процессов ИИ",
+      "AI автоматизация процессов",
+      "процессы для внедрения ИИ",
+      "нейросети для автоматизации бизнеса"
+    ],
+    "intent": "practical",
+    "audience": [
+      "CEO",
+      "COO",
+      "операционный директор",
+      "руководитель отдела",
+      "бизнес-аналитик"
+    ],
+    "targetSlug": "kakie-biznes-processy-avtomatizirovat-s-pomoshyu-ii",
+    "priority": "high",
+    "cta": "process_automation_audit",
+    "notes": "Нужна матрица процессов по эффекту, риску, данным и сложности внедрения."
+  },
+  {
+    "id": 5,
+    "status": "planned",
+    "cluster": "ИИ для бизнеса",
+    "title": "Ошибки внедрения ИИ в компании",
+    "primaryKeyword": "ошибки внедрения ИИ",
+    "supportingKeywords": [
+      "почему AI проекты не работают",
+      "риски внедрения ИИ в бизнес",
+      "ошибки AI автоматизации",
+      "как не провалить внедрение ИИ"
+    ],
+    "intent": "practical",
+    "audience": [
+      "собственник",
+      "CEO",
+      "COO",
+      "руководитель цифровой трансформации"
+    ],
+    "targetSlug": "oshibki-vnedreniya-ii-v-kompanii",
+    "priority": "high",
+    "cta": "architectural_ai_audit",
+    "notes": "Анти-гайд: старт с инструмента, нет владельца, плохие данные, нет логов, не считается экономика."
+  },
+  {
+    "id": 6,
+    "status": "planned",
+    "cluster": "ИИ для бизнеса",
+    "title": "Как выбрать первый ИИ-проект в бизнесе",
+    "primaryKeyword": "как выбрать первый ИИ проект",
+    "supportingKeywords": [
+      "первый AI проект в компании",
+      "выбор проекта для внедрения ИИ",
+      "матрица выбора AI проекта",
+      "с чего начать AI автоматизацию"
+    ],
+    "intent": "practical",
+    "audience": [
+      "предприниматель",
+      "CEO",
+      "COO",
+      "продакт",
+      "руководитель отдела"
+    ],
+    "targetSlug": "kak-vybrat-pervyj-ii-proekt-v-biznese",
+    "priority": "high",
+    "cta": "ai_project_checklist",
+    "notes": "Углубление первого гайда: критерии, scoring, примеры процессов, типовые trade-offs."
+  },
+  {
+    "id": 7,
+    "status": "planned",
+    "cluster": "ИИ-агенты",
+    "title": "ИИ-агенты для бизнеса: что это и где применять",
+    "primaryKeyword": "ИИ агенты для бизнеса",
+    "supportingKeywords": [
+      "AI агенты для бизнеса",
+      "что такое ИИ агент",
+      "где применять ИИ агентов",
+      "agentic AI для бизнеса"
+    ],
+    "intent": "informational",
+    "audience": [
+      "предприниматель",
+      "CEO",
+      "продакт",
+      "руководитель отдела",
+      "разработчик"
+    ],
+    "targetSlug": "ii-agenty-dlya-biznesa-chto-eto-i-gde-primenyat",
+    "priority": "high",
+    "cta": "agent_workflow_audit",
+    "notes": "Базовый хаб кластера ИИ-агентов: определения, сценарии, ограничения, human-in-the-loop."
+  },
+  {
+    "id": 8,
+    "status": "planned",
+    "cluster": "ИИ-агенты",
+    "title": "Чем ИИ-агент отличается от чат-бота",
+    "primaryKeyword": "чем ИИ агент отличается от чат бота",
+    "supportingKeywords": [
+      "ИИ агент и чат бот разница",
+      "AI agent vs chatbot",
+      "что умеет ИИ агент",
+      "чат бот или ИИ агент"
+    ],
+    "intent": "informational",
+    "audience": [
+      "предприниматель",
+      "продакт",
+      "маркетолог",
+      "руководитель поддержки"
+    ],
+    "targetSlug": "chem-ii-agent-otlichaetsya-ot-chat-bota",
+    "priority": "medium",
+    "cta": "agent_workflow_audit",
+    "notes": "Нужна понятная сравнительная таблица: диалог, инструменты, память, действия, права, логи, риски."
+  },
+  {
+    "id": 9,
+    "status": "planned",
+    "cluster": "ИИ-агенты",
+    "title": "ИИ-агенты в продажах",
+    "primaryKeyword": "ИИ агенты в продажах",
+    "supportingKeywords": [
+      "AI агент для продаж",
+      "ИИ для отдела продаж",
+      "автоматизация продаж с ИИ агентами",
+      "AI SDR агент"
+    ],
+    "intent": "practical",
+    "audience": [
+      "руководитель продаж",
+      "CEO",
+      "предприниматель",
+      "growth manager"
+    ],
+    "targetSlug": "ii-agenty-v-prodazhah",
+    "priority": "high",
+    "cta": "sales_ai_audit",
+    "notes": "Сценарии: квалификация лидов, follow-up, сводки звонков, CRM hygiene, ограничения и контроль."
+  },
+  {
+    "id": 10,
+    "status": "planned",
+    "cluster": "ИИ-агенты",
+    "title": "ИИ-агенты в поддержке клиентов",
+    "primaryKeyword": "ИИ агенты в поддержке клиентов",
+    "supportingKeywords": [
+      "AI агент для поддержки",
+      "ИИ бот поддержки клиентов",
+      "автоматизация поддержки с ИИ",
+      "чат бот поддержки на базе ИИ"
+    ],
+    "intent": "practical",
+    "audience": [
+      "руководитель поддержки",
+      "COO",
+      "продакт",
+      "предприниматель"
+    ],
+    "targetSlug": "ii-agenty-v-podderzhke-klientov",
+    "priority": "high",
+    "cta": "support_ai_audit",
+    "notes": "Закрыть базу знаний, эскалации, качество ответов, CSAT, логи, безопасность и границы автоматизации."
+  },
+  {
+    "id": 11,
+    "status": "planned",
+    "cluster": "ИИ-агенты",
+    "title": "ИИ-агенты для работы с документами",
+    "primaryKeyword": "ИИ агенты для документов",
+    "supportingKeywords": [
+      "ИИ для обработки документов",
+      "AI агент для договоров",
+      "автоматизация документов с ИИ",
+      "извлечение данных из документов ИИ"
+    ],
+    "intent": "practical",
+    "audience": [
+      "COO",
+      "юрист",
+      "финансовый директор",
+      "операционный директор",
+      "предприниматель"
+    ],
+    "targetSlug": "ii-agenty-dlya-raboty-s-dokumentami",
+    "priority": "medium",
+    "cta": "document_ai_audit",
+    "notes": "Сценарии: извлечение полей, сверка, договоры, счета, заявки. Осторожно с юридическими claims."
+  },
+  {
+    "id": 12,
+    "status": "planned",
+    "cluster": "ИИ-агенты",
+    "title": "Архитектура ИИ-агента простыми словами",
+    "primaryKeyword": "архитектура ИИ агента",
+    "supportingKeywords": [
+      "как устроен ИИ агент",
+      "AI agent architecture",
+      "tool use memory retrieval",
+      "компоненты ИИ агента"
+    ],
+    "intent": "informational",
+    "audience": [
+      "продакт",
+      "CTO",
+      "разработчик",
+      "предприниматель"
+    ],
+    "targetSlug": "arhitektura-ii-agenta-prostymi-slovami",
+    "priority": "medium",
+    "cta": "agent_workflow_audit",
+    "notes": "Объяснить LLM, tools, memory, retrieval, permissions, logs, evaluation без инженерного перегруза."
+  },
+  {
+    "id": 13,
+    "status": "planned",
+    "cluster": "Маркетинг и контент",
+    "title": "Нейросети для маркетинга: 25 сценариев",
+    "primaryKeyword": "нейросети для маркетинга",
+    "supportingKeywords": [
+      "ИИ для маркетинга",
+      "AI инструменты для маркетинга",
+      "как использовать нейросети в маркетинге",
+      "сценарии ИИ для маркетолога"
+    ],
+    "intent": "practical",
+    "audience": [
+      "маркетолог",
+      "CMO",
+      "предприниматель",
+      "контент-маркетолог"
+    ],
+    "targetSlug": "nejroseti-dlya-marketinga-25-scenariev",
+    "priority": "high",
+    "cta": "marketing_ai_checklist",
+    "notes": "Не список ради списка: сгруппировать по research, strategy, content, ads, analytics, operations."
+  },
+  {
+    "id": 14,
+    "status": "planned",
+    "cluster": "Маркетинг и контент",
+    "title": "AI-контент-завод: как бренду делать контент быстрее",
+    "primaryKeyword": "AI контент завод",
+    "supportingKeywords": [
+      "контент завод с ИИ",
+      "ИИ для создания контента",
+      "автоматизация контент маркетинга",
+      "нейросети для контент команды"
+    ],
+    "intent": "practical",
+    "audience": [
+      "CMO",
+      "контент-маркетолог",
+      "редактор",
+      "предприниматель"
+    ],
+    "targetSlug": "ai-kontent-zavod-kak-brendu-delat-kontent-bystree",
+    "priority": "high",
+    "cta": "content_system_audit",
+    "notes": "Писать как production system: роли, workflow, брифы, фактчекинг, бренд-гайд, контроль качества."
+  },
+  {
+    "id": 15,
+    "status": "planned",
+    "cluster": "Маркетинг и контент",
+    "title": "ИИ для SMM: сценарии, инструменты, ограничения",
+    "primaryKeyword": "ИИ для SMM",
+    "supportingKeywords": [
+      "нейросети для SMM",
+      "ИИ для соцсетей",
+      "AI инструменты для SMM",
+      "автоматизация SMM с ИИ"
+    ],
+    "intent": "practical",
+    "audience": [
+      "SMM-специалист",
+      "маркетолог",
+      "CMO",
+      "предприниматель"
+    ],
+    "targetSlug": "ii-dlya-smm-scenarii-instrumenty-ogranicheniya",
+    "priority": "medium",
+    "cta": "marketing_ai_checklist",
+    "notes": "Сценарии без иллюзии автопилота: контент-план, рубрики, адаптация, ресайз, аналитика, бренд-риск."
+  },
+  {
+    "id": 16,
+    "status": "planned",
+    "cluster": "Маркетинг и контент",
+    "title": "Как использовать ИИ для рекламы в Яндекс.Директе",
+    "primaryKeyword": "ИИ для Яндекс Директа",
+    "supportingKeywords": [
+      "нейросети для Яндекс Директа",
+      "ИИ для контекстной рекламы",
+      "автоматизация рекламы Яндекс Директ",
+      "генерация объявлений с ИИ"
+    ],
+    "intent": "practical",
+    "audience": [
+      "performance-маркетолог",
+      "директолог",
+      "CMO",
+      "предприниматель"
+    ],
+    "targetSlug": "kak-ispolzovat-ii-dlya-reklamy-v-yandeks-direkte",
+    "priority": "medium",
+    "cta": "marketing_ai_checklist",
+    "notes": "Нужны официальные источники Яндекса для функций и осторожные формулировки по актуальности."
+  },
+  {
+    "id": 17,
+    "status": "planned",
+    "cluster": "Маркетинг и контент",
+    "title": "Нейросети для генерации изображений: сравнение подходов",
+    "primaryKeyword": "нейросети для генерации изображений",
+    "supportingKeywords": [
+      "генерация изображений ИИ",
+      "AI image generation",
+      "нейросети для картинок бизнес",
+      "сравнение генераторов изображений"
+    ],
+    "intent": "practical",
+    "audience": [
+      "маркетолог",
+      "дизайнер",
+      "CMO",
+      "предприниматель"
+    ],
+    "targetSlug": "nejroseti-dlya-generacii-izobrazhenij-sravnenie-podhodov",
+    "priority": "medium",
+    "cta": "tool_selection_audit",
+    "notes": "Сравнить подходы, а не только инструменты: image models, product mockups, ads, local SVG/diagram assets, права."
+  },
+  {
+    "id": 18,
+    "status": "planned",
+    "cluster": "Маркетинг и контент",
+    "title": "Как бизнесу делать видео с помощью ИИ",
+    "primaryKeyword": "видео с помощью ИИ для бизнеса",
+    "supportingKeywords": [
+      "ИИ для создания видео",
+      "нейросети для видео",
+      "AI video для маркетинга",
+      "как делать видео нейросетями"
+    ],
+    "intent": "practical",
+    "audience": [
+      "маркетолог",
+      "CMO",
+      "контент-продюсер",
+      "предприниматель"
+    ],
+    "targetSlug": "kak-biznesu-delat-video-s-pomoshyu-ii",
+    "priority": "medium",
+    "cta": "content_system_audit",
+    "notes": "Покрыть сценарии, ограничения качества, legal/rights, процесс продакшена, где нужен человек."
+  },
+  {
+    "id": 19,
+    "status": "planned",
+    "cluster": "AI coding / vibe coding",
+    "title": "Vibe coding: что это и как использовать предпринимателю",
+    "primaryKeyword": "vibe coding",
+    "supportingKeywords": [
+      "вайб кодинг что это",
+      "vibe coding для предпринимателя",
+      "разработка с ИИ без программиста",
+      "AI coding для бизнеса"
+    ],
+    "intent": "informational",
+    "audience": [
+      "предприниматель",
+      "продакт",
+      "основатель стартапа",
+      "маркетолог"
+    ],
+    "targetSlug": "vibe-coding-chto-eto-i-kak-ispolzovat-predprinimatelyu",
+    "priority": "high",
+    "cta": "ai_product_build_audit",
+    "notes": "Писать для бизнеса: что можно собрать, где риски качества, где нужен инженер и ревью."
+  },
+  {
+    "id": 20,
+    "status": "planned",
+    "cluster": "AI coding / vibe coding",
+    "title": "Claude Code: что умеет и как применять",
+    "primaryKeyword": "Claude Code",
+    "supportingKeywords": [
+      "Claude Code что умеет",
+      "как использовать Claude Code",
+      "Claude Code для разработки",
+      "AI coding agent"
+    ],
+    "intent": "practical",
+    "audience": [
+      "разработчик",
+      "CTO",
+      "продакт",
+      "предприниматель"
+    ],
+    "targetSlug": "claude-code-chto-umeet-i-kak-primenyat",
+    "priority": "medium",
+    "cta": "ai_product_build_audit",
+    "notes": "Высокий риск устаревания: проверять функции по официальной документации на дату публикации."
+  },
+  {
+    "id": 21,
+    "status": "planned",
+    "cluster": "AI coding / vibe coding",
+    "title": "Codex CLI: как использовать в разработке",
+    "primaryKeyword": "Codex CLI",
+    "supportingKeywords": [
+      "как использовать Codex CLI",
+      "OpenAI Codex CLI",
+      "Codex для разработки",
+      "AI агент для кода"
+    ],
+    "intent": "practical",
+    "audience": [
+      "разработчик",
+      "CTO",
+      "продакт",
+      "предприниматель"
+    ],
+    "targetSlug": "codex-cli-kak-ispolzovat-v-razrabotke",
+    "priority": "medium",
+    "cta": "ai_product_build_audit",
+    "notes": "Использовать официальные OpenAI источники для функций, установки, ограничений и актуальности."
+  },
+  {
+    "id": 22,
+    "status": "planned",
+    "cluster": "AI coding / vibe coding",
+    "title": "Replit для AI-разработки: возможности и ограничения",
+    "primaryKeyword": "Replit для AI разработки",
+    "supportingKeywords": [
+      "Replit AI",
+      "Replit Agent",
+      "разработка приложений с Replit",
+      "Replit для стартапа"
+    ],
+    "intent": "practical",
+    "audience": [
+      "предприниматель",
+      "продакт",
+      "основатель стартапа",
+      "разработчик"
+    ],
+    "targetSlug": "replit-dlya-ai-razrabotki-vozmozhnosti-i-ogranicheniya",
+    "priority": "medium",
+    "cta": "ai_product_build_audit",
+    "notes": "Проверить текущие возможности по официальным источникам, отдельно описать риски lock-in и production quality."
+  },
+  {
+    "id": 23,
+    "status": "planned",
+    "cluster": "AI coding / vibe coding",
+    "title": "Как ставить задачи AI-разработчику",
+    "primaryKeyword": "как ставить задачи AI разработчику",
+    "supportingKeywords": [
+      "промпт для AI разработчика",
+      "ТЗ для AI coding agent",
+      "как писать задачи для Codex",
+      "как управлять AI разработкой"
+    ],
+    "intent": "practical",
+    "audience": [
+      "продакт",
+      "предприниматель",
+      "CTO",
+      "project manager"
+    ],
+    "targetSlug": "kak-stavit-zadachi-ai-razrabotchiku",
+    "priority": "high",
+    "cta": "ai_product_build_audit",
+    "notes": "Сделать практический шаблон: контекст, цель, ограничения, acceptance criteria, тесты, файлы, запреты."
+  },
+  {
+    "id": 24,
+    "status": "planned",
+    "cluster": "AI coding / vibe coding",
+    "title": "Как ускорить разработку продукта с помощью ИИ",
+    "primaryKeyword": "как ускорить разработку с помощью ИИ",
+    "supportingKeywords": [
+      "ИИ в разработке продукта",
+      "AI coding для продукта",
+      "ускорение разработки с нейросетями",
+      "автоматизация разработки ИИ"
+    ],
+    "intent": "practical",
+    "audience": [
+      "продакт",
+      "CTO",
+      "основатель стартапа",
+      "предприниматель"
+    ],
+    "targetSlug": "kak-uskorit-razrabotku-produkta-s-pomoshyu-ii",
+    "priority": "high",
+    "cta": "ai_product_build_audit",
+    "notes": "Показать полный workflow: discovery, prototyping, specs, coding, review, tests, release notes."
+  },
+  {
+    "id": 25,
+    "status": "planned",
+    "cluster": "Инструменты и сравнения",
+    "title": "ChatGPT для бизнеса",
+    "primaryKeyword": "ChatGPT для бизнеса",
+    "supportingKeywords": [
+      "как использовать ChatGPT в бизнесе",
+      "ChatGPT для компании",
+      "ChatGPT сценарии для бизнеса",
+      "ChatGPT Enterprise для бизнеса"
+    ],
+    "intent": "practical",
+    "audience": [
+      "предприниматель",
+      "CEO",
+      "маркетолог",
+      "продакт",
+      "руководитель отдела"
+    ],
+    "targetSlug": "chatgpt-dlya-biznesa",
+    "priority": "high",
+    "cta": "tool_selection_audit",
+    "notes": "Высокий риск устаревания: функции и тарифы проверять по официальным OpenAI источникам, добавить дату проверки."
+  },
+  {
+    "id": 26,
+    "status": "planned",
+    "cluster": "Инструменты и сравнения",
+    "title": "Claude для бизнеса",
+    "primaryKeyword": "Claude для бизнеса",
+    "supportingKeywords": [
+      "Anthropic Claude для компании",
+      "как использовать Claude в бизнесе",
+      "Claude сценарии для бизнеса",
+      "Claude Team Enterprise"
+    ],
+    "intent": "practical",
+    "audience": [
+      "предприниматель",
+      "CEO",
+      "маркетолог",
+      "продакт",
+      "руководитель отдела"
+    ],
+    "targetSlug": "claude-dlya-biznesa",
+    "priority": "medium",
+    "cta": "tool_selection_audit",
+    "notes": "Функции, тарифы и ограничения проверять по официальным Anthropic источникам на дату публикации."
+  },
+  {
+    "id": 27,
+    "status": "planned",
+    "cluster": "Инструменты и сравнения",
+    "title": "DeepSeek для бизнеса",
+    "primaryKeyword": "DeepSeek для бизнеса",
+    "supportingKeywords": [
+      "как использовать DeepSeek в бизнесе",
+      "DeepSeek для компании",
+      "DeepSeek API бизнес",
+      "DeepSeek сценарии"
+    ],
+    "intent": "practical",
+    "audience": [
+      "предприниматель",
+      "CEO",
+      "CTO",
+      "продакт",
+      "маркетолог"
+    ],
+    "targetSlug": "deepseek-dlya-biznesa",
+    "priority": "medium",
+    "cta": "tool_selection_audit",
+    "notes": "Сравнить экономику, ограничения, privacy/security, интеграции. Нужна дата проверки и официальные источники."
+  },
+  {
+    "id": 28,
+    "status": "planned",
+    "cluster": "Инструменты и сравнения",
+    "title": "ChatGPT vs Claude vs DeepSeek",
+    "primaryKeyword": "ChatGPT vs Claude vs DeepSeek",
+    "supportingKeywords": [
+      "что выбрать ChatGPT Claude DeepSeek",
+      "сравнение ChatGPT Claude DeepSeek",
+      "лучший ИИ для бизнеса",
+      "какую нейросеть выбрать для бизнеса"
+    ],
+    "intent": "practical",
+    "audience": [
+      "предприниматель",
+      "CEO",
+      "CTO",
+      "продакт",
+      "маркетолог"
+    ],
+    "targetSlug": "chatgpt-vs-claude-vs-deepseek",
+    "priority": "high",
+    "cta": "tool_selection_audit",
+    "notes": "Высокий риск устаревания. Нужны критерии выбора по задачам, а не абсолютный рейтинг."
+  },
+  {
+    "id": 29,
+    "status": "planned",
+    "cluster": "Инструменты и сравнения",
+    "title": "Perplexity для исследований и аналитики",
+    "primaryKeyword": "Perplexity для исследований",
+    "supportingKeywords": [
+      "Perplexity AI для аналитики",
+      "как использовать Perplexity",
+      "Perplexity для бизнеса",
+      "AI поиск для исследований"
+    ],
+    "intent": "practical",
+    "audience": [
+      "аналитик",
+      "маркетолог",
+      "продакт",
+      "предприниматель",
+      "редактор"
+    ],
+    "targetSlug": "perplexity-dlya-issledovanij-i-analitiki",
+    "priority": "medium",
+    "cta": "tool_selection_audit",
+    "notes": "Покрыть research workflow, source checking, ограничения цитирования и риск неподтверждённых выводов."
+  },
+  {
+    "id": 30,
+    "status": "planned",
+    "cluster": "Инструменты и сравнения",
+    "title": "n8n и Make: что выбрать для автоматизации",
+    "primaryKeyword": "n8n или Make что выбрать",
+    "supportingKeywords": [
+      "n8n vs Make",
+      "Make или n8n для автоматизации",
+      "no-code автоматизация бизнеса",
+      "автоматизация с n8n и Make"
+    ],
+    "intent": "practical",
+    "audience": [
+      "предприниматель",
+      "COO",
+      "маркетолог",
+      "операционный директор",
+      "технический специалист"
+    ],
+    "targetSlug": "n8n-i-make-chto-vybrat-dlya-avtomatizacii",
+    "priority": "high",
+    "cta": "automation_audit",
+    "notes": "Сравнить hosted/self-hosted, стоимость владения, интеграции, безопасность, поддержку, сценарии для AI automation."
+  }
+]
