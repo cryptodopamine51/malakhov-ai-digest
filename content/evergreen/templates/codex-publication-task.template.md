@@ -27,7 +27,7 @@ If this is an update package, update the existing guide. Do not create a duplica
 - Preserve Article, FAQPage when FAQ is visible, and BreadcrumbList structured data.
 - FAQ in metadata must match visible FAQ in Markdown.
 - Cover and inline images must have alt and captions.
-- Internal links must point only to existing local routes unless clearly marked future in the package, not in production Markdown.
+- Internal links must point only to existing local routes unless clearly marked future in the package, not in published Markdown.
 - Do not use image generation API.
 
 ## Checks
@@ -45,4 +45,3 @@ Manual browser checks before release:
 - Mobile viewport has no overlap.
 - Tables scroll on mobile.
 - CTA is not misleading for this topic.
-

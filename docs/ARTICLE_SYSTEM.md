@@ -458,10 +458,13 @@ Broad RSS feeds допускаются только с keyword filters:
 - `GuideMeta` (`lib/guides.ts`) включает обязательные `publishedAt`, `updatedAt`, `verifiedAt`
   (ISO-date — дата последней проверки фактов; рендерится в шапке гайда как «Актуальность
   проверена: …»), опциональное `caseSourcing` (`public` / `anonymized` / `editorial` — для
-  редакционного аудита). `app/guides/[slug]/page.tsx::buildJsonLd` собирает `Article` с
+  редакционного аудита) и опциональное `relatedArticleCategories` для блока «Связанные статьи».
+  `app/guides/[slug]/page.tsx::buildJsonLd` собирает `Article` с
   `author = Person` (`/about#person`), `wordCount` (считается из markdown), `articleSection`
-  (категория) и `keywords` (`tags.join(', ')`). Mobile TOC рендерится как `<details>`, чтобы
-  не дублировать sticky aside.
+  (категория) и `keywords` (`tags.join(', ')`). Страница гайда использует
+  `GuideMobileToc`, `GuideDesktopToc`, `GuideBackToTop` и общий `guideArticleStyles`;
+  источники рендерятся в раскрываемом блоке, а `relatedArticleCategories` подтягивает live-статьи
+  через `getGuideRelatedArticles()`.
 - `content/evergreen/` — локальный редакционный workflow для evergreen-пакетов:
   `topics.json` хранит backlog, `templates/` задаёт шаги подготовки, `packages/<slug>/`
   хранит SEO-бриф, исследование, черновик, редактуру, metadata draft, image brief,
@@ -475,8 +478,9 @@ Broad RSS feeds допускаются только с keyword filters:
   inline rect 1200×800, square 1200×1200, quality 82) и кладёт в
   `public/images/guides/<slug>/<filename>.webp`. `npm run evergreen:check -- --slug=<slug>`
   проверяет meta-схему (`verifiedAt`, `caseSourcing`, CTA cap), lead anchor, counter-strategy
-  H2, case block, ≥ 2 inline `/guides|/categories|/russia` ссылок, cover ≥ 80 KB и `noindex`
-  старше 14 дней.
+  H2, case block, ≥ 2 inline `/guides|/categories|/russia` ссылок, редакционные запреты
+  (`не X, а Y`, `proof of concept`, `production`, `no-code`, `AI-сигналы` и т.п.) в финальном
+  markdown/metadata, cover ≥ 80 KB и `noindex` старше 14 дней.
 - Archive и source pages используют те же article records.
 - Telegram digest использует `tg_teaser`, `ru_title`, score и public article URL (`/categories/<primary>/<slug>`).
 - Category pages (`/categories/[category]`, `/russia`) и главная под hero рендерят `TopicTabs`

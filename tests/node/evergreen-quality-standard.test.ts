@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import {
   countInlineInternalLinks,
+  findEditorialStyleIssues,
   gitFirstTouchTimestamp,
   hasCaseBlock,
   hasCounterStrategy,
@@ -76,4 +77,23 @@ test('countInlineInternalLinks: counts unique guides/categories/russia links', (
 Внешняя [ссылка](https://example.com) не считается.
 `
   assert.equal(countInlineInternalLinks(md), 3)
+})
+
+test('findEditorialStyleIssues: catches banned evergreen wording in body text', () => {
+  const md = [
+    'Это не прайс-лист, а рамка для планирования.',
+    'После proof of concept проект не дошёл до production.',
+    'CTA: AI-сигналы без шума.',
+  ].join('\n')
+
+  const issues = findEditorialStyleIssues(md)
+  assert.ok(issues.includes('negative-contrast construction ("не X, а Y")'))
+  assert.ok(issues.includes('English term: proof of concept'))
+  assert.ok(issues.includes('English term: production'))
+  assert.ok(issues.includes('Mixed AI-* wording'))
+})
+
+test('findEditorialStyleIssues: ignores forbidden words inside source URLs', () => {
+  const md = 'Источник: https://example.com/abandoned-after-proof-of-concept-by-end-of-2025'
+  assert.deepEqual(findEditorialStyleIssues(md), [])
 })

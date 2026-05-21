@@ -27,6 +27,7 @@ export interface GuideCta {
   text: string
   action: string
   href: string
+  intent?: string
 }
 
 export interface GuideInlineCta extends GuideCta {
@@ -54,6 +55,7 @@ export interface GuideMeta {
   cover: GuideImage
   inlineImagesByHeading: Record<string, GuideImage>
   relatedLinks: GuideRelatedLink[]
+  relatedArticleCategories?: string[]
   faq: GuideFaqItem[]
   inlineCtas?: GuideInlineCta[]
   ctaCards?: GuideCta[]

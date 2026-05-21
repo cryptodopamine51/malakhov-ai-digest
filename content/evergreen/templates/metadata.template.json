@@ -12,6 +12,7 @@
   ],
   "publishedAt": "{{date}}T00:00:00+03:00",
   "updatedAt": "{{date}}T00:00:00+03:00",
+  "verifiedAt": "{{date}}",
   "readingMinutes": 10,
   "heroLead": "TBD: one or two sentences that state the practical promise.",
   "cover": {
@@ -25,7 +26,7 @@
   "relatedLinks": [
     {
       "title": "Как внедрить ИИ в бизнес в 2026 году",
-      "description": "Опорный гайд по выбору первого AI-проекта, данным, экономике и рискам.",
+      "description": "Опорный гайд по выбору первого проекта с ИИ, данным, экономике и рискам.",
       "href": "/guides/kak-vnedrit-ii-v-biznes-2026"
     },
     {
@@ -36,25 +37,35 @@
   ],
   "ctaCards": [
     {
-      "title": "AI-сигналы без шума",
-      "text": "Короткий дайджест главных событий, инструментов и кейсов ИИ.",
-      "action": "Подписаться",
-      "href": "telegram"
+      "title": "AI-новости в TG",
+      "text": "Ежедневная сводка новостей об ИИ, инструментах и кейсах.",
+      "action": "Подписаться на дайджест",
+      "href": "telegram-digest",
+      "intent": "daily_ai_news_digest"
     },
     {
-      "title": "Разбор AI-проекта",
+      "title": "Архитектурный разбор ИИ",
       "text": "Проверьте процесс, данные, риски и экономику до старта разработки.",
-      "action": "Обсудить проект",
-      "href": "telegram"
+      "action": "Оставить заявку",
+      "href": "contacts",
+      "intent": "architecture_review"
+    },
+    {
+      "title": "Личный Telegram",
+      "text": "Подписка на личный канал Ивана Малахова о продуктах, автоматизации и ИИ.",
+      "action": "Подписаться",
+      "href": "telegram-personal",
+      "intent": "personal_channel"
     }
   ],
   "inlineCtas": [
     {
       "afterHeading": "краткое-резюме",
       "title": "Практический следующий шаг",
-      "text": "Сохраните материал и разберите один процесс по чеклисту из статьи.",
-      "action": "Получить в Telegram",
-      "href": "telegram"
+      "text": "Выберите один процесс, текущую стоимость операции и метрику, которую должен изменить пилот по ИИ.",
+      "action": "Оставить заявку на разбор",
+      "href": "contacts",
+      "intent": "process_budget_review"
     }
   ],
   "faq": [
@@ -62,5 +73,11 @@
       "question": "TBD?",
       "answer": "TBD"
     }
+  ],
+  "relatedArticleCategories": [
+    "ai-industry",
+    "ai-russia",
+    "ai-startups",
+    "coding"
   ]
 }

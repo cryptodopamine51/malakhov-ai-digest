@@ -22,4 +22,3 @@ Rules:
 - If this package updates an existing guide, do not create a duplicate guide URL.
 - Keep factual claims tied to `03-source-notes.md`.
 - Do not add `FAQPage` metadata unless FAQ is visible in the final Markdown.
-

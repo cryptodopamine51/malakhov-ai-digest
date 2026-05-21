@@ -30,10 +30,9 @@
 
 ## Technical
 
-- [ ] `content/guides/{{slug}}.md` exists for production publication.
+- [ ] `content/guides/{{slug}}.md` exists for publication.
 - [ ] `content/guides/meta/{{slug}}.json` exists and is valid JSON.
 - [ ] `npm run evergreen:check -- --slug={{slug}}` passes.
 - [ ] `npm run docs:check` passes.
 - [ ] `npm run build` passes.
 - [ ] Sitemap will include the guide through `getAllGuides()`.
-

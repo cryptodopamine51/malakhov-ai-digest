@@ -11,7 +11,12 @@ import {
   type GuideCta as GuideCtaConfig,
   type GuideImage,
 } from '../../../lib/guides'
+import { getGuideRelatedArticles } from '../../../lib/articles'
 import { absoluteUrl, SITE_LOGO_URL, SITE_NAME, SITE_URL } from '../../../lib/site'
+import ArticleRecommendations from '../../../src/components/ArticleRecommendations'
+import { GuideBackToTop, GuideDesktopToc, GuideMobileToc } from '../../../src/components/GuideScrollTools'
+import GuideTrackedLink from '../../../src/components/GuideTrackedLink'
+import { guideArticleStyles } from '../../../src/components/guideArticleStyles'
 
 export const revalidate = 86400
 
@@ -23,7 +28,10 @@ type TableBlock = { type: 'table'; headers: string[]; rows: string[][] }
 type HrBlock = { type: 'hr' }
 type MarkdownBlock = HeadingBlock | ParagraphBlock | QuoteBlock | ListBlock | TableBlock | HrBlock
 
-const TELEGRAM_URL = process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL ?? 'https://t.me/malakhovai'
+const DIGEST_TELEGRAM_URL = process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL ?? 'https://t.me/malakhovaidigest'
+const PERSONAL_TELEGRAM_URL = process.env.NEXT_PUBLIC_PERSONAL_TELEGRAM_URL ?? 'https://t.me/malakhovai'
+const CONTACTS_URL = 'https://malakhovai.ru/contacts'
+const METRIKA_ID = process.env.NEXT_PUBLIC_METRIKA_ID
 
 export function generateStaticParams() {
   return getAllGuides({ includeNoindex: true }).map((guide) => ({ slug: guide.slug }))
@@ -98,9 +106,13 @@ export default async function GuideArticlePage({
   const verifiedDate = formatRuDate(guide.verifiedAt)
   const wordCount = countWords(guide.markdown)
   const jsonLd = buildJsonLd(guide, wordCount)
-  const tocHeadings = blocks.filter(
-    (block): block is HeadingBlock => block.type === 'heading' && block.level === 2,
-  )
+  const tocHeadings = blocks
+    .filter(
+      (block): block is HeadingBlock =>
+        block.type === 'heading' && block.level === 2 && block.text !== 'Источники и данные',
+    )
+    .map(({ id, text }) => ({ id, text }))
+  const relatedArticles = await getGuideRelatedArticles(guide.relatedArticleCategories ?? [])
 
   return (
     <>
@@ -109,8 +121,8 @@ export default async function GuideArticlePage({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
-      <article className="mx-auto max-w-6xl px-4 py-8 md:py-10 lg:py-12">
-        <nav className="mb-7 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted" aria-label="Хлебные крошки">
+      <article id="top" className={guideArticleStyles.article}>
+        <nav className={guideArticleStyles.breadcrumbs} aria-label="Хлебные крошки">
           <Link href="/" className="transition-colors hover:text-ink">Главная</Link>
           <span aria-hidden>→</span>
           <Link href="/guides" className="transition-colors hover:text-ink">Гайды</Link>
@@ -118,17 +130,17 @@ export default async function GuideArticlePage({
           <span>{guide.category}</span>
         </nav>
 
-        <header className="mb-9 max-w-4xl">
-          <p className="mb-3 text-[12px] font-semibold uppercase text-accent">
-            Evergreen · {guide.category}
+        <header className={guideArticleStyles.header}>
+          <p className={guideArticleStyles.eyebrow}>
+            Гайд · {guide.category}
           </p>
-          <h1 className="font-serif text-[34px] font-extrabold leading-tight text-ink md:text-[48px]">
+          <h1 className={guideArticleStyles.title}>
             {guide.title}
           </h1>
-          <p className="mt-5 max-w-3xl text-[18px] font-medium leading-relaxed text-hero-muted md:text-[20px]">
+          <p className={guideArticleStyles.heroLead}>
             {guide.heroLead}
           </p>
-          <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted">
+          <div className={guideArticleStyles.meta}>
             <span>Обновлено: {updatedDate}</span>
             <span>Актуальность проверена: {verifiedDate}</span>
             <span>{guide.readingMinutes} мин чтения</span>
@@ -136,7 +148,7 @@ export default async function GuideArticlePage({
           </div>
         </header>
 
-        <figure className="mb-10 overflow-hidden rounded border border-line bg-surface">
+        <figure className={guideArticleStyles.cover}>
           <Image
             src={guide.cover.src}
             alt={guide.cover.alt}
@@ -151,48 +163,31 @@ export default async function GuideArticlePage({
           </figcaption>
         </figure>
 
-        <details className="mb-8 rounded border border-line bg-surface px-4 py-3 lg:hidden">
-          <summary className="cursor-pointer text-[12px] font-semibold uppercase text-muted">
-            В статье
-          </summary>
-          <nav className="mt-3 space-y-2 text-sm">
-            {tocHeadings.map((heading) => (
-              <a
-                key={heading.id}
-                href={`#${heading.id}`}
-                className="block text-muted transition-colors hover:text-ink"
-              >
-                {heading.text}
-              </a>
-            ))}
-          </nav>
-        </details>
+        <GuideMobileToc headings={tocHeadings} />
 
-        <div className="grid gap-12 lg:grid-cols-[minmax(0,760px)_280px] lg:items-start">
-          <div className="min-w-0">
-            <MarkdownBlocks blocks={blocks} guide={guide} telegramUrl={TELEGRAM_URL} />
-            <FinalGuideCta guide={guide} telegramUrl={TELEGRAM_URL} />
+        <div className={guideArticleStyles.layout}>
+          <GuideDesktopToc headings={tocHeadings} />
+
+          <div className={guideArticleStyles.content}>
+            <MarkdownBlocks
+              blocks={blocks}
+              guide={guide}
+              digestTelegramUrl={DIGEST_TELEGRAM_URL}
+              personalTelegramUrl={PERSONAL_TELEGRAM_URL}
+              contactsUrl={CONTACTS_URL}
+            />
+            <FinalGuideCta
+              guide={guide}
+              digestTelegramUrl={DIGEST_TELEGRAM_URL}
+              personalTelegramUrl={PERSONAL_TELEGRAM_URL}
+              contactsUrl={CONTACTS_URL}
+            />
             <RelatedLinks guide={guide} />
+            <RelatedGuideArticles articles={relatedArticles} />
           </div>
-
-          <aside className="hidden lg:block">
-            <div className="sticky top-[88px] border-l border-line pl-6">
-              <p className="mb-3 text-[11px] font-semibold uppercase text-muted">В статье</p>
-              <nav className="space-y-2 text-sm">
-                {tocHeadings.map((heading) => (
-                  <a
-                    key={heading.id}
-                    href={`#${heading.id}`}
-                    className="block text-muted transition-colors hover:text-ink"
-                  >
-                    {heading.text}
-                  </a>
-                ))}
-              </nav>
-            </div>
-          </aside>
         </div>
       </article>
+      <GuideBackToTop />
     </>
   )
 }
@@ -200,30 +195,44 @@ export default async function GuideArticlePage({
 function MarkdownBlocks({
   blocks,
   guide,
-  telegramUrl,
+  digestTelegramUrl,
+  personalTelegramUrl,
+  contactsUrl,
 }: {
   blocks: MarkdownBlock[]
   guide: Guide
-  telegramUrl: string
+  digestTelegramUrl: string
+  personalTelegramUrl: string
+  contactsUrl: string
 }) {
   const nodes: ReactNode[] = []
+  const sourceNodes: ReactNode[] = []
   let currentH2 = ''
+  let collectingSources = false
 
   blocks.forEach((block, index) => {
     if (block.type === 'heading') {
       if (block.level === 1) return
-      if (block.level === 2) currentH2 = block.id
+      if (block.level === 2 && block.text === 'Источники и данные') {
+        collectingSources = true
+        return
+      }
+      if (block.level === 2) {
+        collectingSources = false
+        currentH2 = block.id
+      }
 
+      const targetNodes = collectingSources ? sourceNodes : nodes
       const image = guide.inlineImagesByHeading[block.id]
       const HeadingTag = block.level === 2 ? 'h2' : 'h3'
-      nodes.push(
+      targetNodes.push(
         <HeadingTag
           key={`heading-${block.id}-${index}`}
           id={block.id}
           className={
             block.level === 2
-              ? 'mt-12 scroll-mt-24 font-serif text-[26px] font-bold leading-tight text-ink md:text-[30px]'
-              : 'mt-8 scroll-mt-24 text-[20px] font-semibold leading-snug text-ink'
+              ? guideArticleStyles.h2
+              : guideArticleStyles.h3
           }
         >
           {renderInline(block.text)}
@@ -231,14 +240,16 @@ function MarkdownBlocks({
       )
 
       if (image) {
-        nodes.push(<GuideImageFigure key={`image-${block.id}`} image={image} />)
+        targetNodes.push(<GuideImageFigure key={`image-${block.id}`} image={image} />)
       }
       return
     }
 
+    const targetNodes = collectingSources ? sourceNodes : nodes
+
     if (block.type === 'paragraph') {
-      nodes.push(
-        <p key={`paragraph-${index}`} className="mb-5 text-[17px] leading-[1.75] text-ink">
+      targetNodes.push(
+        <p key={`paragraph-${index}`} className={guideArticleStyles.paragraph}>
           {renderInline(block.text)}
         </p>,
       )
@@ -246,8 +257,8 @@ function MarkdownBlocks({
     }
 
     if (block.type === 'blockquote') {
-      nodes.push(
-        <blockquote key={`quote-${index}`} className="my-6 border-l-4 border-accent bg-surface px-5 py-4 text-[17px] font-medium leading-relaxed text-ink">
+      targetNodes.push(
+        <blockquote key={`quote-${index}`} className={guideArticleStyles.quote}>
           {renderInline(block.text)}
         </blockquote>,
       )
@@ -256,10 +267,10 @@ function MarkdownBlocks({
 
     if (block.type === 'list') {
       const ListTag = block.ordered ? 'ol' : 'ul'
-      nodes.push(
+      targetNodes.push(
         <ListTag
           key={`list-${index}`}
-          className={`mb-6 ml-6 space-y-2 text-[17px] leading-relaxed text-ink ${block.ordered ? 'list-decimal' : 'list-disc'}`}
+          className={`${guideArticleStyles.list} ${block.ordered ? 'list-decimal' : 'list-disc'}`}
         >
           {block.items.map((item, itemIndex) => (
             <li key={itemIndex}>{renderInline(item)}</li>
@@ -270,12 +281,13 @@ function MarkdownBlocks({
     }
 
     if (block.type === 'table') {
-      nodes.push(<MarkdownTable key={`table-${index}`} table={block} />)
+      targetNodes.push(<MarkdownTable key={`table-${index}`} table={block} />)
       return
     }
 
     if (block.type === 'hr') {
-      nodes.push(<hr key={`hr-${index}`} className="my-9 border-line" />)
+      targetNodes.push(<hr key={`hr-${index}`} className={guideArticleStyles.separator} />)
+      if (collectingSources) return
       guide.inlineCtas
         ?.filter((cta) => cta.afterHeading === currentH2)
         .forEach((cta, ctaIndex) => {
@@ -283,19 +295,41 @@ function MarkdownBlocks({
             <GuideCta
               key={`inline-cta-${currentH2}-${ctaIndex}`}
               cta={cta}
-              telegramUrl={telegramUrl}
+              guide={guide}
+              digestTelegramUrl={digestTelegramUrl}
+              personalTelegramUrl={personalTelegramUrl}
+              contactsUrl={contactsUrl}
+              placement="inline"
             />,
           )
         })
     }
   })
 
-  return <>{nodes}</>
+  return (
+    <>
+      {nodes}
+      {sourceNodes.length > 0 && <SourcesDisclosure>{sourceNodes}</SourcesDisclosure>}
+    </>
+  )
+}
+
+function SourcesDisclosure({ children }: { children: ReactNode }) {
+  return (
+    <details className="mt-12 border-t border-line pt-6 text-sm text-muted">
+      <summary className="cursor-pointer select-none font-semibold text-muted transition-colors hover:text-ink">
+        Источники и данные
+      </summary>
+      <div className="mt-5 text-[15px] leading-relaxed text-muted [&_a]:text-accent [&_a]:underline [&_a]:decoration-accent/35">
+        {children}
+      </div>
+    </details>
+  )
 }
 
 function MarkdownTable({ table }: { table: TableBlock }) {
   return (
-    <div className="my-7 overflow-x-auto rounded border border-line">
+    <div className={guideArticleStyles.tableWrap}>
       <table className="min-w-[640px] w-full text-left text-sm text-ink">
         <thead className="bg-surface">
           <tr>
@@ -324,7 +358,7 @@ function MarkdownTable({ table }: { table: TableBlock }) {
 
 function GuideImageFigure({ image }: { image: GuideImage }) {
   return (
-    <figure className="my-7 overflow-hidden rounded border border-line bg-surface">
+    <figure className={guideArticleStyles.mediaFigure}>
       <Image
         src={image.src}
         alt={image.alt}
@@ -343,16 +377,29 @@ function GuideImageFigure({ image }: { image: GuideImage }) {
 
 function GuideCta({
   cta,
-  telegramUrl,
+  guide,
+  digestTelegramUrl,
+  personalTelegramUrl,
+  contactsUrl,
+  placement,
 }: {
   cta: GuideCtaConfig
-  telegramUrl: string
+  guide: Guide
+  digestTelegramUrl: string
+  personalTelegramUrl: string
+  contactsUrl: string
+  placement: string
 }) {
-  const href = resolveCtaHref(cta.href, telegramUrl)
+  const href = resolveCtaHref(cta.href, guide, cta, placement, {
+    contactsUrl,
+    digestTelegramUrl,
+    personalTelegramUrl,
+  })
   const isExternal = href.startsWith('http')
+  const tracking = buildCtaTracking(guide, cta, placement)
 
   return (
-    <section className="my-9 rounded border border-line bg-surface px-5 py-5 md:px-6">
+    <section className={guideArticleStyles.inlineCta}>
       <p className="mb-2 text-[12px] font-semibold uppercase text-accent">
         {cta.eyebrow ?? 'Следующий шаг'}
       </p>
@@ -362,56 +409,86 @@ function GuideCta({
       <p className="mt-2 text-[15px] leading-relaxed text-muted">
         {cta.text}
       </p>
-      <a
+      <GuideTrackedLink
         href={href}
         target={isExternal ? '_blank' : undefined}
         rel={isExternal ? 'noopener noreferrer' : undefined}
+        goal={tracking.goal}
+        metrikaId={METRIKA_ID}
+        params={tracking.params}
         className="mt-4 inline-flex rounded border border-ink px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-ink hover:text-[var(--base)]"
       >
         {cta.action}
-      </a>
+      </GuideTrackedLink>
     </section>
   )
 }
 
 const DEFAULT_FINAL_CTA_CARDS: GuideCtaConfig[] = [
   {
-    title: 'AI-сигналы без шума',
-    text: 'Короткий дайджест главных событий, инструментов и кейсов ИИ.',
-    action: 'Подписаться',
-    href: 'telegram',
+    title: 'Чеклист за 30 минут',
+    text: 'Быстро выберите первый ИИ-проект и подготовьте пилот на 30-90 дней.',
+    action: 'Получить чеклист',
+    href: 'telegram-personal',
+    intent: 'implementation_checklist',
   },
   {
-    title: 'Разбор AI-процесса',
-    text: 'Проверьте процесс, данные, риски и экономику до старта внедрения.',
-    action: 'Обсудить проект',
-    href: 'telegram',
+    title: 'AI-новости в TG',
+    text: 'Подписка на короткий дайджест главных событий, инструментов и кейсов ИИ.',
+    action: 'Подписаться на дайджест',
+    href: 'telegram-digest',
+    intent: 'daily_ai_news_digest',
+  },
+  {
+    title: 'Архитектурный разбор ИИ',
+    text: 'Разберите процессы, данные, риски и экономику до старта разработки.',
+    action: 'Оставить заявку',
+    href: 'contacts',
+    intent: 'architecture_review',
   },
 ]
 
-function FinalGuideCta({ guide, telegramUrl }: { guide: Guide; telegramUrl: string }) {
+function FinalGuideCta({
+  guide,
+  digestTelegramUrl,
+  personalTelegramUrl,
+  contactsUrl,
+}: {
+  guide: Guide
+  digestTelegramUrl: string
+  personalTelegramUrl: string
+  contactsUrl: string
+}) {
   const items = guide.ctaCards?.length ? guide.ctaCards : DEFAULT_FINAL_CTA_CARDS
 
   return (
-    <section className="mt-12 border-t border-line pt-9">
+    <section className={guideArticleStyles.endSection}>
       <p className="mb-2 text-[12px] font-semibold uppercase text-accent">Дальше</p>
       <h2 className="font-serif text-[26px] font-bold text-ink">Что можно сделать после чтения</h2>
       <div className="mt-5 grid gap-4 md:grid-cols-3">
         {items.map((item) => {
-          const href = resolveCtaHref(item.href, telegramUrl)
+          const href = resolveCtaHref(item.href, guide, item, 'final', {
+            contactsUrl,
+            digestTelegramUrl,
+            personalTelegramUrl,
+          })
           const isExternal = href.startsWith('http')
+          const tracking = buildCtaTracking(guide, item, 'final')
           return (
             <div key={item.title} className="rounded border border-line bg-base p-5">
               <h3 className="text-base font-semibold text-ink">{item.title}</h3>
               <p className="mt-2 text-sm leading-relaxed text-muted">{item.text}</p>
-              <a
+              <GuideTrackedLink
                 href={href}
                 target={isExternal ? '_blank' : undefined}
                 rel={isExternal ? 'noopener noreferrer' : undefined}
+                goal={tracking.goal}
+                metrikaId={METRIKA_ID}
+                params={tracking.params}
                 className="mt-4 inline-flex text-sm font-semibold text-accent hover:underline"
               >
                 {item.action}
-              </a>
+              </GuideTrackedLink>
             </div>
           )
         })}
@@ -420,14 +497,70 @@ function FinalGuideCta({ guide, telegramUrl }: { guide: Guide; telegramUrl: stri
   )
 }
 
-function resolveCtaHref(href: string, telegramUrl: string): string {
-  if (href === 'telegram') return telegramUrl
+function resolveCtaHref(
+  href: string,
+  guide: Guide,
+  cta: GuideCtaConfig,
+  placement: string,
+  urls: {
+    contactsUrl: string
+    digestTelegramUrl: string
+    personalTelegramUrl: string
+  },
+): string {
+  if (href === 'telegram' || href === 'telegram-personal') return urls.personalTelegramUrl
+  if (href === 'telegram-digest') return urls.digestTelegramUrl
+  if (href === 'contacts') return buildContactsUrl(urls.contactsUrl, guide, cta, placement)
   return href
+}
+
+function buildContactsUrl(baseUrl: string, guide: Guide, cta: GuideCtaConfig, placement: string): string {
+  const url = new URL(baseUrl)
+  url.searchParams.set('utm_source', 'news_malakhovai_ru')
+  url.searchParams.set('utm_medium', 'guide_cta')
+  url.searchParams.set('utm_campaign', `guide_${guide.slug}`)
+  url.searchParams.set('utm_content', `${placement}_${slugifyTrackingValue(cta.title)}`)
+  url.searchParams.set('lead_source', 'news_guide')
+  url.searchParams.set('article_slug', guide.slug)
+  url.searchParams.set('article_title', guide.title)
+  url.searchParams.set('cta_title', cta.title)
+  url.searchParams.set('cta_action', cta.action)
+  url.searchParams.set('intent', cta.intent ?? slugifyTrackingValue(cta.title))
+  url.searchParams.set(
+    'lead_context',
+    `Заявка со статьи "${guide.title}", CTA "${cta.title}", intent "${cta.intent ?? slugifyTrackingValue(cta.title)}"`,
+  )
+  return url.toString()
+}
+
+function buildCtaTracking(guide: Guide, cta: GuideCtaConfig, placement: string) {
+  const isContact = cta.href === 'contacts'
+  return {
+    goal: isContact ? 'guide_contact_click' : 'guide_telegram_click',
+    params: {
+      article_slug: guide.slug,
+      article_title: guide.title,
+      cta_title: cta.title,
+      cta_action: cta.action,
+      cta_href: cta.href,
+      intent: cta.intent ?? slugifyTrackingValue(cta.title),
+      placement,
+    },
+  }
+}
+
+function slugifyTrackingValue(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[^\p{L}\p{N}]+/gu, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80)
 }
 
 function RelatedLinks({ guide }: { guide: Guide }) {
   return (
-    <section className="mt-12 border-t border-line pt-9">
+    <section className={guideArticleStyles.endSection}>
       <p className="mb-2 text-[12px] font-semibold uppercase text-muted">Что читать дальше</p>
       <h2 className="font-serif text-[26px] font-bold text-ink">Связанные разделы</h2>
       <div className="mt-5 grid gap-4 md:grid-cols-3">
@@ -441,6 +574,20 @@ function RelatedLinks({ guide }: { guide: Guide }) {
             <p className="mt-2 text-sm leading-relaxed text-muted">{link.description}</p>
           </Link>
         ))}
+      </div>
+    </section>
+  )
+}
+
+function RelatedGuideArticles({ articles }: { articles: Awaited<ReturnType<typeof getGuideRelatedArticles>> }) {
+  if (articles.length === 0) return null
+
+  return (
+    <section className={guideArticleStyles.endSection}>
+      <p className="mb-2 text-[12px] font-semibold uppercase text-muted">По теме</p>
+      <h2 className="font-serif text-[26px] font-bold text-ink">Связанные статьи</h2>
+      <div className="mt-5">
+        <ArticleRecommendations articles={articles} />
       </div>
     </section>
   )

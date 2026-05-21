@@ -66,6 +66,7 @@
 | Дизайн-система | `docs/DESIGN.md` |
 | Редакционные правила | `docs/editorial_style_guide.md` |
 | SEO-стандарт статей и evergreen-гайдов | `docs/editorial/seo-article-publication-standard.md` |
+| **Выпуск evergreen-статьи под ключ** (одна инструкция для агента) | **`docs/EVERGREEN_AGENT.md`** |
 | Планирование и backlog | `docs/ORCHESTRATOR.md` |
 
 Правило: одна тема = один канонический файл. Временные `spec_*`, `task_*`, `execution_plan_*`, `roadmap_*` не заменяют канонические документы.

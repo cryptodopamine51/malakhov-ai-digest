@@ -8,12 +8,12 @@ export const revalidate = 86400
 export const metadata: Metadata = {
   title: 'Гайды по ИИ для бизнеса',
   description:
-    'Evergreen-гайды Malakhov AI Дайджест: внедрение ИИ, выбор AI-проектов, экономика, данные и автоматизация бизнес-процессов.',
+    'Практические гайды Malakhov AI Дайджест: внедрение ИИ, выбор проектов, экономика, данные и автоматизация бизнес-процессов.',
   alternates: { canonical: '/guides' },
   openGraph: {
     title: 'Гайды по ИИ для бизнеса',
     description:
-      'Практические evergreen-материалы о внедрении ИИ, автоматизации и AI-проектах для бизнеса.',
+      'Практические материалы о внедрении ИИ, автоматизации и проектах с ИИ для бизнеса.',
     type: 'website',
     url: '/guides',
   },
@@ -25,12 +25,12 @@ export default function GuidesPage() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:py-10 lg:py-12">
       <header className="mb-10 max-w-3xl">
-        <p className="mb-3 text-[12px] font-semibold uppercase text-accent">Evergreen</p>
+        <p className="mb-3 text-[12px] font-semibold uppercase text-accent">Гайды</p>
         <h1 className="font-serif text-[36px] font-extrabold leading-tight text-ink md:text-[52px]">
           Гайды по ИИ для бизнеса
         </h1>
         <p className="mt-4 text-[18px] leading-relaxed text-hero-muted">
-          Опорные материалы, которые помогают перейти от новостей и пилотов к рабочим AI-процессам:
+          Опорные материалы, которые помогают перейти от новостей и пилотов к рабочим процессам с ИИ:
           выбор проекта, данные, экономика, риски и контроль.
         </p>
       </header>

@@ -26,6 +26,7 @@ npm run context
 | `docs/DESIGN.md` | Дизайн-система и визуальные паттерны |
 | `docs/editorial_style_guide.md` | Редакционные правила текста |
 | `docs/editorial/seo-article-publication-standard.md` | SEO-стандарт подготовки news articles, evergreen-гайдов и manual long-form материалов |
+| `docs/EVERGREEN_AGENT.md` | Единая инструкция «выпуск evergreen-статьи под ключ»: владелец говорит «сделай следующую», агент проходит все 12 шагов от выбора темы до prod-URL |
 
 ## Рабочие, а не канонические документы
 

@@ -15,6 +15,7 @@
     "docs:check": "tsx scripts/docs-impact.ts",
     "evergreen:new": "tsx scripts/evergreen-new.ts",
     "evergreen:check": "tsx scripts/evergreen-check.ts",
+    "evergreen:next": "tsx scripts/evergreen-next.ts",
     "images:prep": "tsx scripts/images-prep.ts",
     "ingest": "tsx pipeline/ingest.ts",
     "enrich": "tsx pipeline/enricher.ts",

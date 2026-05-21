@@ -76,6 +76,34 @@ const VALID_STATUSES = new Set([
 
 const VALID_INTENTS = new Set(['informational', 'practical', 'news/context', 'commercial-adjacent'])
 const VALID_PRIORITIES = new Set(['high', 'medium', 'low'])
+const EDITORIAL_STYLE_RULES: { pattern: RegExp; label: string }[] = [
+  {
+    pattern: /(?:^|[\s"'«„])не\s+[^.!?\n]{1,140},?\s+а(?:\s|$)/iu,
+    label: 'negative-contrast construction ("не X, а Y")',
+  },
+  {
+    pattern: /(?:^|[\s"'«„])не\s+просто\s+[^.!?\n]{1,140}\s+а(?:\s|$)/iu,
+    label: 'negative-contrast construction ("не просто X, а Y")',
+  },
+  {
+    pattern: /(?:^|[\s"'«„])не\s+только\s+[^.!?\n]{1,140}\s+но\s+и(?:\s|$)/iu,
+    label: 'negative-contrast construction ("не только X, но и Y")',
+  },
+  { pattern: /\bproof of concept\b/iu, label: 'English term: proof of concept' },
+  { pattern: /\bproduction(?:-[\p{L}\p{N}-]+)?\b/iu, label: 'English term: production' },
+  { pattern: /\bworkflow\b/iu, label: 'English term: workflow' },
+  { pattern: /\bdashboard\b/iu, label: 'English term: dashboard' },
+  { pattern: /\bfallback\b/iu, label: 'English term: fallback' },
+  { pattern: /\bno-code\b|\blow-code\b/iu, label: 'English term: no-code/low-code' },
+  { pattern: /\bhelpdesk\b/iu, label: 'English term: helpdesk' },
+  { pattern: /\bGenAI\b/iu, label: 'English term: GenAI' },
+  { pattern: /AI-(?:проект|пилот|бот|агент|разбор|сигналы|инструменты)(?=$|[^\p{L}\p{N}_])/iu, label: 'Mixed AI-* wording' },
+  { pattern: /(?:Разбор|Обсудить)\s+AI/iu, label: 'Mixed CTA wording with AI' },
+  { pattern: /проверка концепции-by/iu, label: 'Translated text inside URL' },
+  { pattern: /с\s+система\s+поддержки/iu, label: 'Broken phrase: с система поддержки' },
+  { pattern: /рабочий контур-сложность/iu, label: 'Broken compound: рабочий контур-сложность' },
+  { pattern: /fake-панель|fake\s+панель/iu, label: 'Broken mixed phrase: fake-панель' },
+]
 
 const root = process.cwd()
 
@@ -353,6 +381,28 @@ export function countInlineInternalLinks(markdown: string): number {
   return unique.size
 }
 
+function stripUrls(text: string): string {
+  return text.replace(/https?:\/\/\S+/g, '')
+}
+
+export function findEditorialStyleIssues(text: string): string[] {
+  const searchable = stripUrls(text)
+  const issues = new Set<string>()
+
+  for (const rule of EDITORIAL_STYLE_RULES) {
+    rule.pattern.lastIndex = 0
+    if (rule.pattern.test(searchable)) issues.add(rule.label)
+  }
+
+  return Array.from(issues)
+}
+
+function checkEditorialStyle(text: string, label: string, errors: string[]) {
+  for (const issue of findEditorialStyleIssues(text)) {
+    errors.push(`${label} violates editorial style rule: ${issue}`)
+  }
+}
+
 export function gitFirstTouchTimestamp(filePath: string): number | null {
   try {
     const output = execFileSync(
@@ -420,7 +470,9 @@ function main() {
   const packageMetadataPath = join(packageDir, '08-metadata.json')
   if (existsSync(packageMetadataPath)) {
     try {
-      packageMetadata = validateMetadata(readJson(packageMetadataPath), '08-metadata.json', errors, warnings)
+      const packageMetadataRaw = readFileSync(packageMetadataPath, 'utf8')
+      packageMetadata = validateMetadata(JSON.parse(packageMetadataRaw), '08-metadata.json', errors, warnings)
+      checkEditorialStyle(packageMetadataRaw, '08-metadata.json', errors)
     } catch (error) {
       errors.push(`08-metadata.json is invalid JSON: ${error instanceof Error ? error.message : String(error)}`)
     }
@@ -433,6 +485,7 @@ function main() {
       errors.push('08-metadata.json faq must not be empty because 07-final-article.md contains a FAQ section')
     }
     checkGuideLinks(extractGuideLinksFromMarkdown(packageMarkdown), errors)
+    checkEditorialStyle(packageMarkdown, '07-final-article.md', errors)
   }
   checkGuideLinks(extractGuideLinksFromMetadata(packageMetadata), errors)
 
@@ -453,12 +506,14 @@ function main() {
   let productionMetadata: GuideMetadata | null = null
   if (hasProductionMetadata) {
     try {
+      const productionMetadataRaw = readFileSync(productionMetadataPath, 'utf8')
       productionMetadata = validateMetadata(
-        readJson(productionMetadataPath),
+        JSON.parse(productionMetadataRaw),
         `content/guides/meta/${slug}.json`,
         errors,
         warnings,
       )
+      checkEditorialStyle(productionMetadataRaw, `content/guides/meta/${slug}.json`, errors)
     } catch (error) {
       errors.push(
         `content/guides/meta/${slug}.json is invalid JSON: ${
@@ -477,6 +532,7 @@ function main() {
       errors.push(`Production metadata has FAQ but content/guides/${slug}.md does not render a FAQ section`)
     }
     checkGuideLinks(extractGuideLinksFromMarkdown(productionMarkdown), errors)
+    checkEditorialStyle(productionMarkdown, `content/guides/${slug}.md`, errors)
 
     if (!leadHasAnchor(productionMarkdown)) {
       warnings.push(

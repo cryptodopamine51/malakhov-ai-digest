@@ -3,7 +3,7 @@
 ## Editorial
 
 - [x] Search intent answered in the first screen.
-- [x] Article explains pilot vs production cost.
+- [x] Article explains pilot vs working launch cost.
 - [x] Budget ranges are framed as planning estimates, not universal market prices.
 - [x] No invented provider tariffs.
 - [x] Claims in `03-source-notes.md` are checked.
