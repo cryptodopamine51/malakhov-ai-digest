@@ -15,6 +15,7 @@ import { getGuideRelatedArticles } from '../../../lib/articles'
 import { absoluteUrl, SITE_LOGO_URL, SITE_NAME, SITE_URL } from '../../../lib/site'
 import ArticleRecommendations from '../../../src/components/ArticleRecommendations'
 import { GuideBackToTop, GuideDesktopToc, GuideMobileToc } from '../../../src/components/GuideScrollTools'
+import GuideTrackedLink from '../../../src/components/GuideTrackedLink'
 import { guideArticleStyles } from '../../../src/components/guideArticleStyles'
 
 export const revalidate = 86400
@@ -27,8 +28,10 @@ type TableBlock = { type: 'table'; headers: string[]; rows: string[][] }
 type HrBlock = { type: 'hr' }
 type MarkdownBlock = HeadingBlock | ParagraphBlock | QuoteBlock | ListBlock | TableBlock | HrBlock
 
-const TELEGRAM_URL = process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL ?? 'https://t.me/malakhovai'
+const DIGEST_TELEGRAM_URL = process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL ?? 'https://t.me/malakhovaidigest'
+const PERSONAL_TELEGRAM_URL = process.env.NEXT_PUBLIC_PERSONAL_TELEGRAM_URL ?? 'https://t.me/malakhovai'
 const CONTACTS_URL = 'https://malakhovai.ru/contacts'
+const METRIKA_ID = process.env.NEXT_PUBLIC_METRIKA_ID
 
 export function generateStaticParams() {
   return getAllGuides({ includeNoindex: true }).map((guide) => ({ slug: guide.slug }))
@@ -96,7 +99,12 @@ export default async function GuideArticlePage({
 
   const blocks = parseMarkdown(guide.markdown)
   const tocHeadings = blocks
-    .filter((block): block is HeadingBlock => block.type === 'heading' && block.level === 2 && block.text !== 'Оглавление')
+    .filter((block): block is HeadingBlock => {
+      return block.type === 'heading' &&
+        block.level === 2 &&
+        block.text !== 'Оглавление' &&
+        block.text !== 'Источники и данные'
+    })
     .map(({ id, text }) => ({ id, text }))
   const relatedArticles = await getGuideRelatedArticles(guide.relatedArticleCategories)
   const updatedDate = formatRuDate(guide.updatedAt)
@@ -120,7 +128,7 @@ export default async function GuideArticlePage({
 
         <header className={guideArticleStyles.header}>
           <p className={guideArticleStyles.eyebrow}>
-            Evergreen · {guide.category}
+            Гайд · {guide.category}
           </p>
           <h1 className={guideArticleStyles.title}>
             {guide.title}
@@ -156,8 +164,19 @@ export default async function GuideArticlePage({
           <GuideDesktopToc headings={tocHeadings} />
 
           <div className={guideArticleStyles.content}>
-            <MarkdownBlocks blocks={blocks} guide={guide} telegramUrl={TELEGRAM_URL} contactsUrl={CONTACTS_URL} />
-            <FinalGuideCta guide={guide} telegramUrl={TELEGRAM_URL} contactsUrl={CONTACTS_URL} />
+            <MarkdownBlocks
+              blocks={blocks}
+              guide={guide}
+              digestTelegramUrl={DIGEST_TELEGRAM_URL}
+              personalTelegramUrl={PERSONAL_TELEGRAM_URL}
+              contactsUrl={CONTACTS_URL}
+            />
+            <FinalGuideCta
+              guide={guide}
+              digestTelegramUrl={DIGEST_TELEGRAM_URL}
+              personalTelegramUrl={PERSONAL_TELEGRAM_URL}
+              contactsUrl={CONTACTS_URL}
+            />
             <RelatedLinks guide={guide} />
             <RelatedGuideArticles articles={relatedArticles} />
           </div>
@@ -171,17 +190,21 @@ export default async function GuideArticlePage({
 function MarkdownBlocks({
   blocks,
   guide,
-  telegramUrl,
+  digestTelegramUrl,
+  personalTelegramUrl,
   contactsUrl,
 }: {
   blocks: MarkdownBlock[]
   guide: Guide
-  telegramUrl: string
+  digestTelegramUrl: string
+  personalTelegramUrl: string
   contactsUrl: string
 }) {
   const nodes: ReactNode[] = []
+  const sourceNodes: ReactNode[] = []
   let currentH2 = ''
   let skipManualToc = false
+  let collectingSources = false
 
   blocks.forEach((block, index) => {
     if (block.type === 'heading') {
@@ -190,12 +213,19 @@ function MarkdownBlocks({
         skipManualToc = true
         return
       }
+      if (block.level === 2 && block.text === 'Источники и данные') {
+        collectingSources = true
+        skipManualToc = false
+        return
+      }
+      if (block.level === 2) collectingSources = false
       if (block.level === 2) currentH2 = block.id
       skipManualToc = false
 
+      const targetNodes = collectingSources ? sourceNodes : nodes
       const image = guide.inlineImagesByHeading[block.id]
       const HeadingTag = block.level === 2 ? 'h2' : 'h3'
-      nodes.push(
+      targetNodes.push(
         <HeadingTag
           key={`heading-${block.id}-${index}`}
           id={block.id}
@@ -210,7 +240,7 @@ function MarkdownBlocks({
       )
 
       if (image) {
-        nodes.push(<GuideImageFigure key={`image-${block.id}`} image={image} />)
+        targetNodes.push(<GuideImageFigure key={`image-${block.id}`} image={image} />)
       }
       return
     }
@@ -220,8 +250,10 @@ function MarkdownBlocks({
       return
     }
 
+    const targetNodes = collectingSources ? sourceNodes : nodes
+
     if (block.type === 'paragraph') {
-      nodes.push(
+      targetNodes.push(
         <p key={`paragraph-${index}`} className={guideArticleStyles.paragraph}>
           {renderInline(block.text)}
         </p>,
@@ -230,7 +262,7 @@ function MarkdownBlocks({
     }
 
     if (block.type === 'blockquote') {
-      nodes.push(
+      targetNodes.push(
         <blockquote key={`quote-${index}`} className={guideArticleStyles.quote}>
           {renderInline(block.text)}
         </blockquote>,
@@ -240,7 +272,7 @@ function MarkdownBlocks({
 
     if (block.type === 'list') {
       const ListTag = block.ordered ? 'ol' : 'ul'
-      nodes.push(
+      targetNodes.push(
         <ListTag
           key={`list-${index}`}
           className={`${guideArticleStyles.list} ${block.ordered ? 'list-decimal' : 'list-disc'}`}
@@ -254,12 +286,13 @@ function MarkdownBlocks({
     }
 
     if (block.type === 'table') {
-      nodes.push(<MarkdownTable key={`table-${index}`} table={block} />)
+      targetNodes.push(<MarkdownTable key={`table-${index}`} table={block} />)
       return
     }
 
     if (block.type === 'hr') {
-      nodes.push(<hr key={`hr-${index}`} className={guideArticleStyles.separator} />)
+      targetNodes.push(<hr key={`hr-${index}`} className={guideArticleStyles.separator} />)
+      if (collectingSources) return
       guide.inlineCtas
         ?.filter((cta) => cta.afterHeading === currentH2)
         .forEach((cta, ctaIndex) => {
@@ -267,15 +300,36 @@ function MarkdownBlocks({
             <GuideCta
               key={`inline-cta-${currentH2}-${ctaIndex}`}
               cta={cta}
-              telegramUrl={telegramUrl}
+              guide={guide}
+              digestTelegramUrl={digestTelegramUrl}
+              personalTelegramUrl={personalTelegramUrl}
               contactsUrl={contactsUrl}
+              placement="inline"
             />,
           )
         })
     }
   })
 
-  return <>{nodes}</>
+  return (
+    <>
+      {nodes}
+      {sourceNodes.length > 0 && <SourcesDisclosure>{sourceNodes}</SourcesDisclosure>}
+    </>
+  )
+}
+
+function SourcesDisclosure({ children }: { children: ReactNode }) {
+  return (
+    <details className="mt-12 border-t border-line pt-6 text-sm text-muted">
+      <summary className="cursor-pointer select-none font-semibold text-muted transition-colors hover:text-ink">
+        Источники и данные
+      </summary>
+      <div className="mt-5 text-[15px] leading-relaxed text-muted [&_a]:text-accent [&_a]:underline [&_a]:decoration-accent/35">
+        {children}
+      </div>
+    </details>
+  )
 }
 
 function MarkdownTable({ table }: { table: TableBlock }) {
@@ -328,15 +382,26 @@ function GuideImageFigure({ image }: { image: GuideImage }) {
 
 function GuideCta({
   cta,
-  telegramUrl,
+  guide,
+  digestTelegramUrl,
+  personalTelegramUrl,
   contactsUrl,
+  placement,
 }: {
   cta: GuideCtaConfig
-  telegramUrl: string
+  guide: Guide
+  digestTelegramUrl: string
+  personalTelegramUrl: string
   contactsUrl: string
+  placement: string
 }) {
-  const href = resolveCtaHref(cta.href, telegramUrl, contactsUrl)
+  const href = resolveCtaHref(cta.href, guide, cta, placement, {
+    contactsUrl,
+    digestTelegramUrl,
+    personalTelegramUrl,
+  })
   const isExternal = href.startsWith('http')
+  const tracking = buildCtaTracking(guide, cta, placement)
   return (
     <section className={guideArticleStyles.inlineCta}>
       <p className="mb-2 text-[12px] font-semibold uppercase text-accent">
@@ -348,14 +413,17 @@ function GuideCta({
       <p className="mt-2 text-[15px] leading-relaxed text-muted">
         {cta.text}
       </p>
-      <a
+      <GuideTrackedLink
         href={href}
         target={isExternal ? '_blank' : undefined}
         rel={isExternal ? 'noopener noreferrer' : undefined}
+        goal={tracking.goal}
+        metrikaId={METRIKA_ID}
+        params={tracking.params}
         className="mt-4 inline-flex rounded border border-ink px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-ink hover:text-[var(--base)]"
       >
         {cta.action}
-      </a>
+      </GuideTrackedLink>
     </section>
   )
 }
@@ -363,31 +431,36 @@ function GuideCta({
 const DEFAULT_FINAL_CTA_CARDS: GuideCtaConfig[] = [
   {
     title: 'Чеклист за 30 минут',
-    text: 'Быстро выберите первый AI-проект и подготовьте пилот на 30-90 дней.',
+    text: 'Быстро выберите первый ИИ-проект и подготовьте пилот на 30-90 дней.',
     action: 'Получить чеклист',
-    href: 'telegram',
+    href: 'telegram-personal',
+    intent: 'implementation_checklist',
   },
   {
-    title: 'AI-дайджест в ТГ',
+    title: 'AI-новости в TG',
     text: 'Подписка на короткий дайджест главных событий, инструментов и кейсов ИИ.',
-    action: 'Подписаться',
-    href: 'telegram',
+    action: 'Подписаться на дайджест',
+    href: 'telegram-digest',
+    intent: 'daily_ai_news_digest',
   },
   {
-    title: 'Архитектурный AI-разбор',
+    title: 'Архитектурный разбор ИИ',
     text: 'Разберите процессы, данные, риски и экономику до старта разработки.',
-    action: 'Обсудить AI-проект',
+    action: 'Оставить заявку',
     href: 'contacts',
+    intent: 'architecture_review',
   },
 ]
 
 function FinalGuideCta({
   guide,
-  telegramUrl,
+  digestTelegramUrl,
+  personalTelegramUrl,
   contactsUrl,
 }: {
   guide: Guide
-  telegramUrl: string
+  digestTelegramUrl: string
+  personalTelegramUrl: string
   contactsUrl: string
 }) {
   const items = guide.ctaCards?.length ? guide.ctaCards : DEFAULT_FINAL_CTA_CARDS
@@ -398,20 +471,28 @@ function FinalGuideCta({
       <h2 className="font-serif text-[26px] font-bold text-ink">Что можно сделать после чтения</h2>
       <div className="mt-5 grid gap-4 md:grid-cols-3">
         {items.map((item) => {
-          const href = resolveCtaHref(item.href, telegramUrl, contactsUrl)
+          const href = resolveCtaHref(item.href, guide, item, 'final', {
+            contactsUrl,
+            digestTelegramUrl,
+            personalTelegramUrl,
+          })
           const isExternal = href.startsWith('http')
+          const tracking = buildCtaTracking(guide, item, 'final')
           return (
             <div key={item.title} className="rounded border border-line bg-base p-5">
               <h3 className="text-base font-semibold text-ink">{item.title}</h3>
               <p className="mt-2 text-sm leading-relaxed text-muted">{item.text}</p>
-              <a
+              <GuideTrackedLink
                 href={href}
                 target={isExternal ? '_blank' : undefined}
                 rel={isExternal ? 'noopener noreferrer' : undefined}
+                goal={tracking.goal}
+                metrikaId={METRIKA_ID}
+                params={tracking.params}
                 className="mt-4 inline-flex text-sm font-semibold text-accent hover:underline"
               >
                 {item.action}
-              </a>
+              </GuideTrackedLink>
             </div>
           )
         })}
@@ -420,10 +501,66 @@ function FinalGuideCta({
   )
 }
 
-function resolveCtaHref(href: string, telegramUrl: string, contactsUrl: string): string {
-  if (href === 'telegram') return telegramUrl
-  if (href === 'contacts') return contactsUrl
+function resolveCtaHref(
+  href: string,
+  guide: Guide,
+  cta: GuideCtaConfig,
+  placement: string,
+  urls: {
+    contactsUrl: string
+    digestTelegramUrl: string
+    personalTelegramUrl: string
+  },
+): string {
+  if (href === 'telegram' || href === 'telegram-personal') return urls.personalTelegramUrl
+  if (href === 'telegram-digest') return urls.digestTelegramUrl
+  if (href === 'telegram-personal') return urls.personalTelegramUrl
+  if (href === 'contacts') return buildContactsUrl(urls.contactsUrl, guide, cta, placement)
   return href
+}
+
+function buildContactsUrl(baseUrl: string, guide: Guide, cta: GuideCtaConfig, placement: string): string {
+  const url = new URL(baseUrl)
+  url.searchParams.set('utm_source', 'news_malakhovai_ru')
+  url.searchParams.set('utm_medium', 'guide_cta')
+  url.searchParams.set('utm_campaign', `guide_${guide.slug}`)
+  url.searchParams.set('utm_content', `${placement}_${slugifyTrackingValue(cta.title)}`)
+  url.searchParams.set('lead_source', 'news_guide')
+  url.searchParams.set('article_slug', guide.slug)
+  url.searchParams.set('article_title', guide.title)
+  url.searchParams.set('cta_title', cta.title)
+  url.searchParams.set('cta_action', cta.action)
+  url.searchParams.set('intent', cta.intent ?? slugifyTrackingValue(cta.title))
+  url.searchParams.set(
+    'lead_context',
+    `Заявка со статьи "${guide.title}", CTA "${cta.title}", intent "${cta.intent ?? slugifyTrackingValue(cta.title)}"`,
+  )
+  return url.toString()
+}
+
+function buildCtaTracking(guide: Guide, cta: GuideCtaConfig, placement: string) {
+  const isContact = cta.href === 'contacts'
+  return {
+    goal: isContact ? 'guide_contact_click' : 'guide_telegram_click',
+    params: {
+      article_slug: guide.slug,
+      article_title: guide.title,
+      cta_title: cta.title,
+      cta_action: cta.action,
+      cta_href: cta.href,
+      intent: cta.intent ?? slugifyTrackingValue(cta.title),
+      placement,
+    },
+  }
+}
+
+function slugifyTrackingValue(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[^\p{L}\p{N}]+/gu, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80)
 }
 
 function RelatedLinks({ guide }: { guide: Guide }) {

@@ -27,6 +27,7 @@ export interface GuideCta {
   text: string
   action: string
   href: string
+  intent?: string
 }
 
 export interface GuideInlineCta extends GuideCta {

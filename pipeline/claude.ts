@@ -40,11 +40,18 @@ const SYSTEM_PROMPT = `Ты — выпускающий редактор русс
 - Канцеляризмы: «осуществлять», «в рамках», «что касается», «на сегодняшний день».
 - Вводные пустышки: «что ж», «итак», «действительно».
 - Маркетинговый пафос любого рода.
+- Штамп отрицание-противопоставление: «не X, а Y», «не просто X, а Y»,
+  «это не X, а Y», «не только X, но и Y». Формулируй напрямую, без дешёвой
+  драматизации.
 
 ПРАВИЛА.
 - Пиши по-русски. «AI» = «ИИ». Названия моделей — в оригинале (GPT-4o, Claude 3.5 Sonnet,
   Gemini 2.5 Pro, Llama 3.1, YandexGPT 4, GigaChat).
-- Английские термины оставляй только если нет русского аналога: LLM, API, open-source, benchmark.
+- Английские термины оставляй только если нет русского аналога или это часть названия продукта:
+  LLM, API, open-source, benchmark, OpenAI, Yandex AI Studio. Бытовой англо-жаргон переводить:
+  proof of concept = проверка концепции, production = рабочий контур,
+  workflow = сценарий или цепочка автоматизации, dashboard = панель,
+  fallback = резервный сценарий, no-code/low-code = конструкторы или минимальная разработка.
 - Первое предложение лида должно содержать минимум один конкретный якорь:
   имя собственное / число / дату / название продукта.
 - Первый абзац никогда не повторяет заголовок.
@@ -124,6 +131,8 @@ STARTUPS. Если темы содержат ai-startups, обязательно
 - Если категория содержит ai-research: editorial_body минимум 1500 символов.
 - summary содержит минимум 3 пункта.
 - Нет слов из списка запретов.
+- Нет штампованных связок «не X, а Y», «не просто X, а Y», «не только X, но и Y».
+- Английский жаргон переведён на русский, кроме названий продуктов и терминов без нормального аналога.
 - Материал не повторяет заголовок в первом абзаце.
 - В источнике достаточно фактов, чтобы написать больше, чем пересказ заголовка.
 
@@ -304,6 +313,13 @@ export const EDITORIAL_BANNED_PHRASES = [
   'действительно',
 ]
 
+const NEGATION_CONTRAST_PATTERNS = [
+  /(^|[^\p{L}\p{N}_])не\s+просто(?=$|[^\p{L}\p{N}_])[^.!?\n]{0,140}(^|[^\p{L}\p{N}_])а(?=$|[^\p{L}\p{N}_])/iu,
+  /(^|[^\p{L}\p{N}_])не\s+только(?=$|[^\p{L}\p{N}_])[^.!?\n]{0,140}(^|[^\p{L}\p{N}_])но\s+и(?=$|[^\p{L}\p{N}_])/iu,
+  /(^|[^\p{L}\p{N}_])это\s+не(?=$|[^\p{L}\p{N}_])[^.!?\n]{0,140}(^|[^\p{L}\p{N}_])а(?=$|[^\p{L}\p{N}_])/iu,
+  /(^|[^\p{L}\p{N}_])не(?=$|[^\p{L}\p{N}_])[^.!?\n]{1,140},?\s+а(?=$|[^\p{L}\p{N}_])/iu,
+]
+
 const ALLOWED_AI_NAME_PATTERNS = [
   /\bOpenAI\b/i,
   /\bHugging\s+Face\s+AI\b/i,
@@ -341,6 +357,10 @@ function hasDisallowedStandaloneAi(text: string): boolean {
     const context = text.slice(Math.max(0, index - 24), index + match[0].length + 48)
     return !ALLOWED_AI_NAME_PATTERNS.some((pattern) => pattern.test(context))
   })
+}
+
+function hasNegationContrastPattern(text: string): boolean {
+  return NEGATION_CONTRAST_PATTERNS.some((pattern) => pattern.test(text))
 }
 
 function hasRussianNumberWord(text: string): boolean {
@@ -444,6 +464,9 @@ export function validateEditorialDetailed(out: EditorialOutput): EditorialValida
   }
 
   if (hasDisallowedStandaloneAi(fullText)) errors.push('standalone AI в русском тексте')
+  if (hasNegationContrastPattern(fullText)) {
+    errors.push('штамп отрицание-противопоставление: "не X, а Y"')
+  }
 
   if (/\$|млн|млрд|оценк[аиу]|инвестиц|раунд/i.test(fullText)) riskFlags.push('money')
   if (/регулирован|закон|иск|судебн|правов|санкци|конфиденциальн|персональн|авторск|EU AI Act|AI Act/i.test(fullText)) {

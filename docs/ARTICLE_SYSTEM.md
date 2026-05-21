@@ -412,6 +412,22 @@ Broad RSS feeds допускаются только с keyword filters:
   картинки в `public/images/guides/<slug>/` и добавляются в sitemap как статичные monthly URL;
   для каждого гайда также задаются `relatedArticleCategories`, по которым в конце материала
   подтягиваются live-статьи из Supabase;
+- для preview-гайдов metadata может содержать `noindex: true`: такой гайд доступен по прямой
+  ссылке, получает `robots noindex,nofollow`, исключается из `/guides` и sitemap, но входит в
+  `generateStaticParams`, чтобы production URL открывался после деплоя;
+- публичный UI гайдов не использует слово `Evergreen`; это внутреннее название контентного типа;
+- CTA в гайдах описываются в metadata. Ссылки на `contacts` ведут на
+  `https://malakhovai.ru/contacts` с UTM, `article_slug`, `article_title`, `cta_title`,
+  `cta_action` и `intent`. Клики отправляют цель `guide_contact_click` в Яндекс Метрику.
+  Telegram-направления разделены: `telegram-digest` — ежедневный дайджест новостей,
+  `telegram-personal` — личный Telegram владельца; legacy-значение `telegram` трактуется
+  как личный Telegram, чтобы не смешивать подписку на владельца с новостным дайджестом;
+- блок `Источники и данные` в гайдах рендерится как сворачиваемый disclosure в конце статьи,
+  чтобы сохранять fact-check/SEO-контекст без ощущения, что основной материал закончился
+  преждевременно;
+- изображения для новых evergreen-гайдов готовятся через ChatGPT-подписку владельца
+  или отдельный согласованный визуальный production-flow; локальные схемы допустимы как
+  временные технические заглушки и требуют замены перед полноценной индексацией;
 - `app/sitemap.ts` использует ISR (`export const revalidate = 1800`), чтобы пересобираться каждые 30 минут из live-выборки и не зависать на состоянии последнего деплоя — без этого свежие статьи невидимы для Яндекс/Google до следующего билда;
 - `pipeline/publish-verify.ts` после успешного перехода статьи в `live` вызывает `pingIndexNow()` (`lib/indexnow.ts`) на `https://api.indexnow.org/indexnow`, чтобы Yandex / Bing узнали о новом URL за минуты, а не за дни. Ключ — env `INDEXNOW_KEY`, проверочный файл — `app/indexnow.txt/route.ts`. Без env-переменной ping молча no-op'ится, publish-path не ломается. Google не участвует в IndexNow и продолжает индексировать через sitemap;
 - публичные листинги (`/archive/[date]`, `/sources`, `/sources/[source]`, `/categories/[category]`, `/russia`) задают canonical / `og:url` на news-домен через `lib/site.ts::absoluteUrl`;
