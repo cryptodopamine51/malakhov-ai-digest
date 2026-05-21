@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { SITE_DESCRIPTION, SITE_NAME, SITE_TELEGRAM_URL, SITE_URL, absoluteUrl } from '../../lib/site'
+import { SITE_NAME, SITE_TELEGRAM_URL, SITE_URL, absoluteUrl } from '../../lib/site'
 
 export const revalidate = 86400
 
@@ -77,17 +77,9 @@ export default function AboutPage() {
           применяем дополнительную проверку и разделяем факты и интерпретацию.
         </p>
         <p>
-          Подробные правила редакции зафиксированы в публичном{' '}
-          <a
-            href="https://github.com/anthropics/malakhov-ai-digest/blob/main/docs/editorial/seo-article-publication-standard.md"
-            className="text-accent hover:underline"
-            target="_blank"
-            rel="noopener"
-          >
-            редакционном стандарте
-          </a>
-          ; ключевые принципы — отсутствие clickbait, явное указание источника, чистый канонический
-          URL и совпадение JSON-LD с видимой страницей.
+          Ключевые принципы редакции — отсутствие clickbait, явное указание первоисточника,
+          чистый канонический URL и совпадение JSON-LD с видимой страницей. Внутренний редакционный
+          стандарт фиксирует эти правила и обновляется одновременно с изменениями pipeline.
         </p>
 
         <h2 className="mt-8 font-serif text-2xl font-bold text-ink">Технология</h2>

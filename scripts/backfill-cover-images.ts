@@ -184,14 +184,30 @@ async function buildChange(row: ArticleMediaRow): Promise<BackfillChange | null>
     context,
   })
   const existingImages = sanitizedExisting.articleImages.length > 0 ? sanitizedExisting.articleImages : null
-  const existingInvalid = Boolean(row.cover_image_url && !sanitizedExisting.coverImageUrl)
-  const missingCover = !sanitizedExisting.coverImageUrl
+  // SEO-wave 2026-05-21: sanitizer now auto-promotes the first sanitized
+  // inline image into the cover slot at runtime. For backfill we still want
+  // to materialise that promotion in the DB row — otherwise this script
+  // would short-circuit and no-op on rows that genuinely have NULL/garbage
+  // cover_image_url. Treat a promoted cover as "missing cover" for the
+  // backfill decision.
+  const promotedFromInline = sanitizedExisting.coverPromotedFromInline === true
+  // existingInvalid covers two cases:
+  // 1. sanitizer dropped the cover entirely (cover = null after sanitisation);
+  // 2. sanitizer promoted an inline image into the cover slot — which means the
+  //    original cover was unusable (rejected) even though the field carries a
+  //    valid src after promotion.
+  const existingInvalid = Boolean(row.cover_image_url) && (
+    !sanitizedExisting.coverImageUrl || promotedFromInline
+  )
+  const missingCover = !sanitizedExisting.coverImageUrl || promotedFromInline
   const svgCover = isSvgUrl(row.cover_image_url)
   const textCoverSource = TEXT_COVER_SOURCES.has(row.source_name)
 
   if (textCoverSource && !row.cover_image_url) return null
   if (!missingCover && !existingInvalid && !svgCover) return null
 
+  // `sanitizedExisting.coverImageUrl` already carries the promoted inline
+  // image when promotedFromInline=true, so writing it directly is enough.
   let nextCover = sanitizedExisting.coverImageUrl
   let nextImages = existingImages
   let fetched = false

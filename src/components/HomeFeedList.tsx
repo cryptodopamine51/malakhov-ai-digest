@@ -48,6 +48,14 @@ export default function HomeFeedList({
       const payload = (await response.json()) as FeedResponse
       setArticles((prev) => [...prev, ...payload.articles])
       setCurrentPage(nextPage)
+
+      // Mirror CategoryArticleList: update the URL so users can bookmark or
+      // share their current scroll position. The server still ignores the
+      // `?page=` param (page 1 is the only server-rendered state) and
+      // canonical URL stays on `/`, so this is purely UX — no SEO impact.
+      if (typeof window !== 'undefined') {
+        window.history.pushState(null, '', `/?page=${nextPage}`)
+      }
     } catch {
       setError('Не удалось загрузить следующую страницу')
     } finally {

@@ -132,6 +132,17 @@
 - `docs/ARTICLE_SYSTEM.md` — Media sanitizer section now documents "Runtime cover fallback".
 - `docs/editorial/seo-article-publication-standard.md` §11 — added "Cover fallback chain" block.
 
+**Audit-pass follow-up (2026-05-21, post-7.2)**:
+- `scripts/backfill-cover-images.ts` updated to read `coverPromotedFromInline`.
+  Without this fix the script would early-return on rows where the sanitizer
+  internally promoted an inline image into the cover slot — and the DB
+  `cover_image_url` would stay NULL. New behavior:
+  - `missingCover = !sanitizedExisting.coverImageUrl || promotedFromInline`
+  - `existingInvalid` triggers when the original cover existed but sanitizer
+    either dropped it OR replaced it with a promoted inline.
+  This keeps the backfill effective on legacy rows while preserving the
+  runtime promotion benefit for the page render.
+
 ---
 
 ## Iteration 2.1 — BreadcrumbList JSON-LD on article pages (closed)
