@@ -129,6 +129,23 @@ export const FEEDS: FeedConfig[] = [
     topics: ['ai-labs'],
   },
   {
+    // Продуктовый блог Google (Gemini, Veo, Imagen, I/O-анонсы). Раньше эти материалы
+    // долетали к нам только через посредников (Verge/TechCrunch), а большой анонс Google I/O
+    // 2026 поэтому проигрывал по score и теме Habr-материалам — см.
+    // spec_2026-05-22_digest_editorial_priority.md Wave 3.
+    //
+    // Endpoint `/technology/ai/rss/` 301-редиректится на `/innovation-and-ai/technology/ai/rss/`,
+    // но nominal `AI` категорию Google всё равно использует широко (community-инвестиции,
+    // инфраструктурные посты). Поэтому держим `needsKeywordFilter` + title-only фильтр.
+    name: 'Google Blog',
+    url: 'https://blog.google/technology/ai/rss/',
+    lang: 'en',
+    topics: ['ai-labs', 'ai-industry'],
+    needsKeywordFilter: true,
+    keywords: EN_AI_CORE_KEYWORDS,
+    keywordSearchFields: 'title',
+  },
+  {
     name: 'Google DeepMind Blog',
     url: 'https://deepmind.google/blog/rss.xml',
     lang: 'en',

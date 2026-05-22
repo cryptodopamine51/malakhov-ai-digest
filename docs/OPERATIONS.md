@@ -255,6 +255,40 @@ npx tsx scripts/sanitize-existing-article-media.ts --apply --limit=50
 - перед apply нужно просмотреть summary `changed`, `by_reason`, `by_source` и examples;
 - apply пишет rollback-audit в `tmp/media-sanitizer-audit-*.jsonl`.
 
+### Cover-from-inline backfill
+
+Для статей, у которых AI-cover был сгенерирован поверх вполне пригодных inline-картинок
+(последствие старой логики `needsAiCover()` — см.
+`docs/spec_2026-05-22_digest_editorial_priority.md` Wave 2), есть точечный скрипт
+`scripts/backfill-cover-from-inline.ts`. Он не вызывает OpenAI и не фетчит исходник: работает
+только с уже сохранёнными `article_images` через `lib/media-sanitizer.ts::sanitizeArticleMedia`
+с `coverImageUrl: null`, чтобы посмотреть, что промоутится из inline.
+
+Команды:
+
+```bash
+npx tsx scripts/backfill-cover-from-inline.ts --dry-run
+npx tsx scripts/backfill-cover-from-inline.ts --slug=<slug> --dry-run
+npx tsx scripts/backfill-cover-from-inline.ts --slug=<slug> --apply
+npx tsx scripts/backfill-cover-from-inline.ts --limit=20 --apply
+```
+
+Правила:
+
+- default — dry-run; `--apply` обязателен для записи;
+- скан включает только статьи с `cover_image_url LIKE '%/article-images/ai-covers/%'`
+  и непустым `article_images` (template/stock не трогаются — это легитимный fill-in);
+- broader backfill (~24 Habr/CNews статей в архиве) запускается только после spot-check
+  владельцем, потому что Habr-author-set обложки разной editorial-ценности.
+
+### `scripts/generate-ai-covers.ts` после Wave 2
+
+`needsAiCover()` теперь принимает решение через `sanitizeArticleMedia` со ВСЕМ доступным медиа
+(`cover_image_url + article_images`). Старый хардкод `['Habr AI','vc.ru','vc.ru AI/стартапы',
+'CNews']` убран — для статьи с реальным фото в `article_images` AI-cover не генерируется.
+Template/stock-обложки остаются заменяемыми. SELECT в `selectArticles` теперь дополнительно
+тащит `article_images`. См. `docs/spec_2026-05-22_digest_editorial_priority.md` Wave 2.
+
 ### Source cover backfill
 
 Для восстановления отсутствующих source cover и удаления плохих SVG/placeholder cover используется

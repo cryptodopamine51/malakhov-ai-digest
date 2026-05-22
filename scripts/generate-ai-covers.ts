@@ -35,6 +35,9 @@ interface ArticleRow {
   created_at: string
   cover_image_url: string | null
   score: number | null
+  // Inline-картинки из original-fetcher'a. Используются в needsAiCover, чтобы решение «нужна
+  // ли AI-обложка» учитывало возможность промоутить inline-картинку в cover через sanitizer.
+  article_images: { src: string; alt?: string | null }[] | null
 }
 
 interface GenerationResult {
@@ -289,7 +292,7 @@ async function selectArticles(supabase: any): Promise<ArticleRow[]> {
 
   let query = supabase
     .from('articles')
-    .select('id, slug, ru_title, lead, card_teaser, editorial_body, source_name, topics, primary_category, secondary_categories, created_at, cover_image_url, score')
+    .select('id, slug, ru_title, lead, card_teaser, editorial_body, source_name, topics, primary_category, secondary_categories, created_at, cover_image_url, score, article_images')
     .eq('published', true)
     .eq('quality_ok', true)
     .not('slug', 'is', null)
@@ -375,7 +378,7 @@ async function selectFirstHomepageFeedArticle(supabase: any, excludeIds: string[
 function liveArticleQuery(supabase: any) {
   return supabase
     .from('articles')
-    .select('id, slug, ru_title, lead, card_teaser, editorial_body, source_name, topics, primary_category, secondary_categories, created_at, cover_image_url, score')
+    .select('id, slug, ru_title, lead, card_teaser, editorial_body, source_name, topics, primary_category, secondary_categories, created_at, cover_image_url, score, article_images')
     .eq('published', true)
     .eq('quality_ok', true)
     .eq('verified_live', true)
@@ -384,19 +387,42 @@ function liveArticleQuery(supabase: any) {
     .not('ru_title', 'is', null)
 }
 
+/**
+ * needsAiCover решает, нужна ли статье AI-обложка.
+ *
+ * Источник истины — `sanitizeArticleMedia` со ВСЕМ доступным медиа (cover + article_images):
+ * если sanitizer вернул usable cover (исходный или промоутированный из inline) — генерация
+ * не нужна; если нет — нужна.
+ *
+ * Жёсткий хардкод по `source_name` (Habr/vc.ru/CNews всегда AI) убран намеренно: для статьи
+ * с реальным продуктовым фото в `article_images` (например, vc.ru про Flipper One) AI-обложка
+ * перетирала качественный source-image. См. spec_2026-05-22_digest_editorial_priority.md Wave 2.
+ *
+ * Замена template/stock-обложек на AI остаётся: это fill-in, AI обычно лучше.
+ */
 function needsAiCover(article: ArticleRow): boolean {
-  if (!article.cover_image_url) return true
-  if (article.cover_image_url.includes('/article-images/ai-covers/')) return false
-  if (!getUsableCoverUrl(article)) return true
-  if (article.cover_image_url.includes('/article-images/template-covers/')) return true
-  if (article.cover_image_url.includes('/article-images/stock-covers/')) return true
-  return ['Habr AI', 'vc.ru', 'vc.ru AI/стартапы', 'CNews'].includes(article.source_name)
+  // Уже сгенерировали AI-обложку ранее — не дублируем.
+  if (article.cover_image_url?.includes('/article-images/ai-covers/')) return false
+
+  // Template/stock-обложки можно безопасно заменить на AI — это локальные fill-in'ы.
+  if (article.cover_image_url?.includes('/article-images/template-covers/')) return true
+  if (article.cover_image_url?.includes('/article-images/stock-covers/')) return true
+
+  // Пускаем cover + все доступные inline через sanitizer. Если он промоутит inline в cover
+  // или валидирует исходный cover — AI не нужен.
+  const sanitized = sanitizeArticleWithInline(article)
+  return !sanitized.coverImageUrl
 }
 
-function getUsableCoverUrl(article: ArticleRow): string | null {
-  return sanitizeArticleMedia({
+interface SanitizedCoverInfo {
+  coverImageUrl: string | null
+  coverPromotedFromInline: boolean
+}
+
+function sanitizeArticleWithInline(article: ArticleRow): SanitizedCoverInfo {
+  const result = sanitizeArticleMedia({
     coverImageUrl: article.cover_image_url,
-    articleImages: null,
+    articleImages: parseArticleImagesForSanitizer(article),
     context: {
       sourceName: article.source_name,
       originalUrl: '',
@@ -406,7 +432,25 @@ function getUsableCoverUrl(article: ArticleRow): string | null {
       summary: null,
       originalText: article.editorial_body,
     },
-  }).coverImageUrl
+  })
+  return {
+    coverImageUrl: result.coverImageUrl,
+    coverPromotedFromInline: Boolean(result.coverPromotedFromInline),
+  }
+}
+
+function parseArticleImagesForSanitizer(article: ArticleRow): { src: string; alt: string | null }[] | null {
+  const raw = (article as ArticleRow & { article_images?: unknown }).article_images
+  if (!Array.isArray(raw)) return null
+  return raw
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const src = typeof (item as { src?: unknown }).src === 'string' ? (item as { src: string }).src : null
+      if (!src) return null
+      const alt = typeof (item as { alt?: unknown }).alt === 'string' ? (item as { alt: string }).alt : null
+      return { src, alt }
+    })
+    .filter((entry): entry is { src: string; alt: string | null } => Boolean(entry))
 }
 
 function classifyCover(value: string | null): string {

@@ -163,6 +163,39 @@ async function filterLiveArticles(articles: Article[], siteUrl: string): Promise
   return results.filter((a): a is Article => a !== null)
 }
 
+// ── Diversity-кэп по source_name ─────────────────────────────────────────────
+//
+// Берём первые `target` статей в исходном порядке (он приходит из SELECT по
+// score desc / pub_date desc), но не больше `perSourceCap` от одного source_name.
+// Это снимает монополию одного хаба (Habr AI / vc.ru / CNews) и оставляет
+// слоты для индустриальных сюжетов (Gemini-launches, OpenAI-релизы, AI-labs blog).
+
+export function applyDiversityCap<T extends Pick<Article, 'source_name'>>(
+  articles: T[],
+  { perSourceCap = 2, target = 5 }: { perSourceCap?: number; target?: number } = {},
+): T[] {
+  const selected: T[] = []
+  const sourceCounts = new Map<string, number>()
+  for (const article of articles) {
+    if (selected.length >= target) break
+    const count = sourceCounts.get(article.source_name) ?? 0
+    if (count >= perSourceCap) continue
+    selected.push(article)
+    sourceCounts.set(article.source_name, count + 1)
+  }
+  return selected
+}
+
+export function buildSourceDistribution<T extends Pick<Article, 'source_name'>>(
+  articles: T[],
+): Record<string, number> {
+  const distribution: Record<string, number> = {}
+  for (const article of articles) {
+    distribution[article.source_name] = (distribution[article.source_name] ?? 0) + 1
+  }
+  return distribution
+}
+
 // ── UTM-ссылки ────────────────────────────────────────────────────────────────
 
 function articleUrl(
@@ -567,7 +600,10 @@ async function runClaimedDigest(ctx: ClaimedContext): Promise<DigestResult> {
       .order('score', { ascending: false })
       .order('pub_date', { ascending: false })
 
-    const { data, error } = await q.limit(8)
+    // Берём с запасом, чтобы diversity-кэп (см. applyDiversityCap) и filterLiveArticles
+    // не оставили нас без 5 финальных слотов, если 4–5 верхних по score материалов — с одного
+    // источника (типичный случай: один день — пять Habr AI подряд).
+    const { data, error } = await q.limit(25)
     if (error) throw error
     articles = (data ?? []) as Article[]
   } catch (err) {
@@ -626,8 +662,14 @@ async function runClaimedDigest(ctx: ClaimedContext): Promise<DigestResult> {
   // Проверяем доступность на сайте
   const liveArticles = await filterLiveArticles(articles, siteUrl)
 
-  // Берём не более 5
-  const digest = liveArticles.slice(0, 5)
+  // Diversity-кэп: не больше 2 статей с одного source_name. Без кэпа Habr AI / vc.ru / CNews
+  // регулярно забирали 4–5 из 5 слотов, заталкивая индустриальные сюжеты (Gemini-launches,
+  // OpenAI-релизы) ниже. См. spec_2026-05-22_digest_editorial_priority.md Wave 1.
+  const digest = applyDiversityCap(liveArticles, { perSourceCap: 2, target: 5 })
+  const digestSourceDistribution = buildSourceDistribution(digest)
+  if (digest.length > 0) {
+    log(`Diversity-кэп оставил ${digest.length} из ${liveArticles.length}: ${JSON.stringify(digestSourceDistribution)}`)
+  }
 
   // Если меньше 3 — health-отчёт и не шлём в канал
   if (digest.length < 3) {

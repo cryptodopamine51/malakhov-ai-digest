@@ -67,7 +67,7 @@ const IMAGE_FILE_RE = /^[\w./:%-]+\.(?:png|jpe?g|webp|gif|svg)(?:[?#].*)?$/i
 const TEXT_COVER_SOURCE_NAMES = new Set(['Habr AI', 'vc.ru', 'vc.ru AI/стартапы', 'CNews'])
 
 const CONTEXTUAL_IMAGE_SOURCE_RE =
-  /(?:404 media|ars technica|aws machine learning blog|cnet|mit technology review|the verge|techcrunch|venturebeat|wired|zdnet|openai|anthropic|google deepmind|deepmind|nvidia|microsoft|google|meta|habr|the decoder)/i
+  /(?:404 media|ars technica|aws machine learning blog|cnet|mit technology review|the verge|techcrunch|venturebeat|wired|zdnet|openai|anthropic|google deepmind|deepmind|nvidia|microsoft|google|meta|habr|the decoder|vc\.ru)/i
 
 const AUTHOR_URL_RE =
   /(?:\/authors?\/|\/author\/|\/byline\/|\/bio\/|\/profiles?\/|\/staff\/|\/people\/|author(?:[-_.?/]|$)|byline(?:[-_.?/]|$)|bio(?:[-_.?/]|$)|profile(?:[-_.?/]|$)|avatar(?:[-_.?/]|$)|headshot(?:[-_.?/]|$)|portrait(?:[-_.?/]|$))/i

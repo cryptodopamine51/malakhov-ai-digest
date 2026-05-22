@@ -2,9 +2,65 @@
 
 > Главный управляющий файл проекта.
 > Он не подгружается автоматически “из памяти” между сессиями: в начале каждой новой работы его нужно открыть явно или запустить `npm run context`.
-> Последнее обновление: 2026-05-21
+> Последнее обновление: 2026-05-22
 
-Последняя закрытая инициатива: **Evergreen quality wave (2026-05-21)** — `docs/spec_2026-05-21_evergreen-quality-standard.md`. Поднимает планку для серии из 30 evergreen-гайдов (после выпуска `skolko-stoit-vnedrenie-ii-v-kompaniyu`): обязательны factual anchor в первом предложении лида, видимая «Актуальность проверена: <дата>», numerical worked example, развёрнутый кейс с маркером источника, counter-strategy H2 «Когда не стоит / не окупится», ≥ 2 inline-ссылок в теле, CTA cap (≤ 2 inline + 1 final-блок с 3 карточками), 152-ФЗ + GigaChat/YandexGPT в российском контексте. Реализовано: `GuideMeta` получает обязательное `verifiedAt` и опциональное `caseSourcing`; `app/guides/[slug]/page.tsx::buildJsonLd` теперь эмитит `author = Person` (`/about#person`), `wordCount`, `articleSection`, `keywords`; mobile TOC сворачивается в `<details>`; `scripts/evergreen-check.ts` дополнен 10 правилами (lead anchor, verifiedAt, case/counter-strategy/inline links, CTA cap, cover ≥ 80 KB, noindex старше 14 дней); `scripts/images-prep.ts` + `npm run images:prep` конвертирует PNG из ChatGPT в production-WebP (cover 1200×675, inline 1200×800/1200×1200, quality 82). Cost-статья переписана по новому стандарту (factual anchor, кейс «AI-квалификация лидов (Редакционный пример)», H2 «Когда внедрение ИИ не окупится», доп. inline-link в `/categories/ai-industry`); cover остаётся 12 KB до ручной регенерации владельцем через ChatGPT (warn остаётся, errors — нет). Картинки делаются только через подписку ChatGPT/Codex; image API не используется. Шаблоны (`image-brief`, `editorial-pass`) и промпты «Проект 1 / Проект 2» обновлены под новый bar.
+Последняя инициатива (closed 2026-05-22, late evening): **Digest editorial priority + cover fix** —
+`docs/spec_2026-05-22_digest_editorial_priority.md`. Закрыты Wave 1 (scorer rebalance +
+diversity-кэп), Wave 2 (cover preference fix) и Wave 3 (Google Blog feed).
+- `pipeline/scorer.ts` переписан. Убрано удвоение `ai-russia +2` + `source_lang=ru +1`
+  (теперь только `ai-russia +1`). Детектор AI-лабораторий/продуктов работает по
+  `original_title` / `ru_title` / первому килобайту `original_text` через Unicode word-boundary
+  (`\P{L}`): openai/chatgpt/gpt-N/sora/anthropic/claude/deepmind/gemini/veo/imagen/mistral/
+  cohere/xai/grok/llama/nvidia/blackwell/copilot/phi-N/yandexgpt/gigachat → `+2`. Major-announcement
+  bundle (`+2` поверх AI-lab match): EN-глаголы unveils/launches/announces/releases/introduces/
+  debuts + ru-стемы `представ`/`запусти`/`запуска`/`анонсир`/`выпустил`/`выпустит` в заголовке.
+  Длина `editorial_body > 1000` (а не raw text). Обложки `/article-images/(ai|template|stock)-covers/`
+  больше не дают `+1` — fill-in не сигнал качества. Тесты `tests/node/scorer.test.ts`.
+- `bot/daily-digest-core.ts` — diversity-кэп: SELECT расширен до top-25,
+  `applyDiversityCap(perSourceCap=2, target=5)` режет не более 2 статей с одного `source_name`.
+  Без этого Habr AI забирал 4–5 из 5 слотов и заталкивал индустриальные сюжеты ниже. Тесты
+  `tests/node/digest-diversity.test.ts`.
+- `pipeline/feeds.config.ts` — добавлен `Google Blog` (`blog.google/technology/ai/rss/`,
+  `needsKeywordFilter: true`, `EN_AI_CORE_KEYWORDS`, title-only). Раньше Google product-анонсы
+  долетали через посредников.
+- `scripts/generate-ai-covers.ts::needsAiCover()` переписан: источник истины —
+  `sanitizeArticleMedia` со ВСЕМ доступным медиа (cover + `article_images`). Если sanitizer
+  промоутил inline или валидировал исходный cover — AI не генерируем. Хардкод
+  `['Habr AI','vc.ru','vc.ru AI/стартапы','CNews']` убран. SELECT теперь тащит `article_images`.
+- `lib/media-sanitizer.ts::CONTEXTUAL_IMAGE_SOURCE_RE` — добавлен `vc\.ru`, чтобы inline-картинки
+  vc.ru с generic-caption проходили sanitizer.
+- `scripts/backfill-cover-from-inline.ts` (новый) — сканирует статьи с AI-cover и непустым
+  `article_images`, прогоняет sanitizer'ом, заменяет AI-cover на promoted-from-inline.
+  Применено к Flipper-статье (`flipper-devices-vypustila-karmannyy-linux-kompyuter-flipper`)
+  — на странице теперь реальное фото устройства из `leonardo.osnova.io`. Broader backfill за
+  ~24 другие статьи (преимущественно Habr) on hold — владелец решает после spot-check.
+
+Wave 4 (context-aware scene-matcher в `chooseScene`) перенесён в отдельную итерацию: фикс из
+Wave 2 уже устраняет основную боль (AI-cover поверх продуктовых фото); сцена для редких
+оставшихся AI-обложек — secondary улучшение.
+
+Doc impact этой сессии: `docs/ARTICLE_SYSTEM.md` (Score and publish gate с новой формулой,
+Telegram digest selection с diversity-кэпом, Cover image с новым `needsAiCover` и backfill,
+Sources с Google Blog и `vc.ru` в `CONTEXTUAL_IMAGE_SOURCE_RE`), `CLAUDE.md` (это резюме),
+`docs/spec_2026-05-22_digest_editorial_priority.md` (план).
+
+Предыдущая инициатива (closed 2026-05-22, evening): **Evergreen series burst #1** — за одну сессию закрыты 4 новых гайда серии «ИИ для бизнеса» (id 3–6 из `content/evergreen/topics.json`), все по новому quality bar:
+- **id 3** «ИИ для малого бизнеса: с чего начать» (`/guides/ii-dlya-malogo-biznesa-s-chego-nachat`) — package сделан в соседнем чате, опубликован под `noindex: true` + placeholder cover.
+- **id 4** «Какие бизнес-процессы автоматизировать с помощью ИИ» (`/guides/kakie-biznes-processy-avtomatizirovat-s-pomoshyu-ii`) — матрица 4 фильтров, 10 сценариев, кейс агентства, worked example поддержки интернет-магазина.
+- **id 5** «Ошибки внедрения ИИ в компании» (`/guides/oshibki-vnedreniya-ii-v-kompanii`) — анти-гайд из 10 ошибок по стадиям, кейс провала B2B SaaS, worked example цены ошибки лимита API (1,45 млн ₽ за выходные).
+- **id 6** «Как выбрать первый ИИ-проект в бизнесе» (`/guides/kak-vybrat-pervyj-ii-proekt-v-biznese`) — взвешенный скоринг 7 критериев / 100 баллов, 12 типовых кандидатов с оценками, кейс дистрибьютора, worked example скоринга для отзывов.
+Все четыре package'а полные (12 файлов), `evergreen:check` проходит с единственным cover-warn (12 KB placeholder, ждёт ChatGPT-генерации владельцем). `npm run build` exit 0. `topics.json`: id 3–6 переведены в `ready_for_codex`. Cover-генерация и снятие `noindex` — owner step.
+
+Предыдущая инициатива (closed 2026-05-22, morning): **Evergreen open-questions closure** — `docs/spec_2026-05-21_evergreen-quality-standard.md` §9, §10, §13. Ответы владельца:
+- **CTA**: чеклист-lead-magnet выпилен; разрешённые поверхности — `telegram-digest` (`@malakhovaidigest`), `contacts` (`malakhovai.ru/contacts`), `telegram-personal` (`@malakhovai`). `DEFAULT_FINAL_CTA_CARDS` в `app/guides/[slug]/page.tsx` и meta `kak-vnedrit-ii-v-biznes-2026.json` перешиты на эти три слота. CTA нельзя обещать артефакты, которых нет.
+- **Indexation**: `noindex: true` — транзиентное состояние «нет cover», снимается сразу после готовности cover + `npm run images:prep` + `evergreen:check` green. Никакого 3–7-дневного review-окна.
+- **Worked example**: только статический Markdown, без React Client Components / интерактивных калькуляторов.
+- **Russian white-list (внутренний, не публиковать)**: Tier 1 — Яков и Партнёры, НИУ ВШЭ ИСИЭЗ, TAdviser, CNews Analytics. Tier 2 — Sber/SberAI blog, Yandex Research. Tier 3 — Forbes Russia, Ведомости.Технологии. С пометкой «фактчекать»: Habr, vc.ru. Исключены: РБК Тренды, Коммерсант. Полный список с обоснованиями — в `docs/editorial/seo-article-publication-standard.md` §12.
+- **Темп выпуска**: владелец сам решает; опционально планируется auto-draft pipeline через `mcp__scheduled-tasks__create_scheduled_task` (см. §13 spec'и). Узкое место — cover в ChatGPT-подписке — остаётся ручным. MCP-мост в ChatGPT не строим (нет публичного API; через Chrome MCP шатко).
+
+Doc impact этой сессии: `app/guides/[slug]/page.tsx`, `content/guides/meta/{kak-vnedrit-ii-v-biznes-2026,skolko-stoit-vnedrenie-ii-v-kompaniyu}.json`, `docs/spec_2026-05-21_evergreen-quality-standard.md` (§9 closed, §10 DoD updated, §13 added), `docs/editorial/seo-article-publication-standard.md` (CTA rule, noindex policy, worked-example rule, white-list §12), `docs/editorial_style_guide.md` (CTA / indexation / white-list lines), `content/evergreen/templates/{codex-publication-task,publication-checklist,editorial-pass}.template.md`, `articles ever green/Проект 1/Промпт-для-создания-одной-статьи.txt`, `articles ever green/Проект 2/Промпт-для-финальной-редактуры.txt`.
+
+Предыдущая закрытая инициатива: **Evergreen quality wave (2026-05-21)** — `docs/spec_2026-05-21_evergreen-quality-standard.md`. Поднимает планку для серии из 30 evergreen-гайдов (после выпуска `skolko-stoit-vnedrenie-ii-v-kompaniyu`): обязательны factual anchor в первом предложении лида, видимая «Актуальность проверена: <дата>», numerical worked example, развёрнутый кейс с маркером источника, counter-strategy H2 «Когда не стоит / не окупится», ≥ 2 inline-ссылок в теле, CTA cap (≤ 2 inline + 1 final-блок с 3 карточками), 152-ФЗ + GigaChat/YandexGPT в российском контексте. Реализовано: `GuideMeta` получает обязательное `verifiedAt` и опциональное `caseSourcing`; `app/guides/[slug]/page.tsx::buildJsonLd` теперь эмитит `author = Person` (`/about#person`), `wordCount`, `articleSection`, `keywords`; mobile TOC сворачивается в `<details>`; `scripts/evergreen-check.ts` дополнен 10 правилами (lead anchor, verifiedAt, case/counter-strategy/inline links, CTA cap, cover ≥ 80 KB, noindex старше 14 дней); `scripts/images-prep.ts` + `npm run images:prep` конвертирует PNG из ChatGPT в production-WebP (cover 1200×675, inline 1200×800/1200×1200, quality 82). Cost-статья переписана по новому стандарту (factual anchor, кейс «AI-квалификация лидов (Редакционный пример)», H2 «Когда внедрение ИИ не окупится», доп. inline-link в `/categories/ai-industry`); cover остаётся 12 KB до ручной регенерации владельцем через ChatGPT (warn остаётся, errors — нет). Картинки делаются только через подписку ChatGPT/Codex; image API не используется. Шаблоны (`image-brief`, `editorial-pass`) и промпты «Проект 1 / Проект 2» обновлены под новый bar.
 
 Предыдущая закрытая инициатива: **SEO improvements wave (2026-05-20→05-21)** — см. `docs/spec_2026-05-20_seo_improvements_wave.md` (план + лог сессий) и `docs/spec_2026-05-20_seo_improvements_wave_progress.md` (подробный per-iteration журнал). Включает (API spend = 0):
 - ISR-кеш для главной, `/russia`, `/categories/[category]` через убирание `searchParams` со страниц + Load-more клиент (`HomeFeedList` + `/api/feed`);

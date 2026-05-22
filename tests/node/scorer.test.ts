@@ -77,8 +77,8 @@ test('research articles use stricter Claude threshold', () => {
 test('startup articles receive a deal-signal score boost', () => {
   const withDealSignal = scoreArticle(article({}))
   const withoutDealSignal = scoreArticle(article({
-    original_title: 'AI startup launches product platform',
-    original_text: 'The company launched a product for enterprise AI workflows.',
+    original_title: 'AI startup releases product platform',
+    original_text: 'The company released a product for enterprise AI workflows.',
   }))
 
   assert.equal(withDealSignal, withoutDealSignal + 1)
@@ -89,4 +89,77 @@ test('keywordMatches treats short AI abbreviations as whole words', () => {
   assert.equal(keywordMatches('новости россии и бизнеса', 'ии'), false)
   assert.equal(keywordMatches('AI startup raises seed round', 'ai'), true)
   assert.equal(keywordMatches('said startup raises seed round', 'ai'), false)
+})
+
+test('AI lab tokens in title award the lab-signal bonus', () => {
+  const withLab = scoreArticle(article({
+    original_title: 'Google announces Gemini 3.5 Flash pricing change',
+    original_text: 'Google’s newest model lands with higher token prices.'.repeat(30),
+    source_name: 'The Verge AI',
+    primary_category: 'ai-industry',
+    topics: ['ai-industry'],
+  }))
+  const withoutLab = scoreArticle(article({
+    original_title: 'Spotify rolls out new audio app feature',
+    original_text: 'The streaming app launched a new feature for podcasts.'.repeat(30),
+    source_name: 'The Verge AI',
+    primary_category: 'ai-industry',
+    topics: ['ai-industry'],
+  }))
+
+  // Gemini-match: +2 lab + +2 announcement bundle = +4 over the plain Spotify item.
+  assert.equal(withLab, withoutLab + 4)
+})
+
+test('major announcement bundle requires AI lab signal', () => {
+  const announceWithoutLab = scoreArticle(article({
+    original_title: 'Russian retailer launches new loyalty programme',
+    original_text: 'The retailer launched a new loyalty scheme aimed at urban customers.'.repeat(30),
+    source_name: 'RB.ru',
+    primary_category: 'ai-industry',
+    topics: ['ai-industry'],
+  }))
+  const announceWithLab = scoreArticle(article({
+    original_title: 'OpenAI launches new pricing for ChatGPT enterprise',
+    original_text: 'OpenAI launched new enterprise pricing today affecting all teams.'.repeat(30),
+    source_name: 'RB.ru',
+    primary_category: 'ai-industry',
+    topics: ['ai-industry'],
+  }))
+
+  // Without an AI lab/product anchor the announcement keyword alone yields nothing extra.
+  assert.equal(announceWithLab, announceWithoutLab + 4)
+})
+
+test('ai-russia bonus is no longer duplicated by source_lang', () => {
+  const ruArticle = article({
+    original_title: 'Сбер представил GigaChat Enterprise для крупного бизнеса',
+    original_text: 'Сбер запустил новую корпоративную версию GigaChat для крупного бизнеса.'.repeat(30),
+    source_name: 'CNews',
+    source_lang: 'ru',
+    primary_category: 'ai-russia',
+    topics: ['ai-russia'],
+  })
+  const enArticle = article({
+    original_title: 'OpenAI launches new ChatGPT enterprise tier',
+    original_text: 'OpenAI launched new ChatGPT enterprise tier today affecting all teams.'.repeat(30),
+    source_name: 'The Decoder',
+    primary_category: 'ai-industry',
+    topics: ['ai-industry'],
+  })
+
+  // Industry launch from a top outlet should now be at least as strong as a generic ru story.
+  assert.ok(scoreArticle(enArticle) >= scoreArticle(ruArticle))
+})
+
+test('AI/template/stock covers do not award the cover bonus', () => {
+  const withRealCover = scoreArticle(article({
+    cover_image_url: 'https://leonardo.osnova.io/uuid/-/scale_crop/592x/',
+  }))
+  const withGeneratedCover = scoreArticle(article({
+    cover_image_url:
+      'https://storage.example/storage/v1/object/public/article-images/ai-covers/2026-05-21/slug-gpt-image-1.5-low-123.webp',
+  }))
+
+  assert.equal(withRealCover, withGeneratedCover + 1)
 })
