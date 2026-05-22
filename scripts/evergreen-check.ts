@@ -43,7 +43,10 @@ type GuideMetadata = {
   ctaCards?: unknown
 }
 
-const COVER_MIN_BYTES = 80 * 1024
+// Lowered 2026-05-22 from 80 KB → 50 KB after images:prep quality bump
+// (cover q=90 + effort=6 + smartSubsample=false typically produces 50–90 KB
+// for ChatGPT-generated 1200×675 illustrations — well under the old 80 KB heuristic).
+const COVER_MIN_BYTES = 50 * 1024
 const VERIFIED_MAX_AGE_DAYS = 180
 const NOINDEX_MAX_AGE_DAYS = 14
 const VALID_CASE_SOURCING = new Set(['public', 'anonymized', 'editorial'])

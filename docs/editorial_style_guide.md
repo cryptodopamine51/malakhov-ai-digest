@@ -137,7 +137,9 @@
 - **Counter-strategy.** Отдельный H2 «Когда не стоит / не окупится / Ошибки внедрения» с 3–5 конкретными критериями.
 - **Российский контекст.** 152-ФЗ для данных/клиентов/HR; GigaChat / YandexGPT для тарифов; Яндекс.Директ / ВКонтакте — для маркетинга.
 - **Internal linking.** ≥ 2 inline-ссылок в теле на `/guides`, `/categories/<cat>`, `/russia` (не считая related). Ссылки на ещё не опубликованные гайды запрещены.
-- **CTA cap.** ≤ 2 inline-CTA в теле + 1 final-CTA блок с 3 карточками.
+- **CTA cap.** ≤ 2 inline-CTA в теле + 1 final-CTA блок с 3 карточками. CTA указывают только на реально существующие поверхности: Telegram-дайджест (`@malakhovaidigest`), форма заявки (`malakhovai.ru/contacts`), личный Telegram (`@malakhovai`). Запрещено обещать чеклисты, PDF, гайды на почту и любые lead-magnet артефакты, которых нет. Дефолтный final-CTA набор — `DEFAULT_FINAL_CTA_CARDS` в `app/guides/[slug]/page.tsx`.
+- **Indexation.** `noindex: true` ставится только пока нет cover; после готовности cover сразу `noindex: false` + IndexNow. Никакого 3–7-дневного review-окна.
+- **Российские источники.** White-list 8 источников (Tier 1: Яков и Партнёры, НИУ ВШЭ ИСИЭЗ, TAdviser, CNews Analytics; Tier 2: Sber/SberAI, Yandex Research; Tier 3: Forbes Russia, Ведомости.Технологии) — подробности в `docs/editorial/seo-article-publication-standard.md` §12. Список внутренний, публично не enumerate'им.
 - **Картинки.** Cover ≥ 80 KB; готовятся ТОЛЬКО через подписку ChatGPT (Plus / Pro / Codex), не через image API. Локальные SVG-схемы допустимы для inline-диаграмм.
 - **Запрещённые приёмы.** Инфобиз-клише, ссылки на будущие гайды, FAQPage без visible FAQ, дублирующее markdown TOC при наличии sticky aside.
 

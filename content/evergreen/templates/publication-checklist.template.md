@@ -28,6 +28,17 @@
 - [ ] Image files are local or approved external assets.
 - [ ] No image API was used by this workflow.
 
+## CTAs
+
+- [ ] CTAs point only to real surfaces: `telegram-digest` (`@malakhovaidigest`), `contacts` (`malakhovai.ru/contacts`), `telegram-personal` (`@malakhovai`).
+- [ ] No CTA promises a checklist, PDF, email guide or any artifact that does not actually exist.
+- [ ] `inlineCtas` ≤ 2; `ctaCards` has exactly 3 entries (final block).
+
+## Indexation
+
+- [ ] `noindex: true` removed once `cover.webp` is in `public/images/guides/{{slug}}/` and `evergreen:check` is green.
+- [ ] `npx tsx scripts/indexnow-batch.ts --apply` queued for post-deploy ping.
+
 ## Technical
 
 - [ ] `content/guides/{{slug}}.md` exists for publication.

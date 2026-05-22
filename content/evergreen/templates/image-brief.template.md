@@ -2,11 +2,30 @@
 
 **Generation source:** ChatGPT subscription (Plus/Pro/Codex). No image API calls from this workflow — neither OpenAI Images, nor Anthropic, nor any runtime generator. Локальные SVG/Canvas-схемы допустимы как замена для матриц, roadmap и сравнений.
 
+## SEO filename convention (обязательно, with 2026-05-22 update)
+
+Имена файлов — SEO-сигнал в поисковой картинной выдаче. Convention:
+
+- **Cover**: `{{slug}}-cover.webp` (либо `<primary-keyword>-<short-modifier>.webp`, если slug длинный).
+- **Inline**: `<slug-short>-<section-keyword>.webp`. Slug-short = первые 2–4 значимые слова из slug гайда.
+- ASCII only, lowercase, hyphen-separated, ≤ 60 символов.
+- Не использовать generic-имена `image1.webp`, `diagram.webp`, `untitled.webp` — они теряют SEO-сигнал.
+
+Примеры для `slug=ii-dlya-malogo-biznesa-s-chego-nachat`:
+- `ii-malyy-biznes-cover.webp`
+- `ii-malyy-biznes-4-scenariya.webp`
+- `ii-malyy-biznes-plan-30-dney.webp`
+- `ii-malyy-biznes-kogda-ne-stoit.webp`
+
 ## Workflow
 
-1. Codex/агент готовит для каждого изображения: `prompt`, `negative_prompt`, `alt`, `caption`, `aspect`, `filename_png`, `filename_webp`.
-2. Владелец/редактор открывает ChatGPT, копирует prompt, генерирует PNG, сохраняет в `content/evergreen/packages/{{slug}}/raw-images/<filename>.png`. Имя файла должно совпадать с `filename_png` из brief.
-3. Запускает `npm run images:prep -- --slug={{slug}}`. Скрипт берёт PNG, режет под нужный размер, конвертирует в WebP quality 82 и кладёт в `public/images/guides/{{slug}}/<filename>.webp`.
+1. Codex/агент готовит для каждого изображения: `prompt`, `negative_prompt`, `alt`, `caption`, `aspect`, `filename_png`, `filename_webp` по SEO convention выше. Эти filename'ы попадают в `08-metadata.json::cover.src` и `inlineImagesByHeading[*].src` ещё до генерации PNG.
+2. Владелец/редактор открывает ChatGPT, копирует prompt, генерирует PNG. Сохранять можно **с любым именем** (ChatGPT часто отдаёт `ChatGPT_image_<timestamp>.png` и подобное) — главное, чтобы все PNG для одной статьи лежали в `content/evergreen/packages/{{slug}}/raw-images/`.
+3. Запускает `npm run images:prep -- --slug={{slug}}`. Скрипт:
+   - Сначала ищет PNG с именем, совпадающим с одним из meta-slot stem'ов (точный матч → точный slot).
+   - Оставшиеся PNG с random-именами маппит на оставшиеся slot'ы по алфавитному порядку имени PNG vs declared meta order (cover первый, дальше inline в порядке `inlineImagesByHeading`). В логах рядом с каждым slot'ом печатается `renamed ← <random.png>`.
+   - Финальные WebP именуются по meta stem'у — SEO-имена соблюдены автоматически.
+   - Качество: cover q=90, inline q=88, effort=6, smartSubsample=false (full 4:4:4 chroma — критично для графики с тонкими линиями и текстовыми метафорами).
 4. `npm run evergreen:check -- --slug={{slug}}` проверяет наличие файлов и плотность cover (≥ 80 KB).
 
 ## Visual Direction
@@ -27,9 +46,9 @@
 
 ## Cover
 
-- `filename_png`: `cover.png`
-- `filename_webp`: `cover.webp`
-- Финальный путь: `public/images/guides/{{slug}}/cover.webp`
+- `filename_png`: `{{slug}}-cover.png` (SEO convention — см. секцию выше)
+- `filename_webp`: `{{slug}}-cover.webp`
+- Финальный путь: `public/images/guides/{{slug}}/{{slug}}-cover.webp`
 - Placement: guide hero
 - Aspect: 16:9
 - Prompt:

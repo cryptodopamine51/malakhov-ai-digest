@@ -74,9 +74,21 @@
    — для тарифов — GigaChat / YandexGPT как локальные альтернативы;
    — для маркетинга — Яндекс.Директ, ВКонтакте, OK как локальные surfaces.
 7. ≥ 2 внутренних ссылок в теле статьи на `/guides`, `/categories/<category>` или `/russia` (не считая related в footer). Linking на ещё не опубликованные гайды запрещено.
-8. CTA cap: не более 2 inline-CTA в теле + 1 final-CTA блок с 3 карточками.
+8. CTA cap: не более 2 inline-CTA в теле + 1 final-CTA блок с 3 карточками. CTA указывают ТОЛЬКО на реально существующие поверхности проекта:
+   — `telegram-digest` → `@malakhovaidigest` (ежедневный AI-дайджест в Telegram, реально выходит).
+   — `contacts` → `malakhovai.ru/contacts` (форма заявки на консультацию, реально работает).
+   — `telegram-personal` → `@malakhovai` (личный Telegram).
+   Запрещено обещать чеклисты, PDF, гайды на почту, бесплатные шаблоны и любые lead-magnet артефакты, которых физически нет. Дефолтный final-CTA набор — `DEFAULT_FINAL_CTA_CARDS` в `app/guides/[slug]/page.tsx`. Override через `inlineCtas`/`ctaCards` в meta — допустим, но интент и action должны указывать на одну из трёх поверхностей выше.
 9. Метаданные включают `verifiedAt` (ISO-date), `caseSourcing` (`public` / `anonymized` / `editorial` — опционально). Cover и inline images перечислены с alt и caption.
-10. Картинки готовятся ТОЛЬКО через подписку ChatGPT (Plus/Pro/Codex). Image API любого вендора не используется. Cover 1200×675 WebP, inline 1200×800 (или 1200×1200 квадрат). Локальные SVG-диаграммы допустимы для матриц/roadmap/калькуляторов.
+10. Картинки готовятся ТОЛЬКО через подписку ChatGPT (Plus/Pro/Codex). Image API любого вендора не используется. Cover 1200×675 WebP (quality 90), inline 1200×800 (или 1200×1200 квадрат, quality 88), effort 6, smartSubsample=false (полное 4:4:4 chroma). Локальные SVG-диаграммы допустимы для матриц/roadmap/калькуляторов.
+
+   **SEO-convention для filename'ов** (отражается в `08-metadata.json::cover.src` и `inlineImagesByHeading[*].src` ДО генерации PNG):
+   — Cover: `<slug>-cover.webp` (или `<primary-keyword>-<short-modifier>.webp` если slug длиннее ~40 символов).
+   — Inline: `<slug-short>-<section-keyword>.webp`, где slug-short — первые 2–4 значимые слова slug'а гайда, а section-keyword — короткое описание содержимого (`scenarii`, `plan-30-dney`, `matrica-vybora`, `kogda-ne-stoit`).
+   — ASCII only, lowercase, hyphens, ≤ 60 символов. Не использовать generic-имена `image1.webp`, `diagram.webp`, `cover.webp` — они теряют SEO-сигнал.
+   — Владелец может класть PNG в `raw-images/` с любым именем (ChatGPT часто отдаёт `ChatGPT_image_<ts>.png`); `npm run images:prep` автоматически переименует выход по SEO convention из meta. Pass 1 — точный stem-матч; pass 2 — random-имена маппятся по алфавитному порядку на declared meta order (cover → inline в порядке `inlineImagesByHeading`).
+11. Worked example — только статический Markdown (текст + таблица + список). Никаких React Client Components / интерактивных калькуляторов на странице гайда (owner decision 2026-05-22).
+12. Российские кейсы и цифры берутся из внутреннего white-list 8 источников (см. `docs/editorial/seo-article-publication-standard.md` §12): Tier 1 — Яков и Партнёры, НИУ ВШЭ ИСИЭЗ, TAdviser, CNews Analytics. Tier 2 — Sber/SberAI blog, Yandex Research. Tier 3 — Forbes Russia, Ведомости.Технологии. С пометкой «фактчекать»: Habr, vc.ru. Если ни один источник не покрывает факт — переформулировать качественно или маркировать «Редакционный пример», не выдумывать.
 
 Запрещено:
 — придумывать цифры, тарифы, имена компаний, кейсы клиентов, цитаты;

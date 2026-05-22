@@ -4,7 +4,14 @@
 > Он не подгружается автоматически “из памяти” между сессиями: в начале каждой новой работы его нужно открыть явно или запустить `npm run context`.
 > Последнее обновление: 2026-05-22
 
-Последняя инициатива (closed 2026-05-22, late evening): **Digest editorial priority + cover fix** —
+Последняя инициатива (closed 2026-05-22, night): **Image pipeline quality + SEO filename convention + smart matching**. Триггер от владельца: «места где картинки не подгрузились» на `/guides/ii-dlya-malogo-biznesa-s-chego-nachat`. Корневая причина — `WEBP_QUALITY=82` без `effort`/`subsample` tuning давал compression ~50× на ChatGPT-иллюстрациях 1200×800 (output 27–44 KB вместо нормальных 60–100 KB) → visible artifacts, выглядит как «не загрузилось».
+- `scripts/images-prep.ts` переписан. Quality split: `COVER_WEBP_QUALITY=90`, `INLINE_WEBP_QUALITY=88`, `WEBP_EFFORT=6`, `smartSubsample=false` (full 4:4:4 chroma — критично для графики с тонкими линиями и текстовыми метафорами). Новая функция `planFiles` делает два прохода: pass 1 — точный stem-матч PNG к meta slot'у, pass 2 — оставшиеся random-имена (`ChatGPT_image_<ts>.png`) маппятся по алфавитному порядку на declared meta order (cover → inline в порядке `inlineImagesByHeading`). Лог печатает `renamed ← <random.png>` для каждого замапленного файла. Владельцу больше не нужно вручную переименовывать PNG из ChatGPT.
+- `tests/node/images-prep.test.ts` — 10 тестов (resolveDimensions, buildMetaSlots, indexMetaByFilename, planFiles smart matching по 3 сценариям). 10/10 pass.
+- Re-prep id 3 (`ii-dlya-malogo-biznesa-s-chego-nachat`): cover 38→63 KB, pilot-30-days-roadmap 44→61 KB, scenarios-grid 27→33 KB, when-not-to-start 36→51 KB. Total 145→208 KB на странице.
+- **SEO filename convention** (owner decision 2026-05-22). Cover = `<slug>-cover.webp`, inline = `<slug-short>-<section-keyword>.webp` (ASCII, lowercase, hyphens, ≤ 60 символов; без generic `cover.webp`, `image1.webp`). Применяется к новым гайдам с этой сессии; 3 уже опубликованных (`kak-vnedrit-ii-v-biznes-2026`, `skolko-stoit-vnedrenie-ii-v-kompaniyu`, `ii-dlya-malogo-biznesa-s-chego-nachat`) — generic names оставлены, чтобы не ломать production-URL'ы и OG-image references.
+- Doc impact: `docs/editorial/seo-article-publication-standard.md` (новая секция `SEO filename convention` в §11, workflow обновлён под smart-matching и новые quality settings), `docs/OPERATIONS.md` (Evergreen image workflow, история quality), `content/evergreen/templates/{image-brief,editorial-pass}.template.md`, `articles ever green/Проект 1/Промпт-для-создания-одной-статьи.txt`, `articles ever green/Проект 2/Промпт-для-финальной-редактуры.txt`.
+
+Предыдущая инициатива (closed 2026-05-22, late evening): **Digest editorial priority + cover fix** —
 `docs/spec_2026-05-22_digest_editorial_priority.md`. Закрыты Wave 1 (scorer rebalance +
 diversity-кэп), Wave 2 (cover preference fix) и Wave 3 (Google Blog feed).
 - `pipeline/scorer.ts` переписан. Убрано удвоение `ai-russia +2` + `source_lang=ru +1`

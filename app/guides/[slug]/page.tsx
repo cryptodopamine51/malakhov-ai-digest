@@ -426,15 +426,8 @@ function GuideCta({
 
 const DEFAULT_FINAL_CTA_CARDS: GuideCtaConfig[] = [
   {
-    title: 'Чеклист за 30 минут',
-    text: 'Быстро выберите первый ИИ-проект и подготовьте пилот на 30-90 дней.',
-    action: 'Получить чеклист',
-    href: 'telegram-personal',
-    intent: 'implementation_checklist',
-  },
-  {
-    title: 'AI-новости в TG',
-    text: 'Подписка на короткий дайджест главных событий, инструментов и кейсов ИИ.',
+    title: 'AI-новости в Telegram',
+    text: 'Ежедневный короткий дайджест: релизы, инструменты, кейсы внедрения ИИ в бизнес.',
     action: 'Подписаться на дайджест',
     href: 'telegram-digest',
     intent: 'daily_ai_news_digest',
@@ -445,6 +438,13 @@ const DEFAULT_FINAL_CTA_CARDS: GuideCtaConfig[] = [
     action: 'Оставить заявку',
     href: 'contacts',
     intent: 'architecture_review',
+  },
+  {
+    title: 'Личный разговор',
+    text: 'Обсудим внедрение ИИ в вашу компанию — без презентаций, по делу.',
+    action: 'Написать в Telegram',
+    href: 'telegram-personal',
+    intent: 'personal_consultation',
   },
 ]
 

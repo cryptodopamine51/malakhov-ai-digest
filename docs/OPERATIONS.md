@@ -37,7 +37,7 @@ Evergreen-гайды готовятся локально и не требуют 
 - `npm run evergreen:new -- --topic-id=<id>` создаёт редакционный пакет из `content/evergreen/topics.json` в `content/evergreen/packages/<slug>/`.
 - `npm run evergreen:new -- --topic-id=<id> --dry-run` показывает будущие файлы без записи.
 - `npm run evergreen:check -- --slug=<slug>` проверяет package-файлы, `00-topic.json`, ASCII slug, metadata JSON (включая `verifiedAt`, опциональный `caseSourcing`, CTA cap), published guide/metadata consistency, cover metadata, FAQ, локальные `/guides/...` ссылки, lead anchor, наличие counter-strategy H2 и кейс-блока, ≥ 2 inline `/guides|/categories|/russia` ссылок в теле, редакционные запреты (`не X, а Y`, `proof of concept`, `production`, `no-code`, `AI-сигналы`, сломанные смешанные фразы), `cover ≥ 80 KB` и `noindex` старше 14 дней. Errors блокируют, warnings — нет; URL очищаются перед редакционной проверкой, чтобы source links не падали из-за `proof-of-concept` в slug.
-- `npm run images:prep -- --slug=<slug>` (`scripts/images-prep.ts`) конвертирует PNG из `content/evergreen/packages/<slug>/raw-images/` в production-WebP по правильным размерам (cover 1200×675, inline 1200×800 или 1200×1200), `sharp` quality 82, итог в `public/images/guides/<slug>/<filename>.webp`.
+- `npm run images:prep -- --slug=<slug>` (`scripts/images-prep.ts`) конвертирует PNG из `content/evergreen/packages/<slug>/raw-images/` в production-WebP по правильным размерам (cover 1200×675, inline 1200×800 или 1200×1200), `sharp` quality **90 для cover / 88 для inline, effort 6, smartSubsample=false** (полное 4:4:4 chroma — критично для графики). Имя PNG может быть любым (ChatGPT-вывод `ChatGPT_image_<ts>.png` подходит): script делает smart-matching — pass 1 точный stem-матч, pass 2 random-имена маппит по алфавитному порядку на declared meta order (cover → inline). Итог пишется в `public/images/guides/<slug>/<seo-filename>.webp` уже под SEO-имя из metadata.
 
 Эти команды не публикуют материал. Production-публикация evergreen-гайда начинается только после переноса approved Markdown в `content/guides/<slug>.md`, metadata в `content/guides/meta/<slug>.json` и изображений в `public/images/guides/<slug>/`.
 
@@ -45,12 +45,14 @@ Evergreen-гайды готовятся локально и не требуют 
 
 Картинки для evergreen-гайдов производятся **только через подписку ChatGPT** (Plus / Pro / Codex). Никакие image API (OpenAI Images, Anthropic, runtime генераторы) для этого workflow не используются — это политика проекта.
 
-1. Codex/агент готовит `09-image-brief.md` в пакете гайда: для cover и каждой inline-картинки — `prompt`, `negative_prompt`, `alt`, `caption`, `aspect`, `filename_png`, `filename_webp`.
-2. Владелец/редактор открывает ChatGPT, копирует prompt, сохраняет PNG в `content/evergreen/packages/<slug>/raw-images/<filename>.png` (имя должно совпадать с brief).
-3. `npm run images:prep -- --slug=<slug>` ресайзит и конвертирует в WebP, кладёт в `public/images/guides/<slug>/`. PNG больше 5 МБ помечается warn'ом.
+1. Codex/агент готовит `09-image-brief.md` в пакете гайда: для cover и каждой inline-картинки — `prompt`, `negative_prompt`, `alt`, `caption`, `aspect`, `filename_png`, `filename_webp`. **Filename в meta** уже соответствует SEO convention: cover = `<slug>-cover.webp`, inline = `<slug-short>-<section-keyword>.webp` (ASCII, lowercase, hyphens, ≤ 60 символов; без generic `cover.webp`, `image1.webp`).
+2. Владелец/редактор открывает ChatGPT, копирует prompt, сохраняет PNG в `content/evergreen/packages/<slug>/raw-images/`. **Имя PNG может быть любым** — ChatGPT-output `ChatGPT_image_<timestamp>.png` подходит без ручного rename'а.
+3. `npm run images:prep -- --slug=<slug>` ресайзит и конвертирует в WebP. Smart-matching: pass 1 — точный stem-матч, pass 2 — оставшиеся random-имена маппятся по алфавитному порядку на declared meta order (cover → inline в порядке `inlineImagesByHeading`); в логах рядом со slot'ом печатается `renamed ← <random.png>`. Quality cover q=90 / inline q=88, effort=6, smartSubsample=false. PNG больше 5 МБ помечается warn'ом.
 4. `npm run evergreen:check -- --slug=<slug>` подтверждает наличие cover ≥ 80 KB и inline-файлов.
 
 SLA: после статуса `ready_for_codex` владелец генерит cover в ChatGPT в течение 48 часов, иначе гайд переходит в `blocked` со статусом `cover_pending`. Локальные SVG/Canvas-схемы допустимы как замена для inline-диаграмм (матрицы, roadmap, формулы); cover всегда генерится в ChatGPT, не из SVG.
+
+Quality history: до 2026-05-22 использовался WEBP quality 82 без effort/subsample tuning, что давало ~30 KB WebP на 1200×800 ChatGPT-иллюстрациях и visible compression artifacts. Поднято до cover q=90 / inline q=88 + effort 6 + smartSubsample=false; типичный output теперь 50–80 KB inline / 60–100 KB cover.
 
 ## Переменные окружения
 

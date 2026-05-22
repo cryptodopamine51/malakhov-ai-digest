@@ -29,6 +29,12 @@ If this is an update package, update the existing guide. Do not create a duplica
 - Cover and inline images must have alt and captions.
 - Internal links must point only to existing local routes unless clearly marked future in the package, not in published Markdown.
 - Do not use image generation API.
+- `noindex: true` is a transient state: keep it only while `raw-images/cover.png` is missing. As
+  soon as the owner generates the cover, runs `npm run images:prep`, and `evergreen:check` is
+  green — set `noindex: false` and submit IndexNow. No multi-day review window.
+- CTAs may only point to: `telegram-digest` (`@malakhovaidigest`), `contacts`
+  (`malakhovai.ru/contacts`), `telegram-personal` (`@malakhovai`). Never promise a checklist /
+  PDF / email guide that does not actually exist.
 
 ## Checks
 
@@ -44,4 +50,5 @@ Manual browser checks before release:
 - Cover and inline images load.
 - Mobile viewport has no overlap.
 - Tables scroll on mobile.
-- CTA is not misleading for this topic.
+- CTA points to a real surface (digest channel, contacts form, or personal Telegram) — no
+  promised lead-magnet artifacts.

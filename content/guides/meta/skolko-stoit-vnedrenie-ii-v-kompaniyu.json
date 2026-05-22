@@ -102,8 +102,8 @@
       "intent": "ai_cost_calculator"
     },
     {
-      "title": "AI-новости в TG",
-      "text": "Ежедневная сводка новостей об ИИ, инструментах и кейсах.",
+      "title": "AI-новости в Telegram",
+      "text": "Ежедневный короткий дайджест: релизы, инструменты, кейсы внедрения ИИ в бизнес.",
       "action": "Подписаться на дайджест",
       "href": "telegram-digest",
       "intent": "daily_ai_news_digest"

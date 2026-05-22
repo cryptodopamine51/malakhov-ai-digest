@@ -423,15 +423,15 @@ Dependencies: `sharp` уже есть в `package.json`.
 - [CLAUDE.md](../CLAUDE.md) — отметить, что текущая закрытая инициатива переходит к «Evergreen quality wave» и сослаться на эту спеку.
 - [docs/task_evergreen_content_agent_2026-05-20.md](task_evergreen_content_agent_2026-05-20.md) — отметить процессуальные изменения (image workflow, новые поля meta).
 
-## 9. Открытые вопросы для владельца
+## 9. Открытые вопросы для владельца — закрыто 2026-05-22
 
-1. **Telegram lead-magnet**. Сейчас CTA «получить чеклист в Telegram» обещает что-то, чего может не быть. Какой реальный actionable артефакт мы кладём в Telegram под evergreen-гайды? Один общий чеклист «AI implementation» или один артефакт под каждый кластер?
-2. **Темп выпуска**. Сколько гайдов в неделю реалистично выпускать с новой планкой? Если планка выше — темп ниже; нужно зафиксировать ожидание (например, 2 гайда в неделю вместо 5).
-3. **Картинки**. Кто реально открывает ChatGPT и генерит cover — владелец, редактор или агент? Это влияет на cycle time каждого гайда. Если только владелец — добавить SLA «cover генерится в течение 48 часов с момента ready_for_codex».
-4. **Кейсы по российскому рынку**. Где брать рыночные данные — Habr/vc.ru, отчёты Якова и Партнёров, IDC, НИУ ВШЭ, Sber/Yandex case studies? Нужен короткий white-list 5–10 доверенных источников.
-5. **Indexation cadence**. Через сколько дней после публикации с `noindex: true` владелец делает ревизию и снимает флаг? Сейчас процесс не зафиксирован. Предлагаемый дефолт — 3–7 дней.
-6. **Calculator интерактивный**. Делаем React Client Component для статьи про стоимость и других ROI/калькуляторных? Это +1 PR на статью. Или ограничиваемся статическим worked example?
-7. **`updatedAt` vs `verifiedAt`**. `updatedAt` — дата последнего редактирования. `verifiedAt` — дата последней проверки фактов. Для evergreen-обновлений эти даты могут расходиться. Принимаем оба поля как обязательные?
+1. **Telegram lead-magnet** → **CTA-чеклиста больше нет**. Чеклист в Telegram реально не существовал, обещание было фейковым. Final CTA-блок и inline-CTA в `kak-vnedrit-ii-v-biznes-2026` заменены на три honest CTA: «AI-новости в Telegram» (дайджест-канал, реально выходит), «Архитектурный разбор ИИ» (заявка на consultation через `malakhovai.ru/contacts`), «Личный разговор» (личный Telegram `@malakhovai`). Никаких обещаний бесплатных артефактов, которых нет.
+2. **Темп выпуска** → **владелец сам решает** + опционально автоматический pipeline. Согласовано: я могу собрать draft-конвейер на `mcp__scheduled-tasks__create_scheduled_task` (через Claude Code Max-подписку, не API), который раз в N дней пишет следующий черновик в `content/evergreen/queue/`, открывает PR, помечает тему как `draft_ready`. Владелец генерирует cover в ChatGPT, OK, merge. См. §13 (новая секция).
+3. **Картинки** → **владелец делает сам в ChatGPT**. Никакого MCP-моста в ChatGPT-подписку не строим: публичного API нет, через Chrome MCP — шатко (2FA/UI/ToS). Текущий ручной путь остаётся. DALL-E через API отклонено как нарушающее бюджет=0 (даже $2.24 за 28 covers).
+4. **Кейсы по российскому рынку** → **внутренний white-list 8 источников** (не светим публично, чтобы не уменьшать стимул читателя обратиться). Tier 1 (доверяем без оговорок): Яков и Партнёры, НИУ ВШЭ ИСИЭЗ, TAdviser, CNews Analytics. Tier 2 (первоисточники для локальных моделей): Sber/SberAI blog, Yandex Research. Tier 3 (журналистский фактчек выше среднего): Forbes Russia, Ведомости.Технологии. С пометкой «фактчекать»: Habr (смотреть карму/комменты), vc.ru (отделять от рекламных постов). Сознательно исключены: РБК Тренды (часто промо), Коммерсант (мало AI-кейсов). См. white-list в `docs/editorial/seo-article-publication-standard.md` §12.
+5. **Indexation cadence** → **публикуем сразу, без `noindex`-окна**. Cost-статью — оставляем `noindex: true` до момента, когда владелец положит cover из ChatGPT и запустит `npm run images:prep`. После этого сразу `noindex: false` + `npx tsx scripts/indexnow-batch.ts --apply`. Для всех будущих гайдов: `noindex: true` ставится только в момент draft (до первого деплоя) и снимается сразу после готовности cover — не как 3-7-дневное окно ревью.
+6. **Calculator интерактивный** → **нет, ограничиваемся статическим worked example**. Не делаем React Client Component для ROI/cost статей. Worked example по шаблону «Ситуация → данные → формула → результат → выводы» в markdown достаточно. Это правило закреплено в SEO-стандарте.
+7. **`updatedAt` vs `verifiedAt`** → **оба поля остаются обязательными**. Не переопределяли — текущая логика валидна (см. реализацию `GuideMeta` в `lib/guides.ts`).
 
 ## 10. Definition of Done
 
@@ -484,6 +484,56 @@ Docs impact: создан новый spec-файл [docs/spec_2026-05-21_evergre
 | Cost-статья пересобрана по новому стандарту | ✅ done (контент); ⏸ cover regen — owner step | лид с factual anchor (257 млрд ₽ / Gartner 30%), кейс «AI-квалификация лидов (Редакционный пример)», H2 «Когда внедрение ИИ не окупится», доп. inline-link на `/categories/ai-industry` |
 | Cost-статья прошла `evergreen:check` без errors | ✅ done | только `cover_min_size` остаётся warning, ждёт ChatGPT regen |
 | `noindex` снят, в indexnow подана | ⏸ owner step | требует cover regen в ChatGPT перед публикацией, см. §11 пункт 6 |
-| Open questions раздела 9 закрыты владельцем | ⏸ owner | список вопросов оставлен в §9 без изменений |
+| Open questions раздела 9 закрыты владельцем | ✅ done 2026-05-22 | см. §9 (closed), §13 (auto-draft pipeline) |
 
 После того как владелец сгенерит cover в ChatGPT (≥ 80 KB WebP), положит PNG в `content/evergreen/packages/skolko-stoit-vnedrenie-ii-v-kompaniyu/raw-images/cover.png`, запустит `npm run images:prep -- --slug=skolko-stoit-vnedrenie-ii-v-kompaniyu` и проверит результат — можно снять `noindex: true` в `content/guides/meta/skolko-stoit-vnedrenie-ii-v-kompaniyu.json` и подать URL через `npx tsx scripts/indexnow-batch.ts` (требует `INDEXNOW_KEY` в окружении).
+
+## 13. Auto-draft pipeline (планируется к запуску после согласования темпа)
+
+> Источник: ответы владельца 2026-05-22 на вопросы §9.2.
+
+Цель: 28 оставшихся гайдов выпускать без активного участия владельца на стороне написания.
+Узкое место — cover в ChatGPT — остаётся ручным.
+
+**Архитектура:**
+
+1. `content/evergreen/queue.json` — приоритетный backlog тем. Структура:
+   ```json
+   {
+     "items": [
+       {
+         "topic": "ИИ-агенты для отдела продаж: что они реально делают",
+         "cluster": "ИИ для бизнеса",
+         "primaryKeyword": "ии агенты для продаж",
+         "intent": "evergreen",
+         "status": "pending | draft_ready | published",
+         "createdAt": "2026-05-22",
+         "draftBranch": null
+       }
+     ]
+   }
+   ```
+2. `mcp__scheduled-tasks__create_scheduled_task` запускает новую Claude Code сессию по cron. Промпт сессии:
+   - Берёт следующий `pending` item из `queue.json`.
+   - Делает WebFetch на 3–5 материалов white-list'а (§12 SEO-стандарта) для свежих цифр и кейсов.
+   - Создаёт ветку `evergreen/<slug>` от `main`.
+   - Пишет полный draft по `articles ever green/Проект 1/Промпт-для-создания-одной-статьи.txt` + редактуру по `Проект 2/...`.
+   - Генерит `content/guides/<slug>.md` + `content/guides/meta/<slug>.json` с `noindex: true`, `verifiedAt`, `caseSourcing`.
+   - Формирует `content/evergreen/packages/<slug>/09-image-brief.md` с готовым промптом для ChatGPT.
+   - Запускает `npm run evergreen:check -- --slug=<slug>`. Если errors — fail, ветку не коммитит.
+   - Если pass — commit + push, открывает PR с чеклистом для владельца: `[ ] cover.png в raw-images/ → npm run images:prep → noindex:false → merge`.
+   - Помечает тему в queue.json как `draft_ready` + ссылку на PR.
+3. Владелец приходит → PR → один промпт в ChatGPT для cover → drop PNG → `npm run images:prep` → снимает `noindex` → merge → автодеплой → `npx tsx scripts/indexnow-batch.ts --apply`.
+
+**Что нужно для запуска (TBD):**
+
+- Owner выбирает темп: 2 дня / 3 дня / 7 дней между запусками.
+- Owner даёт backlog 28 тем или поручает мне составить из текущей cluster-карты (categories: ai-industry, ai-russia, ai-startups, coding × intent-кластеры).
+- Подтверждение, что Claude Code Max-подписка позволяет scheduled tasks (если ограничение — переходим на GitHub Actions cron с personal access token).
+- Перед автоматизацией — первые 2 гайда я делаю в живой сессии с владельцем для калибровки качества.
+
+**Риски:**
+
+- Quality drift в фоне без живого ревью. Митигация: первые 2 гайда live, после — `evergreen:check` errors как hard gate.
+- Claude-квота кончилась → задача упадёт молча. Митигация: alert в Telegram через существующий `bot/health-check` или новый ping.
+- WebFetch на white-list источники — некоторые могут блокировать (Forbes/Ведомости ставят paywall, ВШЭ ISSEK иногда блокирует не-RU IP). Митигация: если источник недоступен, помечаем кейс `caseSourcing: "anonymized"` или `"editorial"` и не выдумываем цифры.

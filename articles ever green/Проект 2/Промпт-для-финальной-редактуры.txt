@@ -58,8 +58,12 @@
 5. Есть counter-strategy блок «Когда не стоит / не окупится» с 3–5 практическими критериями.
 6. Российский контекст и регуляторика учтены: 152-ФЗ упомянут для статей о данных/клиентах/HR; GigaChat/YandexGPT — как локальные альтернативы для статей про тарифы; Яндекс.Директ/ВКонтакте — для статей про маркетинг.
 7. ≥ 2 внутренних ссылок в теле (`/guides/...`, `/categories/<cat>`, `/russia`) не считая related-блока. Нет ссылок на ещё не опубликованные гайды.
-8. CTA cap: ≤ 2 inline-CTA в теле + 1 final-CTA блок с 3 карточками. CTA не обещают lead-magnet, которого нет.
+8. CTA cap: ≤ 2 inline-CTA в теле + 1 final-CTA блок с 3 карточками. CTA указывают ТОЛЬКО на реальные поверхности проекта: `telegram-digest` (@malakhovaidigest), `contacts` (malakhovai.ru/contacts), `telegram-personal` (@malakhovai). Запрещено обещать чеклисты, PDF, гайды на почту и другие lead-magnet артефакты, которых нет. Override `inlineCtas` / `ctaCards` через meta — допустим, но `href` должен резолвиться в одну из трёх поверхностей.
 9. JSON-LD требования: `author = Person` (`/about#person`), `wordCount`, `articleSection`, `keywords`, `inLanguage: 'ru-RU'`. FAQPage эмитируется только при visible FAQ.
-10. Картинки готовятся через подписку ChatGPT, не через image API. Cover ≥ 80 KB, 1200×675 WebP. Все alt описательные, captions раскрывают зачем.
+10. Картинки готовятся через подписку ChatGPT, не через image API. Cover ≥ 80 KB, 1200×675 WebP (quality 90, effort 6, smartSubsample=false для full 4:4:4 chroma). Inline 1200×800 WebP (quality 88). Все alt описательные, captions раскрывают зачем.
+
+    **SEO filename convention** (обязательно проверить в `08-metadata.json`): cover = `<slug>-cover.webp`, inline = `<slug-short>-<section-keyword>.webp` (ASCII, lowercase, hyphens, ≤ 60 символов). Generic `cover.webp`/`image1.webp` исключены. Random имена PNG в `raw-images/` (ChatGPT-output) автоматически переименуются `npm run images:prep` в SEO target согласно declared meta order.
 11. Запрещённые приёмы убраны: нет инфобиз-клише («секрет», «прорыв», «3 шага»), нет дублирующего markdown TOC при sticky aside, нет ссылок на будущие гайды.
-12. Темп / status: package готов перейти из `editing` в `ready_for_codex`; SLA на cover в ChatGPT — 48 часов.
+12. Темп / status: package готов перейти из `editing` в `ready_for_codex`. После того как владелец положит cover из ChatGPT в `raw-images/cover.png` и запустит `npm run images:prep`, гайд публикуется сразу без noindex-окна и подаётся в IndexNow (owner policy 2026-05-22, без 3–7-дневного review-окна).
+13. Российские факты, кейсы и цифры берутся только из внутреннего white-list 8 источников (см. `docs/editorial/seo-article-publication-standard.md` §12). Цифры без покрытия источником — переформулировать качественно или маркировать «Редакционный пример».
+14. Worked example — только статический Markdown. React-калькуляторы / Client Components на странице гайда не используем (owner decision 2026-05-22).

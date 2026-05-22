@@ -145,9 +145,11 @@ Beyond the news-article value rules, every evergreen guide must hit the followin
   acronym. Generic prose without an anchor triggers `lead_has_anchor` warn.
 - **Visible `verifiedAt`.** Metadata must include `verifiedAt: <ISO date>`. The guide page renders
   «Актуальность проверена: <дата>» in the header. `verifiedAt` older than 180 days warns.
-- **Numerical worked example.** Guides with a numerical intent (cost, ROI, payback, metrics,
-  comparisons) must include at least one expanded calculation in the body — not a category table.
-  Template: situation → data → formula → result → takeaway.
+- **Numerical worked example (static only).** Guides with a numerical intent (cost, ROI, payback,
+  metrics, comparisons) must include at least one expanded calculation in the body — not a category
+  table. Template: situation → data → formula → result → takeaway. The example is rendered as
+  Markdown text/list/table; do **not** build an interactive React calculator client component for
+  evergreen guides. Owner decision 2026-05-22: keep guides as static pages, no client-only widgets.
 - **Case block.** At least one H3 starting with «Кейс / Сценарий / Ситуация / Мини-кейс», or an
   inline paragraph marked «Редакционный пример». Editorial cases must carry that marker
   explicitly. Source hierarchy: public (McKinsey/BCG/Gartner/Habr/vc.ru/«Яков и Партнёры»/IDC/НИУ ВШЭ)
@@ -245,7 +247,13 @@ Guide URL:
 - Use `/guides/<slug>`.
 - Register guide metadata in `content/guides/meta/<slug>.json`.
 - Add content in `content/guides/<slug>.md`.
-- Use `noindex: true` in guide metadata only for direct-link production previews that need owner/editor review before indexing. Noindex guides must be excluded from public guide listings and sitemap until the flag is removed.
+- Use `noindex: true` in guide metadata **only as a transient state** between draft commit and
+  cover readiness. Once the cover is present (`raw-images/cover.png` → `npm run images:prep` →
+  WebP in `public/images/guides/<slug>/`) and `npm run evergreen:check -- --slug=<slug>` is green,
+  remove `noindex` immediately and ping IndexNow via `npx tsx scripts/indexnow-batch.ts --apply`.
+  Owner policy 2026-05-22: **no 3–7-day review window**. Editorial review happens on the draft
+  PR before merge; indexation starts the moment the cover lands. Noindex guides must be excluded
+  from public guide listings and sitemap until the flag is removed.
 
 Slug requirements:
 
@@ -273,17 +281,46 @@ Evergreen-guide images are produced **only through the ChatGPT subscription** (P
 No image API is called — neither OpenAI Images, nor Anthropic, nor any runtime generator. This is
 a project-level policy; do not work around it.
 
-Workflow:
+### SEO filename convention (mandatory, owner decision 2026-05-22)
+
+Image filenames are an SEO signal in image search. Final WebP filenames must follow this convention,
+which is reflected in `08-metadata.json::cover.src` and `inlineImagesByHeading[*].src` **before**
+the owner generates any PNG:
+
+- **Cover**: `<slug>-cover.webp` (or `<primary-keyword>-<short-modifier>.webp` if the slug is
+  longer than ~40 characters and the cover URL would otherwise exceed 60 characters).
+- **Inline**: `<slug-short>-<section-keyword>.webp`, where `slug-short` is the first 2–4
+  significant words of the guide slug and `section-keyword` is a short descriptor of the section
+  content (e.g. `scenarii`, `plan-30-dney`, `matrica-vybora`, `kogda-ne-stoit`).
+- ASCII only, lowercase, hyphen-separated, ≤ 60 characters total.
+- Generic names (`cover.webp`, `image1.webp`, `diagram.webp`, `untitled.webp`) are forbidden —
+  they lose the SEO signal. Existing guides published before 2026-05-22 that still use
+  `cover.webp` etc. stay as-is to keep production URLs and OG-image references stable; new
+  guides use the new convention from day 1.
+
+### Workflow
 
 1. Codex/agent fills `09-image-brief.md` (template
    `content/evergreen/templates/image-brief.template.md`): `prompt`, `negative_prompt`, `alt`,
-   `caption`, `aspect`, `filename_png`, `filename_webp` for cover and every inline image.
-2. Owner/editor opens ChatGPT, copies the prompt, generates a PNG and saves it as
-   `content/evergreen/packages/<slug>/raw-images/<filename>.png` (filename must match the brief).
-3. `npm run images:prep -- --slug=<slug>` (`scripts/images-prep.ts`) reads `raw-images/*.png`,
-   matches each file against `08-metadata.json`, resizes to the target size (1200×675 cover,
-   1200×800 inline rect, 1200×1200 inline square) using `sharp`, writes WebP at quality 82 into
-   `public/images/guides/<slug>/<filename>.webp`. A PNG larger than 5 MB raises a warn.
+   `caption`, `aspect`, `filename_png`, `filename_webp` for cover and every inline image —
+   filenames following the SEO convention above.
+2. Owner/editor opens ChatGPT, copies the prompt, generates a PNG. **PNG can be saved with any
+   filename** (ChatGPT often outputs `ChatGPT_image_<timestamp>.png` or similar) — the only
+   requirement is that all PNGs for one guide land in
+   `content/evergreen/packages/<slug>/raw-images/`. No manual renaming required.
+3. `npm run images:prep -- --slug=<slug>` (`scripts/images-prep.ts`) reads `raw-images/*.png`
+   and runs a two-pass mapping against `08-metadata.json`:
+   - **Pass 1 — exact stem match.** PNG files whose stem matches a meta slot stem are routed to
+     that slot directly.
+   - **Pass 2 — ordered fallback.** Remaining PNGs (random names) are matched in alphabetical
+     order against unfilled meta slots in declared order (cover first, then inline images in
+     `inlineImagesByHeading` order). Each rename is surfaced in the log as
+     `renamed ← <random.png>`.
+   The script then resizes (1200×675 cover, 1200×800 inline rect, 1200×1200 inline square) and
+   writes WebP using `sharp` with **cover quality 90, inline quality 88, effort 6,
+   smartSubsample=false** (full 4:4:4 chroma — important for graphic illustrations with thin
+   lines and text-like detail). Quality bumped 2026-05-22 from previous q=82 which produced
+   ~30 KB WebP outputs with visible compression artifacts. A PNG larger than 5 MB raises a warn.
 4. `npm run evergreen:check -- --slug=<slug>` enforces metadata, cover size (≥ 80 KB) and image
    presence.
 
@@ -329,6 +366,45 @@ Mandatory:
 
 For AI-generated news, the validator and prompt are necessary but not sufficient for sensitive claims. When the topic is high-risk and the material is manual/evergreen, use human review before publication.
 
+### Russian market case white-list (internal, do not publicly enumerate)
+
+Owner decision 2026-05-22: when an evergreen guide cites a Russian market fact, a case study, a
+penetration rate or a regulatory point, pull it from one of the sources below. **The list itself
+must not be published on the site or in `llms.txt`** — readers should keep a reason to ask us for
+analysis instead of seeing the source kitchen. Attribute individual sources inline only when a
+specific number/case is taken from them.
+
+Tier 1 — trusted without caveats:
+
+- **Яков и Партнёры** (`yakov.partners`) — strategic reports on AI / digital transformation, ex-McKinsey Russia methodology, not promotional.
+- **НИУ ВШЭ ИСИЭЗ** (`issek.hse.ru`) — official digital-economy indicators and panel surveys.
+- **TAdviser** (`tadviser.ru`) — largest catalog of Russian-company AI/IT implementation cases.
+- **CNews Analytics** (`cnews.ru`) — 15+ years of Russian IT market analytics and rankings.
+
+Tier 2 — primary sources for local models / platforms:
+
+- **Sber / SberAI blog** (developers of GigaChat; first-party numbers for the model family).
+- **Yandex Research** (`yandex.com/research`) — first-party for YandexGPT, YaLM, ML papers from the Yandex team.
+
+Tier 3 — journalistic outlets with above-average fact-checking:
+
+- **Forbes Russia** (`forbes.ru`) — cases of large-business AI implementation.
+- **Ведомости.Технологии** (`vedomosti.ru/technology`) — business cases, market deals.
+
+Use with caution (fact-check before citing):
+
+- **Habr** — strong on technical cases, but check author karma and comments; opinions vs. real production numbers can blur.
+- **vc.ru** — useful for business cases, but explicitly separate editorial pieces from sponsored / promotional posts (paid format clearly labeled).
+
+Consciously excluded:
+
+- **РБК Тренды** — case content frequently reads as paid promotion; not a primary source.
+- **Коммерсант** — strong outlet but very few AI-specific cases; ad-hoc only.
+
+Hierarchy when a fact is needed but no source exists in the white-list: drop the number and either
+(a) reframe the claim qualitatively, (b) use an editorial example with the explicit marker
+«Редакционный пример», or (c) leave the section without the fake-precision claim.
+
 ## 13. AI-generated content rules
 
 AI-generated content may be used only under the project editorial contract:
@@ -368,6 +444,17 @@ Evergreen guide:
 - CTA cap: ≤ 2 inline-CTAs (`inlineCtas`) + 1 final-CTA block with 3 cards (`ctaCards`).
   `evergreen:check` warns when `inlineCtas > 2` or total CTA > 5; the guide page also warns at
   build time when more than 2 inline CTAs are configured.
+- **No lead-magnet promises.** CTAs must point only to assets that actually exist. Do not promise
+  «получите чеклист в Telegram», «бесплатный PDF», «гайд на почту» or any artifact that is not
+  produced and held ready. Allowed CTAs in the project today (owner decision 2026-05-22):
+  - **«AI-новости в Telegram»** → `t.me/malakhovaidigest` (daily digest channel, real, indexed
+    via `SITE_TELEGRAM_URL` / `Organization.sameAs`).
+  - **«Архитектурный разбор ИИ»** / **«Оставить заявку»** → `malakhovai.ru/contacts`
+    (consultation form, real). Topic-specific phrasing is welcome
+    (`«Калькулятор проекта по ИИ» → contacts`, `«Проверьте бюджет до разработки» → contacts`).
+  - **«Личный разговор» / «Написать в Telegram»** → `t.me/malakhovai` (personal Telegram).
+  Default `ctaCards` for guides that do not override are defined in
+  `app/guides/[slug]/page.tsx::DEFAULT_FINAL_CTA_CARDS` and use exactly these three slots.
 
 Digest issue links are not mandatory because public digest issue pages do not exist in the current architecture.
 
@@ -472,9 +559,11 @@ Evergreen/manual article is publishable only when:
 - `npm run evergreen:check -- --slug=<slug>` passes without errors;
 - sitemap entry is expected.
 
-For a temporary review link, the guide may be available on the production route with `noindex: true`.
-In that state it is not considered fully indexable/published: it should not appear in sitemap or public
-guide listings until editorial review is complete and `noindex` is removed.
+`noindex: true` is a transient state for guides whose cover has not yet been generated in ChatGPT.
+It is **not** a multi-day editorial review window — owner decision 2026-05-22 is that editorial
+review happens on the draft PR before merge, and the moment the cover lands the guide goes live
+and is submitted to IndexNow. Guides in `noindex` state are excluded from sitemap and the
+`/guides` listing until the flag is removed.
 
 ## 18. Post-publication checks
 
