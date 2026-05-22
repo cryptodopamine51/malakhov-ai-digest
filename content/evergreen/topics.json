@@ -51,7 +51,7 @@
   },
   {
     "id": 3,
-    "status": "planned",
+    "status": "published",
     "cluster": "ИИ для бизнеса",
     "title": "ИИ для малого бизнеса: с чего начать",
     "primaryKeyword": "ИИ для малого бизнеса",
@@ -75,7 +75,7 @@
   },
   {
     "id": 4,
-    "status": "planned",
+    "status": "ready_for_codex",
     "cluster": "ИИ для бизнеса",
     "title": "Какие бизнес-процессы автоматизировать с помощью ИИ",
     "primaryKeyword": "какие процессы автоматизировать с помощью ИИ",
@@ -100,7 +100,7 @@
   },
   {
     "id": 5,
-    "status": "planned",
+    "status": "ready_for_codex",
     "cluster": "ИИ для бизнеса",
     "title": "Ошибки внедрения ИИ в компании",
     "primaryKeyword": "ошибки внедрения ИИ",
@@ -124,7 +124,7 @@
   },
   {
     "id": 6,
-    "status": "planned",
+    "status": "ready_for_codex",
     "cluster": "ИИ для бизнеса",
     "title": "Как выбрать первый ИИ-проект в бизнесе",
     "primaryKeyword": "как выбрать первый ИИ проект",
