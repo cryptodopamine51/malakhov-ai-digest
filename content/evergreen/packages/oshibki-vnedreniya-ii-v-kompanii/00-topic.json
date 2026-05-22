@@ -1,0 +1,24 @@
+{
+  "id": 5,
+  "status": "ready_for_codex",
+  "cluster": "ИИ для бизнеса",
+  "title": "Ошибки внедрения ИИ в компании",
+  "primaryKeyword": "ошибки внедрения ИИ",
+  "supportingKeywords": [
+    "почему AI проекты не работают",
+    "риски внедрения ИИ в бизнес",
+    "ошибки AI автоматизации",
+    "как не провалить внедрение ИИ"
+  ],
+  "intent": "practical",
+  "audience": [
+    "собственник",
+    "CEO",
+    "COO",
+    "руководитель цифровой трансформации"
+  ],
+  "targetSlug": "oshibki-vnedreniya-ii-v-kompanii",
+  "priority": "high",
+  "cta": "architectural_ai_audit",
+  "notes": "Анти-гайд. 10 типовых ошибок по стадиям (выбор/пилот/запуск/поддержка), кейс провала B2B SaaS, worked example цены ошибки «нет лимита расходов» = 1,45 млн ₽."
+}
