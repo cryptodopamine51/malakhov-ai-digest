@@ -12,6 +12,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # main устарела относительно codex/evergreen-quality-standard-2026-05-21,
+          # на котором живёт production-код. См. spec_2026-05-22_digest_editorial_priority.md.
+          ref: codex/evergreen-quality-standard-2026-05-21
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
