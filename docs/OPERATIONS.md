@@ -174,6 +174,37 @@ SELECT jobid, runid, start_time, status, return_message
 SELECT id, status_code, content::text, created FROM net._http_response ORDER BY id DESC LIMIT 5;
 ```
 
+### Vercel: production branch divergence safety net
+
+Development живёт на долгоиграющей ветке `codex/evergreen-quality-standard-2026-05-21`,
+которая сильно опередила `main`. Vercel Project Settings → Git → Production Branch всё ещё
+указывает на `main`. До 2026-05-22 любой push в main (например, ci-фиксы под cron workflows)
+триггерил Production-билд из stale main и **перетирал alias `news.malakhovai.ru`** на старый
+код без `/about`, `/search`, evergreen-гайдов и т.п.
+
+Защита: в Vercel project выставлен `commandForIgnoringBuildStep`:
+
+```bash
+if [ "$VERCEL_GIT_COMMIT_REF" = "main" ]; then exit 0; else exit 1; fi
+```
+
+Поведение:
+- Push в `main` → Vercel allocates build slot, запускает ignoreCommand, получает exit 0 →
+  билд пропускается, alias не трогается.
+- Push в `codex/...` или любую другую ветку → ignoreCommand exit 1 → нормальный билд как
+  Preview deployment.
+- Применение к production: вручную `vercel promote <preview-deploy-url>` после успешного билда.
+
+Альтернатива (рекомендуется при возможности): поменять Production Branch в Vercel UI на
+`codex/evergreen-quality-standard-2026-05-21`. Тогда codex-пуши auto-promote'ятся и
+`commandForIgnoringBuildStep` можно убрать как избыточный. **Vercel REST API эту смену не
+поддерживает** (проверено PATCH/POST на `/v9/projects/{id}`, `/v9/projects/{id}/link`,
+`/v9/projects/{id}/branches` — все возвращают `bad_request` или `not_found`); только UI.
+
+История: alias уронился 2026-05-22 evening после push'а ci-фиксов в main; восстановлен через
+`vercel promote` codex-deploy'а; `commandForIgnoringBuildStep` поставлен через v9 PATCH чтобы
+исключить повтор. См. `docs/spec_2026-05-22_digest_editorial_priority.md`.
+
 ### Fallback — Vercel Cron (best-effort)
 
 `vercel.json` содержит резервные cron-entries — на случай, если Supabase pg_cron не сработает (outage, миграция вылетела, секрет ротировали и забыли):
