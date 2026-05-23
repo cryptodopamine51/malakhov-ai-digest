@@ -33,6 +33,7 @@ const PACKAGE_FILES: PackageFile[] = [
   { target: '09-image-brief.md', template: 'image-brief.template.md' },
   { target: '10-codex-publication-task.md', template: 'codex-publication-task.template.md' },
   { target: '11-publication-checklist.md', template: 'publication-checklist.template.md' },
+  { target: '12-chatgpt-image-prompts.md', template: 'chatgpt-image-prompts.template.md' },
 ]
 
 const root = process.cwd()

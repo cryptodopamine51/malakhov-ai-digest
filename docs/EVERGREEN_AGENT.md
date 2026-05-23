@@ -2,7 +2,7 @@
 
 > **Цель этого файла:** владелец говорит «сделай следующую evergreen-статью по `docs/EVERGREEN_AGENT.md`» — агент делает всё сам. Владелец только подкидывает 1–5 PNG-картинок из ChatGPT, когда агент его об этом попросит, и в конце получает рабочую URL.
 >
-> Последнее обновление: 2026-05-22
+> Последнее обновление: 2026-05-23
 
 ---
 
@@ -11,9 +11,9 @@
 | Шаг | Кто делает | Команда / действие |
 |---|---|---|
 | 1. Найти следующую тему | агент | `npm run evergreen:next` |
-| 2. Подготовить редакционный пакет (12 файлов) | агент | `npm run evergreen:new -- --topic-id=<N>` |
+| 2. Подготовить редакционный пакет (13 файлов) | агент | `npm run evergreen:new -- --topic-id=<N>` |
 | 3. Написать статью по Evergreen Quality Bar | агент | заполняет файлы пакета 01–08 |
-| 4. Подготовить промпты для картинок | агент | пишет `09-image-brief.md` + явно даёт владельцу промпты в чат |
+| 4. Подготовить промпты для картинок | агент | пишет `09-image-brief.md` (внутренний brief) **и `12-chatgpt-image-prompts.md` (готовое сообщение для ChatGPT-владельца)** + дублирует промпты в чат |
 | 5. **🖼 Сгенерировать PNG в ChatGPT и положить в `raw-images/`** | **владелец** | вручную через подписку ChatGPT Plus / Pro / Codex |
 | 6. Конвертировать PNG → WebP по правильным размерам | агент | `npm run images:prep -- --slug=<slug>` |
 | 7. Перенести в production: `content/guides/`, `content/guides/meta/`, снять `noindex` | агент | автоматически после p.6 |
@@ -32,6 +32,42 @@
 Активная ветка для выпуска evergreen-статей: **`codex/evergreen-quality-standard-2026-05-21`** (file-based registry в `lib/guides.ts` + meta JSON в `content/guides/meta/<slug>.json`). Все новые статьи добавляются туда. Production deploy выполняется через `vercel --prod` напрямую из этой ветки — alias на `news.malakhovai.ru` автоматически обновляется.
 
 Мерж в `main` происходит **только по явному запросу владельца** и требует ручного rebase + resolve конфликтов с `EVERGREEN_ARTICLE_PLAYBOOK.md` / `GuideScrollTools.tsx`, которые на main эволюционировали отдельно.
+
+## SEO filename convention для картинок (обязательно с 2026-05-22)
+
+Имя файла картинки — это SEO-сигнал для Google Image и Yandex.Картинки. Поисковики читают URL и используют его как фактор ранжирования. `cover.webp` — ничего не говорит. `<slug-short>-<section-keyword>.webp` — говорит и индексируется.
+
+**Правило:**
+
+- **Cover:** `<slug>-cover.webp` или `<slug-short>-cover.webp` (если полный slug длинный).
+- **Inline:** `<slug-short>-<section-keyword>.webp`.
+- ASCII only, lowercase, hyphen-separated, ≤ 60 символов.
+- Запрещены generic-имена: `cover.webp`, `image1.webp`, `diagram.webp`, `untitled.webp`, `screenshot.webp`.
+
+`slug-short` — это 2–4 значимых слова из slug. Например:
+
+| Slug | slug-short | Cover | Inline пример |
+|---|---|---|---|
+| `ii-dlya-malogo-biznesa-s-chego-nachat` | `ii-malyy-biznes` | `ii-malyy-biznes-cover.webp` | `ii-malyy-biznes-4-scenariya.webp` |
+| `skolko-stoit-vnedrenie-ii-v-kompaniyu` | `cena-ii` | `cena-ii-cover.webp` | `cena-ii-kalkulyator.webp` |
+| `oshibki-vnedreniya-ii-v-kompanii` | `oshibki-ii` | `oshibki-ii-cover.webp` | `oshibki-ii-10-tipovyh-provalov.webp` |
+| `kak-vybrat-pervyj-ii-proekt-v-biznese` | `pervyy-ii-proekt` | `pervyy-ii-proekt-cover.webp` | `pervyy-ii-proekt-skoring-7-kriteriev.webp` |
+| `kakie-biznes-processy-avtomatizirovat-s-pomoshyu-ii` | `biznes-processy-ii` | `biznes-processy-ii-cover.webp` | `biznes-processy-ii-matrica-vybora.webp` |
+
+**Когда и где это применяется:**
+
+1. **В `08-metadata.json` (cover.src и inlineImagesByHeading[*].src)** — до запуска `images:prep`. Скрипт записывает WebP именно по тому имени, которое указано в meta.
+2. **В `09-image-brief.md`** — `filename_png` и `filename_webp` совпадают с meta.
+3. **В `12-chatgpt-image-prompts.md`** — `Save As: <filename>.png` для каждой картинки. Имя стема PNG = имя стема WebP, отличается только расширением.
+4. **Внутри `images:prep`** — если PNG отдан ChatGPT'ом со случайным именем, скрипт сам маппит PNG → нужный slot и переименовывает на лету. Имя WebP всегда берётся из meta.
+5. **В `evergreen:check`** — есть warning `src uses generic filename` для cover и каждой inline-картинки, если имя попало в чёрный список (`cover`, `image`, `image1`, `diagram`, `photo`, `picture`, `untitled`, `screenshot`).
+
+**Ретроактивно для уже опубликованных гайдов (id 1, 2, 3, 4, 5, 6 на 2026-05-23):**
+
+- На проде сейчас generic `cover.webp` + один-три descriptive (`pilot-30-days-roadmap.webp`, `scenarios-grid.webp` и т.д.). Indexnow по этим картинкам уже мог отработать.
+- Для каждого гайда в `content/evergreen/packages/<slug>/12-chatgpt-image-prompts.md` зафиксирован новый комплект SEO-имён.
+- **Миграция выполняется только при перегенерации картинки** (когда владелец решает обновить cover/inline через ChatGPT). При этом: 1) меняем `src` в `content/guides/meta/<slug>.json` на SEO-имя из `12-chatgpt-image-prompts.md`; 2) запускаем `images:prep`; 3) старый файл оставляем под старым именем (или удаляем — google переиндексирует через 1–4 недели через sitemap); 4) если был social share по OG-image — рассматриваем, нужен ли redirect.
+- Принудительный массовый rename без перегенерации — не делаем (риск сломать OG-image references, sitemap отстаёт, индекс плавает).
 
 ---
 
@@ -90,7 +126,23 @@ npm run evergreen:next
 npm run evergreen:new -- --topic-id=<N>
 ```
 
-Создаст `content/evergreen/packages/<slug>/` с 12 файлами-шаблонами (`00-topic.json` … `11-publication-checklist.md`).
+Создаст `content/evergreen/packages/<slug>/` с 13 файлами-шаблонами:
+
+| Файл | Назначение |
+|---|---|
+| `00-topic.json` | Снимок темы из `topics.json`. |
+| `01-seo-brief.md` | SEO-бриф, anti-cannibalization, intent. |
+| `02-serp-research.md` | SERP-разведка по primary keyword. |
+| `03-source-notes.md` | Заметки об источниках и фактах. |
+| `04-outline.md` | План структуры. |
+| `05-draft.md` | Черновик (опционально). |
+| `06-editorial-pass.md` | Редакторский проход. |
+| `07-final-article.md` | Финальный Markdown для production. |
+| `08-metadata.json` | Финальный meta JSON для production. |
+| `09-image-brief.md` | Внутренний brief на картинки (concept, alt, caption, aspect, filename, negative prompt). |
+| `10-codex-publication-task.md` | Задача для Codex/агента публикации. |
+| `11-publication-checklist.md` | Чек-лист готовности к публикации. |
+| `12-chatgpt-image-prompts.md` | **Готовое сообщение для ChatGPT-владельца** — копируется целиком и отправляется в ChatGPT, чтобы тот сгенерировал все картинки за один проход. |
 
 ### Шаг 3. Написать статью по Evergreen Quality Bar
 
@@ -112,20 +164,58 @@ npm run evergreen:new -- --topic-id=<N>
 - статьи про конкретные инструменты — 6 000–12 000;
 - узкие / explainer — 2 000–5 000.
 
-### Шаг 4. Подготовить image brief + промпты владельцу
+### Шаг 4. Подготовить image brief + ChatGPT prompts + сообщение владельцу
 
-В `09-image-brief.md` для cover и каждой inline-картинки заполнить:
+**Шаг 4a. Заполнить внутренний brief `09-image-brief.md`.** Для cover и каждой inline-картинки:
 
-- `filename_png`, `filename_webp` (имена должны совпадать с теми, что в `08-metadata.json::cover.src` и `inlineImagesByHeading.*.src`, но с расширениями `.png` / `.webp`);
+- `filename_png`, `filename_webp` — **обязательно по SEO convention** (см. ниже): cover = `<slug>-cover.webp` или `<slug-short>-cover.webp`; inline = `<slug-short>-<section-keyword>.webp`.
 - `prompt` (4–8 строк для ChatGPT, концепция + стиль + ограничения);
 - `negative_prompt` (no robots, no neon, no glowing brain, no handshake, no readable text inside image, no generic office stock);
 - `alt` (для слепых + SEO, описательный);
 - `caption` (раскрывает, что изображено и зачем);
 - `aspect` (`16:9` для cover, `3:2` для inline rect, `1:1` для inline square).
 
+Эти же filename'ы попадают в `08-metadata.json::cover.src` и `inlineImagesByHeading[*].src` **до** генерации PNG. `evergreen:check` warn'ит, если в meta остался generic `cover.webp`, `image1.webp`, `diagram.webp` и т.п. — это SEO-сигнал, который нужно сохранить.
+
 Cover **обязателен** (1200×675 WebP, ≥ 80 KB финал). Inline — обычно 2–4 шт. для матриц, схем, диаграмм (1200×800 или 1200×1200).
 
-После заполнения brief — агент **обязан** в чате выдать владельцу следующее сообщение (без markdown-блокировки, чтобы было читабельно):
+**Шаг 4b. Сформировать `12-chatgpt-image-prompts.md`.** Это **единый готовый месседж для ChatGPT-владельца**, который копируется целиком и отправляется в чат. Файл имеет жёсткую структуру:
+
+```
+> Что это: готовое сообщение для ChatGPT.
+> Как пользоваться: 1-5 шагов.
+
+=== НАЧАЛО СООБЩЕНИЯ ДЛЯ CHATGPT ===
+
+Привет. Сгенерируй N иллюстраций для статьи «<title>».
+Стиль: спокойный, фактологический, business-editorial.
+Палитра: graphite + deep navy, тёплый акцент, off-white.
+
+[Общие правила: без роботов, без текста внутри, без generic office stock, etc.]
+
+Генерируй по одной. После каждой я скажу «следующая».
+
+КАРТИНКА 1 из N — обложка.
+Aspect: 16:9.
+Что показать: <концепция в 2-4 предложения>.
+Save As: <slug>-cover.png
+
+КАРТИНКА 2 из N — <название inline>.
+Aspect: 3:2.
+Что показать: <концепция>.
+Save As: <slug-short>-<section>.png
+
+[… N штук …]
+
+=== КОНЕЦ ===
+
+## Технический контекст (не отправляйте в ChatGPT)
+[Финальные имена WebP, размеры, минимум 80 KB на cover.]
+```
+
+Цель этого файла — превратить генерацию картинок в **одну операцию владельца**: «открыл файл → скопировал блок → вставил в ChatGPT → собрал PNG'и → сказал агенту "положил"». Никакой ручной сборки промптов из нескольких источников.
+
+**Шаг 4c. Дать владельцу в чате те же промпты.** Это страховка на случай, если владелец не хочет открывать файл — формат такой же, как раньше:
 
 ```
 🖼 Картинки для статьи <slug> готовы к генерации.

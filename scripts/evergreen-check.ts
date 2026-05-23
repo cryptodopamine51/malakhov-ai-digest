@@ -64,6 +64,7 @@ const REQUIRED_PACKAGE_FILES = [
   '09-image-brief.md',
   '10-codex-publication-task.md',
   '11-publication-checklist.md',
+  '12-chatgpt-image-prompts.md',
 ]
 
 const VALID_STATUSES = new Set([
@@ -204,7 +205,7 @@ function validateMetadata(value: unknown, label: string, errors: string[], warni
   if (!isRecord(metadata.cover)) {
     errors.push(`${label} cover must be an object`)
   } else {
-    validateImage(metadata.cover, `${label} cover`, errors)
+    validateImage(metadata.cover, `${label} cover`, errors, warnings)
     checkLocalImageExists(metadata.cover, `${label} cover`, errors)
   }
 
@@ -217,7 +218,7 @@ function validateMetadata(value: unknown, label: string, errors: string[], warni
       if (!isRecord(image)) {
         errors.push(`${label} inline image for ${heading} must be an object`)
       } else {
-        validateImage(image, `${label} inline image for ${heading}`, errors)
+        validateImage(image, `${label} inline image for ${heading}`, errors, warnings)
         checkLocalImageExists(image, `${label} inline image for ${heading}`, errors)
       }
     }
@@ -300,9 +301,38 @@ function validateMetadata(value: unknown, label: string, errors: string[], warni
   return metadata
 }
 
-function validateImage(image: Record<string, unknown>, label: string, errors: string[]) {
+const GENERIC_IMAGE_BASENAMES = new Set([
+  'cover',
+  'image',
+  'image1',
+  'image2',
+  'image3',
+  'image4',
+  'diagram',
+  'photo',
+  'picture',
+  'untitled',
+  'screenshot',
+])
+
+export function isGenericImageFilename(src: string): boolean {
+  const base = src.split('/').pop() ?? ''
+  const stem = base.replace(/\.(webp|png|jpg|jpeg|svg)$/i, '').toLowerCase()
+  return GENERIC_IMAGE_BASENAMES.has(stem)
+}
+
+function validateImage(
+  image: Record<string, unknown>,
+  label: string,
+  errors: string[],
+  warnings?: string[],
+) {
   if (typeof image.src !== 'string' || image.src.trim().length === 0) {
     errors.push(`${label} src must be non-empty`)
+  } else if (warnings && isGenericImageFilename(image.src)) {
+    warnings.push(
+      `${label} src uses generic filename "${image.src.split('/').pop()}" — SEO convention requires descriptive <slug-short>-<section>.webp`,
+    )
   }
   if (typeof image.alt !== 'string' || image.alt.trim().length === 0) {
     errors.push(`${label} alt must be non-empty`)
