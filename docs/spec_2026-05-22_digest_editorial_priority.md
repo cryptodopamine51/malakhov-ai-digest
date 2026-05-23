@@ -1,7 +1,8 @@
 # Spec — Digest editorial priority + cover preference fix
 
 Дата: 2026-05-22
-Статус: draft (ждёт подтверждения владельца перед реализацией)
+Статус: **closed 2026-05-23 morning**. Wave 1/2/3 закрыты 2026-05-22 late evening,
+Wave 4 + broader-backfill + recent-rescore — 2026-05-23 morning.
 Связанные канонические файлы: `docs/ARTICLE_SYSTEM.md`, `docs/OPERATIONS.md`
 
 ## Проблема

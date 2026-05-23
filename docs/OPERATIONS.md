@@ -280,16 +280,48 @@ npx tsx scripts/backfill-cover-from-inline.ts --limit=20 --apply
 - default — dry-run; `--apply` обязателен для записи;
 - скан включает только статьи с `cover_image_url LIKE '%/article-images/ai-covers/%'`
   и непустым `article_images` (template/stock не трогаются — это легитимный fill-in);
-- broader backfill (~24 Habr/CNews статей в архиве) запускается только после spot-check
-  владельцем, потому что Habr-author-set обложки разной editorial-ценности.
+- broader backfill (28 Habr/CNews/Hugging Face статей в архиве) применён 2026-05-23 после
+  spot-check: cover'ы вернулись на habrastorage / leonardo.osnova / source-CDN URL'ы;
+  2 CNews-статьи с `static.cnews.ru/img/articles/.../gemini_generated_image_*.png`
+  оставлены на AI-cover, потому что CNews использует этот placeholder для разных статей
+  без фото — promote такого URL дал бы одинаковую обложку на разные материалы. Sanitizer
+  теперь отбрасывает `gemini_generated_image` / `ai_generated_image` URL'ы как
+  `stock_placeholder` (`lib/media-sanitizer.ts`).
 
-### `scripts/generate-ai-covers.ts` после Wave 2
+### `scripts/generate-ai-covers.ts` после Wave 2/4
 
-`needsAiCover()` теперь принимает решение через `sanitizeArticleMedia` со ВСЕМ доступным медиа
+`needsAiCover()` принимает решение через `sanitizeArticleMedia` со ВСЕМ доступным медиа
 (`cover_image_url + article_images`). Старый хардкод `['Habr AI','vc.ru','vc.ru AI/стартапы',
 'CNews']` убран — для статьи с реальным фото в `article_images` AI-cover не генерируется.
-Template/stock-обложки остаются заменяемыми. SELECT в `selectArticles` теперь дополнительно
-тащит `article_images`. См. `docs/spec_2026-05-22_digest_editorial_priority.md` Wave 2.
+Template/stock-обложки остаются заменяемыми. SELECT в `selectArticles` тащит `article_images`.
+
+`chooseScene()` (Wave 4) делает контекстный матч до старой regex-цепочки: при двойном
+сигнале `PRODUCT_LAUNCH_NOUN_RE + ANNOUNCEMENT_VERB_RE` → сцена `product_launch`
+(tactile hardware close-up), при `MODEL_RELEASE_RE + ANNOUNCEMENT_VERB_RE` → `model_release`
+(foundation-model launch tableau), при `PEOPLE_NEWS_RE` → `people_news` (institutional
+silhouettes). Это убирает типичный фейл «Russian enterprise operations room» для статьи
+про конкретный продукт. Тесты — `tests/node/scene-matcher.test.ts`.
+
+Файл получил CLI-entry guard: `main()` вызывается только при прямом запуске
+`npx tsx scripts/generate-ai-covers.ts`, а не при импорте из тестов. Тесты теперь могут
+импортировать `classifyScene` без побочных DB-touch'ей.
+
+### Re-score recent articles
+
+`scripts/rescore-recent.ts` — точечный пересчёт `articles.score` по текущей формуле
+`pipeline/scorer.ts` для свежих live-статей. Нужен после изменения scorer-формулы (типичный
+случай — Wave 1 из `docs/spec_2026-05-22_digest_editorial_priority.md`), чтобы уже
+опубликованные за последние дни материалы попали в ближайший дайджест по новой логике,
+а не по submit-этапной формуле.
+
+```bash
+npx tsx scripts/rescore-recent.ts --dry-run            # 3-day window
+npx tsx scripts/rescore-recent.ts --apply
+npx tsx scripts/rescore-recent.ts --days=7 --apply
+```
+
+Скрипт не вызывает Claude/OpenAI/fetcher, работает только со строками в БД. Печатает
+распределение diff'ов и top-15 изменений перед apply.
 
 ### Source cover backfill
 

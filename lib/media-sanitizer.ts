@@ -225,6 +225,11 @@ function rejectReasonForCandidate(
 
   if (!src || /^data:/i.test(src) || /^javascript:/i.test(src)) return 'invalid_url'
   if (mode === 'cover' && isArticleImagesStorageUrl(src)) return null
+  // Источник-side stock-placeholder'ы: CNews повторно использует один
+  // `gemini_generated_image_*.png` для разных статей без фото. Если бы мы
+  // промоутили его в cover, разные материалы на сайте получали бы одинаковую
+  // обложку — хуже, чем уникальная AI-обложка. См. Wave 2 broader backfill.
+  if (/gemini[-_]?generated[-_]?image|ai[-_]?generated[-_]?image/i.test(src)) return 'stock_placeholder'
   if (HARD_URL_RE.test(urlText)) return 'ad_url'
   if (UI_ICON_URL_RE.test(urlText) || UI_ICON_URL_RE.test(normalizedCandidateText)) return 'ui_icon'
   if (PROMO_TEXT_RE.test(normalizedCandidateText)) return 'promo_text'

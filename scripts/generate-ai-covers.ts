@@ -500,6 +500,30 @@ Output:
 16:9 landscape editorial cover, sophisticated, memorable, varied from other covers in the same publication series.`
 }
 
+// Wave 4 (spec_2026-05-22_digest_editorial_priority.md): context-aware scene matcher.
+// Когда после Wave 2 AI-cover всё-таки нужен (нет usable inline в article_images),
+// сцена должна соответствовать сущности материала, а не falling-back на generic 'tools'
+// или случайное `business` — типичный фейл был «Russian enterprise operations room»
+// для статьи про карманный Linux-компьютер Flipper One.
+export const PRODUCT_LAUNCH_NOUN_RE =
+  /(?:устройств|девайс|гаджет|карманн|компьютер|ноутбук|смартфон|очки[а-я ]*xr|часы|наушник|колонк|консол|приставк|роутер|маршрутизатор|чип|процессор|ускорител|робот|шлем|wearable|hardware|device|gadget|laptop|smartphone|headset|earbuds|speaker|accelerator|gpu(?:s)?\b|tpu(?:s)?\b|asic(?:s)?\b)/i
+export const MODEL_RELEASE_RE =
+  /\b(?:gpt-?\d(?:\.\d)?|chatgpt|claude(?:\s|-)?\d?|gemini(?:\s|-)?\d?(?:\.\d)?|llama|mistral|sora|veo|imagen|phi-?\d|grok|copilot|deepmind|openai|anthropic|cohere|xai|yandexgpt|gigachat)\b/i
+export const ANNOUNCEMENT_VERB_RE =
+  /(?:unveil|launch(?:es|ed|ing)?|announc|releas|introduc|debut|представ|запуст|анонсир|выпуст)/i
+export const PEOPLE_NEWS_RE =
+  /(?:протест|бунт|выпускник|интервью|основател|сооснователь|увольнен|сократ|cto|ceo)/i
+
+export function classifyScene(ruTitle: string, lead: string | null, text: string): 'product_launch' | 'model_release' | 'people_news' | null {
+  const title = (ruTitle || lead || '').toLowerCase()
+  const fullText = `${title} ${text}`.toLowerCase()
+  const hasAnnouncementVerb = ANNOUNCEMENT_VERB_RE.test(title)
+  if (PRODUCT_LAUNCH_NOUN_RE.test(title) && hasAnnouncementVerb) return 'product_launch'
+  if (MODEL_RELEASE_RE.test(title) && hasAnnouncementVerb) return 'model_release'
+  if (PEOPLE_NEWS_RE.test(fullText)) return 'people_news'
+  return null
+}
+
 function chooseScene(article: ArticleRow, index: number): string {
   const text = `${article.ru_title} ${article.lead ?? ''} ${article.card_teaser ?? ''} ${(article.topics ?? []).join(' ')}`.toLowerCase()
   const explicit = explicitScene(article.slug)
@@ -558,6 +582,26 @@ function chooseScene(article: ArticleRow, index: number): string {
       'a neuroscience research atlas made of paper anatomy fragments, abstract free-energy geometry, and lab archive textures',
       'a cognitive science editorial collage with split portrait fragments, diagrams, and institutional research objects',
     ],
+    product_launch: [
+      'a still-life of a single tactile hardware product on a workbench with exploded-view paper schematics, calipers, and component cutouts, sober editorial light',
+      'an editorial close-up of one pocket-sized device on layered engineering blueprints, with neutral background and no readable text',
+    ],
+    model_release: [
+      'an editorial release scene for a foundation AI model — paper version tags, benchmark plates, and abstract neural-network geometry without UI elements',
+      'a launch-day still life with model release cards, layered benchmark sheets, and abstract token-flow shapes on a sober institutional desk',
+    ],
+    people_news: [
+      'a sober editorial scene of an institutional gathering — abstract human silhouettes, hand-held cards, and stone architecture in the background, no readable text',
+      'a corporate news tableau composed of paper cutout figures, leaflet stacks, and institutional architectural fragments, no logos',
+    ],
+  }
+
+  // Wave 4 context-aware overrides. Срабатывают только при двойном сигнале (носитель + announcement),
+  // чтобы не вытеснять существующую логику для длинных editorial-материалов.
+  const sceneClass = classifyScene(article.ru_title, article.lead, text)
+  if (sceneClass) {
+    const list = variants[sceneClass]
+    return list[index % list.length]
   }
 
   const key =
@@ -771,7 +815,20 @@ function safeParseEnv(text: string): Record<string, string> {
   return parsed
 }
 
-main().catch((error) => {
-  console.error(error)
-  process.exit(1)
-})
+// CLI entry guard: запускаем main() только если файл вызван напрямую (`npx tsx scripts/...`),
+// а не при import'е из тестов (`tests/node/scene-matcher.test.ts`).
+const invokedDirectly = (() => {
+  try {
+    const entry = process.argv[1] ? new URL(`file://${process.argv[1]}`).href : null
+    return entry !== null && import.meta.url === entry
+  } catch {
+    return false
+  }
+})()
+
+if (invokedDirectly) {
+  main().catch((error) => {
+    console.error(error)
+    process.exit(1)
+  })
+}
