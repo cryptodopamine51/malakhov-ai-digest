@@ -161,7 +161,7 @@ async function main() {
       title: article.ru_title,
       kind: job.kind,
       bytes: webp.length,
-      url: data.publicUrl,
+      url: publicUrl,
     }))
   }
 }
