@@ -174,36 +174,35 @@ SELECT jobid, runid, start_time, status, return_message
 SELECT id, status_code, content::text, created FROM net._http_response ORDER BY id DESC LIMIT 5;
 ```
 
-### Vercel: production branch divergence safety net
+### Vercel: production branch и GitHub default branch (две разные «main»)
 
-Development живёт на долгоиграющей ветке `codex/evergreen-quality-standard-2026-05-21`,
-которая сильно опередила `main`. Vercel Project Settings → Git → Production Branch всё ещё
-указывает на `main`. До 2026-05-22 любой push в main (например, ci-фиксы под cron workflows)
-триггерил Production-билд из stale main и **перетирал alias `news.malakhovai.ru`** на старый
-код без `/about`, `/search`, evergreen-гайдов и т.п.
+В проекте две независимые «дефолтные ветки», и их легко перепутать:
 
-Защита: в Vercel project выставлен `commandForIgnoringBuildStep`:
+1. **Vercel Production Branch** = `codex/evergreen-quality-standard-2026-05-21` (с 2026-05-23).
+   Меняется только в Vercel UI: Project Settings → **Environments** → Production → Branch Tracking
+   (на странице **Git** этого поля в новом UI больше нет). Каждый push в codex создаёт
+   Production Deployment и авто-промоутится на `news.malakhovai.ru` (Auto-assign Custom
+   Production Domains = Enabled). Push в `main` → обычный Preview, прод не трогает.
+2. **GitHub default branch** = `main` (не менялся). Scheduled GitHub Actions берут определения
+   workflow-файлов именно с дефолтной ветки GitHub, поэтому workflow-файлы лежат в `main`, а
+   `actions/checkout` в них пинится `ref: codex/evergreen-quality-standard-2026-05-21`, чтобы
+   cron выполнял production-код (новый scorer, needsAiCover, и т.д.). **Эти pin'ы убирать нельзя**,
+   пока GitHub default branch = main.
 
-```bash
-if [ "$VERCEL_GIT_COMMIT_REF" = "main" ]; then exit 0; else exit 1; fi
-```
+Что НЕ нужно (исторический контекст): раньше Vercel Production Branch указывал на `main`,
+поэтому push ci-фиксов в main триггерил Production-билд из stale main и **перетирал alias**
+на старый код без `/about`, `/search`, гайдов (инцидент 2026-05-22 evening). Временной
+заплаткой был `commandForIgnoringBuildStep` (`if [ "$VERCEL_GIT_COMMIT_REF" = "main" ]; then
+exit 0; else exit 1; fi`), снятый 2026-05-23 после смены Production Branch на codex — теперь
+защита структурная, заплатка не нужна.
 
-Поведение:
-- Push в `main` → Vercel allocates build slot, запускает ignoreCommand, получает exit 0 →
-  билд пропускается, alias не трогается.
-- Push в `codex/...` или любую другую ветку → ignoreCommand exit 1 → нормальный билд как
-  Preview deployment.
-- Применение к production: вручную `vercel promote <preview-deploy-url>` после успешного билда.
+Vercel REST API смену Production Branch не поддерживает (проверено PATCH/POST на
+`/v9/projects/{id}`, `/v9/projects/{id}/link`, `/v9/projects/{id}/branches`) — только UI.
+`commandForIgnoringBuildStep` ставится/снимается через `PATCH /v9/projects/{id}`
+с body `{"commandForIgnoringBuildStep": "<script>" | null}`.
 
-Альтернатива (рекомендуется при возможности): поменять Production Branch в Vercel UI на
-`codex/evergreen-quality-standard-2026-05-21`. Тогда codex-пуши auto-promote'ятся и
-`commandForIgnoringBuildStep` можно убрать как избыточный. **Vercel REST API эту смену не
-поддерживает** (проверено PATCH/POST на `/v9/projects/{id}`, `/v9/projects/{id}/link`,
-`/v9/projects/{id}/branches` — все возвращают `bad_request` или `not_found`); только UI.
-
-История: alias уронился 2026-05-22 evening после push'а ci-фиксов в main; восстановлен через
-`vercel promote` codex-deploy'а; `commandForIgnoringBuildStep` поставлен через v9 PATCH чтобы
-исключить повтор. См. `docs/spec_2026-05-22_digest_editorial_priority.md`.
+Долгосрочно стоит слить `codex/...` в `main` и сделать обе дефолтные ветки одной — тогда
+и pin'ы, и раздвоение исчезнут. Это отдельная задача (10 main-only коммитов vs 30+ codex-only).
 
 ### Fallback — Vercel Cron (best-effort)
 
