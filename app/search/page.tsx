@@ -67,7 +67,7 @@ export default async function SearchPage({
         />
         <button
           type="submit"
-          className="rounded border border-ink bg-ink px-4 py-2 text-sm font-medium text-base transition-opacity hover:opacity-90"
+          className="rounded border border-ink bg-ink px-4 py-2 text-sm font-medium text-page transition-opacity hover:opacity-90"
         >
           Найти
         </button>

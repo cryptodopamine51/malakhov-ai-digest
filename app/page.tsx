@@ -59,7 +59,7 @@ export default async function HomePage() {
         <h1 className="font-serif text-4xl font-bold leading-none text-ink sm:text-5xl md:text-6xl">
           Malakhov AI Дайджест
         </h1>
-        <p className="mt-4 max-w-3xl text-sm font-medium leading-relaxed text-hero-muted md:text-base lg:text-[17px]">
+        <p className="mt-7 max-w-3xl border border-line border-l-[3px] border-l-accent bg-surface px-4 py-3 text-[15px] font-semibold leading-relaxed text-ink shadow-[0_1px_0_var(--line)] md:text-base lg:text-[17px]">
           Ежедневная редакционная лента об ИИ: ключевые релизы, исследования, продукты и
           индустриальные сдвиги без визуального шума.
         </p>

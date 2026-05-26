@@ -10,7 +10,6 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        base:    'var(--base)',
         surface: 'var(--surface)',
         ink:     'var(--ink)',
         muted:   'var(--muted)',
@@ -19,6 +18,12 @@ const config: Config = {
         accent:  'var(--accent)',
         russia:  '#dc2626',
         footer:  '#0a0a0a',
+      },
+      backgroundColor: {
+        base: 'var(--base)',
+      },
+      textColor: {
+        page: 'var(--base)',
       },
       fontFamily: {
         sans:  ['var(--font-golos)',  ...defaultTheme.fontFamily.sans],

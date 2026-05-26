@@ -39,7 +39,7 @@ export default function ConsentManager() {
         <button
           type="button"
           onClick={accept}
-          className="inline-flex shrink-0 items-center justify-center rounded border border-ink bg-ink px-5 py-2 text-sm font-medium text-base transition-opacity hover:opacity-90"
+          className="inline-flex shrink-0 items-center justify-center rounded border border-ink bg-ink px-5 py-2 text-sm font-medium text-page transition-opacity hover:opacity-90"
         >
           OK
         </button>
