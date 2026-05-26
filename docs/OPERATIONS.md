@@ -435,6 +435,15 @@ npx tsx scripts/migrate-covers-to-r2.ts --limit 50       # ограничить 
 - ключ объекта в R2 = путь после `/article-images/` (uploadToR2 префиксует `article-images/`),
   поэтому сегменты `ai-covers/`/`template-covers/`/`stock-covers/` сохраняются.
 
+Применено 2026-05-26: `migrated=453, failed=0`.
+
+> **Recovery-урок (2026-05-26).** Не делать прод-редеплой, пока Supabase под egress-рестрикшеном.
+> Сайт во время блокировки держится только на тёплом stale ISR-кеше предыдущего деплоя; новый
+> прод-деплой сбрасывает кеш, а свежая ревалидация не может прочитать БД (402) → страницы
+> рендерятся пустыми (`/api/feed` total:0), хотя данные в `articles` целы. Восстановление —
+> только разблокировка Supabase + редеплой (откат Vercel на тёплый кеш на Hobby недоступен:
+> «To rollback further than the previous production deployment, upgrade to pro»).
+
 ### AI cover backfill
 
 Для ручного улучшения верхних карточек используется `scripts/generate-ai-covers.ts`.
