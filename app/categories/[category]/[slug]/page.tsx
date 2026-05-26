@@ -32,7 +32,7 @@ import {
   EditorialPullQuote,
 } from '../../../../src/components/EditorialBlocks'
 import { getPublicReadClient, type Article } from '../../../../lib/supabase'
-import { sanitizeArticleImagesForRender, sanitizeArticleMedia } from '../../../../lib/media-sanitizer'
+import { sanitizeArticleImagesForRender, sanitizeArticleMedia, isArticleImagesStorageUrl } from '../../../../lib/media-sanitizer'
 
 export const revalidate = 3600
 
@@ -45,16 +45,6 @@ type ExtractedVideo = NonNullable<Article['article_videos']>[number]
 const SHOWCASE_SLUG = 'sequoia-sobrala-7-mlrd-na-novyy-fond-pochti-vdvoe-bolshe-pre-0dd089'
 
 const SOURCES_WITH_TEXT_COVERS = new Set(['Habr AI', 'vc.ru', 'vc.ru AI/стартапы', 'CNews'])
-
-function isArticleImagesStorageUrl(value: string | null): boolean {
-  if (!value) return false
-  try {
-    const url = new URL(value)
-    return url.pathname.includes('/storage/v1/object/public/article-images/')
-  } catch {
-    return false
-  }
-}
 
 function isSvgUrl(value: string | null): boolean {
   if (!value) return false

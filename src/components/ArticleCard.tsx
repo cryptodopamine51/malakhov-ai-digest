@@ -4,7 +4,7 @@ import type { Article } from '../../lib/supabase'
 import { formatRelativeTime } from '../../lib/utils'
 import TopicBadge, { TOPIC_LABELS } from './TopicBadge'
 import SafeImage from './SafeImage'
-import { sanitizeArticleMedia } from '../../lib/media-sanitizer'
+import { sanitizeArticleMedia, isArticleImagesStorageUrl } from '../../lib/media-sanitizer'
 
 interface ArticleCardProps {
   article: Article
@@ -13,16 +13,6 @@ interface ArticleCardProps {
 
 // Источники, чьи og:image содержат текст заголовка — не используем их как обложку в карточках
 const SOURCES_WITH_TEXT_COVERS = new Set(['Habr AI', 'vc.ru', 'vc.ru AI/стартапы', 'CNews'])
-
-function isArticleImagesStorageUrl(value: string | null): boolean {
-  if (!value) return false
-  try {
-    const url = new URL(value)
-    return url.pathname.includes('/storage/v1/object/public/article-images/')
-  } catch {
-    return false
-  }
-}
 
 function getCardImageUrl(article: Article): string | null {
   if (SOURCES_WITH_TEXT_COVERS.has(article.source_name) && !isArticleImagesStorageUrl(article.cover_image_url)) return null
