@@ -8,12 +8,12 @@ import sharp from 'sharp'
 import { writeLlmUsageLog } from '../pipeline/llm-usage'
 import { estimateOpenAiImageCostUsd, type ImageQuality, type ImageSize } from '../pipeline/model-pricing'
 import { isArticleImagesStorageUrl, sanitizeArticleMedia } from '../lib/media-sanitizer'
+import { uploadToR2 } from '../lib/r2'
 
 loadDotenv({ path: resolve(process.cwd(), '.env.local') })
 loadDotenv({ path: resolve(process.cwd(), '.env') })
 loadExtraEnv(resolve(process.cwd(), 'malakhov-ai-keys.env'))
 
-const BUCKET = 'article-images'
 const OUTPUT_WIDTH = 1400
 const OUTPUT_HEIGHT = 788
 const WEBP_QUALITY = 88
@@ -171,15 +171,13 @@ async function main() {
       const localPath = join(outDir, `${article.slug}.webp`)
       writeFileSync(localPath, webp)
 
-      const { error: uploadError } = await supabase.storage.from(BUCKET).upload(storagePath, webp, {
+      // Загрузка в Cloudflare R2. Ключ префиксуется `article-images/` внутри uploadToR2,
+      // поэтому публичный URL содержит `/article-images/ai-covers/...` — это нужно для
+      // classifyCover/needsAiCover (`.includes('/article-images/ai-covers/')`).
+      const publicUrl = await uploadToR2(storagePath, webp, {
         contentType: 'image/webp',
         cacheControl: '31536000',
-        upsert: false,
       })
-      if (uploadError) throw new Error(`Storage upload failed for ${article.slug}: ${uploadError.message}`)
-
-      const { data: publicData } = supabase.storage.from(BUCKET).getPublicUrl(storagePath)
-      const publicUrl = publicData.publicUrl
 
       const { error: updateError } = await supabase
         .from('articles')

@@ -3,13 +3,13 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { config as loadDotenv, parse as parseDotenv } from 'dotenv'
 import { createClient } from '@supabase/supabase-js'
+import { uploadToR2 } from '../lib/r2'
 import sharp from 'sharp'
 
 loadDotenv({ path: resolve(process.cwd(), '.env.local') })
 loadDotenv({ path: resolve(process.cwd(), '.env') })
 loadExtraEnv(resolve(process.cwd(), 'malakhov-ai-keys.env'))
 
-const BUCKET = 'article-images'
 const WIDTH = 1400
 const HEIGHT = 788
 
@@ -145,17 +145,14 @@ async function main() {
     }
 
     const path = `template-covers/2026-05-01/${job.slug}-${job.kind}-${Date.now()}.webp`
-    const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, webp, {
+    const publicUrl = await uploadToR2(path, webp, {
       contentType: 'image/webp',
       cacheControl: '31536000',
-      upsert: false,
     })
-    if (uploadError) throw uploadError
 
-    const { data } = supabase.storage.from(BUCKET).getPublicUrl(path)
     const { error: updateError } = await supabase
       .from('articles')
-      .update({ cover_image_url: data.publicUrl })
+      .update({ cover_image_url: publicUrl })
       .eq('id', article.id)
     if (updateError) throw updateError
 

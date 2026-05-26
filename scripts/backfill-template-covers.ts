@@ -5,12 +5,12 @@ import { config as loadDotenv, parse as parseDotenv } from 'dotenv'
 import { createClient } from '@supabase/supabase-js'
 import sharp from 'sharp'
 import { isArticleImagesStorageUrl, sanitizeArticleMedia } from '../lib/media-sanitizer'
+import { uploadToR2 } from '../lib/r2'
 
 loadDotenv({ path: resolve(process.cwd(), '.env.local') })
 loadDotenv({ path: resolve(process.cwd(), '.env') })
 loadExtraEnv(resolve(process.cwd(), 'malakhov-ai-keys.env'))
 
-const BUCKET = 'article-images'
 const WIDTH = 1400
 const HEIGHT = 788
 const MOSCOW_OFFSET = '+03:00'
@@ -115,15 +115,10 @@ async function main() {
 
     const storageDate = toMoscowDate(job.article.created_at)
     const storagePath = `template-covers/${storageDate}/${job.article.slug}-${job.kind}-${Date.now()}.webp`
-    const { error: uploadError } = await supabase.storage.from(BUCKET).upload(storagePath, webp, {
+    const publicUrl = await uploadToR2(storagePath, webp, {
       contentType: 'image/webp',
       cacheControl: '31536000',
-      upsert: false,
     })
-    if (uploadError) throw new Error(`Storage upload failed for ${job.article.slug}: ${uploadError.message}`)
-
-    const { data } = supabase.storage.from(BUCKET).getPublicUrl(storagePath)
-    const publicUrl = data.publicUrl
     const { error: updateError } = await supabase
       .from('articles')
       .update({ cover_image_url: publicUrl })

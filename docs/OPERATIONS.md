@@ -87,7 +87,22 @@ HEALTH_TOKEN
 NEXT_PUBLIC_METRIKA_ID
 CRON_SECRET
 INDEXNOW_KEY
+R2_ACCOUNT_ID
+R2_ACCESS_KEY_ID
+R2_SECRET_ACCESS_KEY
+R2_BUCKET
+R2_PUBLIC_BASE_URL
 ```
+
+**Cloudflare R2** (`R2_*`) — хранилище обложек/инлайн-картинок (с 2026-05-26 вместо Supabase
+Storage; egress R2 бесплатен, что устраняет инцидент `exceed_egress_quota`). Нужны только тем,
+кто **загружает** изображения: cron `ai-covers.yml` (оба шага — `covers:ai-low` и
+`covers:template`) и локальные скрипты (`scripts/generate-ai-covers.ts`,
+`scripts/backfill-*.ts`, `scripts/migrate-covers-to-r2.ts`). Публичному сайту (Vercel) ключи
+не нужны — он только читает обложки по публичному URL, сохранённому в `articles.cover_image_url`.
+`R2_PUBLIC_BASE_URL` сейчас `https://pub-*.r2.dev` (rate-limited dev-URL); для прод-нагрузки
+рекомендуется подключить custom domain через Cloudflare. Доступы лежат в GitHub Actions secrets
+и локально в `.env.local` / `malakhov-ai-keys.env`.
 
 `INDEXNOW_KEY` — ключ протокола IndexNow для ускорения индексации Yandex / Bing.
 Значение публичное (это не секрет, а доказательство владения доменом). Используется
@@ -394,17 +409,37 @@ npx tsx scripts/backfill-stock-covers.ts --latest-day --limit=12
 Правила:
 
 - default mode — dry-run, без DB writes и Storage upload;
-- `--apply` скачивает stock image, накладывает editorial treatment через `sharp`, загружает WebP в Supabase Storage bucket `article-images` и обновляет только `articles.cover_image_url`;
+- `--apply` скачивает stock image, накладывает editorial treatment через `sharp`, загружает WebP в **Cloudflare R2** (`lib/r2.ts`, ключ `article-images/stock-covers/...`) и обновляет только `articles.cover_image_url`;
 - дата трактуется как календарный день по МСК;
 - если `--date` не задан, скрипт берёт последний день по `created_at` среди опубликованных статей;
 - для ключей поддерживаются `.env.local` и `malakhov-ai-keys.env` (включая RTF-файл через `textutil`);
 - primary provider — Pexels; Unsplash и Pixabay используются как fallback, если ключи заданы и Pexels не дал кандидатов.
 
+### Cover storage: Supabase → R2 migration (2026-05-26)
+
+Обложки переехали из Supabase Storage в Cloudflare R2 (egress R2 бесплатен; см. блок про `R2_*`
+выше и `docs/ARTICLE_SYSTEM.md` → Cover image). Новые обложки уже пишутся в R2. Существующие
+Supabase-storage обложки переносит одноразовый скрипт:
+
+```bash
+npx tsx scripts/migrate-covers-to-r2.ts --dry-run        # показать план
+npx tsx scripts/migrate-covers-to-r2.ts                  # выполнить
+npx tsx scripts/migrate-covers-to-r2.ts --limit 50       # ограничить пачку
+```
+
+Правила:
+
+- требует **разблокированного Supabase** — скрипт скачивает байты из Storage и переписывает
+  `articles.cover_image_url`; при `exceed_egress_quota` падает на SELECT;
+- идемпотентен: берёт только статьи с `cover_image_url LIKE '%/storage/v1/object/public/article-images/%'`;
+- ключ объекта в R2 = путь после `/article-images/` (uploadToR2 префиксует `article-images/`),
+  поэтому сегменты `ai-covers/`/`template-covers/`/`stock-covers/` сохраняются.
+
 ### AI cover backfill
 
 Для ручного улучшения верхних карточек используется `scripts/generate-ai-covers.ts`.
 Скрипт генерирует 1536x1024 WebP через OpenAI Images, сжимает до `1400x788`,
-кладёт результат в Supabase Storage `article-images/ai-covers/<date>/...` и обновляет
+кладёт результат в **Cloudflare R2** (`article-images/ai-covers/<date>/...`) и обновляет
 только `articles.cover_image_url`.
 
 ```bash

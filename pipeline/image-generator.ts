@@ -1,15 +1,13 @@
 /**
  * pipeline/image-generator.ts
  *
- * Слой B: DALL-E 3 → сжатие Sharp (WebP 1200×630) → Supabase Storage.
+ * Слой B: DALL-E 3 → сжатие Sharp (WebP 1200×630) → Cloudflare R2.
  * SEO: filename = {slug}.webp, cache 1 год, alt задаётся в компоненте из ru_title.
  */
 
 import OpenAI from 'openai'
 import sharp from 'sharp'
-import { createClient } from '@supabase/supabase-js'
-
-const BUCKET = 'article-images'
+import { uploadToR2 } from '../lib/r2'
 
 // 16:9 стандартный размер OG-изображения
 const OUTPUT_WIDTH = 1200
@@ -52,27 +50,13 @@ export async function generateAndStoreImage(
   const sizeKB = Math.round(compressed.length / 1024)
   console.log(`  → Compressed: ${sizeKB}KB WebP ${OUTPUT_WIDTH}×${OUTPUT_HEIGHT}`)
 
-  // 4. Загружаем в Supabase Storage
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY!
-  )
-
+  // 4. Загружаем в Cloudflare R2 (egress бесплатен — отдача обложек не жжёт квоту)
   // SEO: slug как основа (keyword-rich) + timestamp чтобы URL был уникальным.
   // Уникальный URL важен: при регенерации старый URL может быть закэширован CDN на 1 год.
   const filename = `${slug}-${Date.now()}.webp`
 
-  const { error } = await supabase.storage.from(BUCKET).upload(filename, compressed, {
+  return uploadToR2(filename, compressed, {
     contentType: 'image/webp',
-    upsert: false,
     cacheControl: '31536000', // 1 год кэш в CDN — безопасно, т.к. URL всегда новый
   })
-
-  if (error) throw new Error(`Supabase Storage upload failed: ${error.message}`)
-
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from(BUCKET).getPublicUrl(filename)
-
-  return publicUrl
 }

@@ -5,12 +5,12 @@ import { resolve } from 'node:path'
 import sharp from 'sharp'
 import { config as loadDotenv, parse as parseDotenv } from 'dotenv'
 import { createClient } from '@supabase/supabase-js'
+import { uploadToR2 } from '../lib/r2'
 
 loadDotenv({ path: resolve(process.cwd(), '.env.local') })
 loadDotenv({ path: resolve(process.cwd(), '.env') })
 loadExtraEnv(resolve(process.cwd(), 'malakhov-ai-keys.env'))
 
-const BUCKET = 'article-images'
 const OUTPUT_WIDTH = 1400
 const OUTPUT_HEIGHT = 788
 const WEBP_QUALITY = 84
@@ -138,15 +138,10 @@ async function main() {
     const treated = await renderEditorialTreatment(raw, article, stock)
     const storagePath = `stock-covers/${date}/${article.slug}-${stock.provider}-${stock.id}-${Date.now()}.webp`
 
-    const { error: uploadError } = await supabase.storage.from(BUCKET).upload(storagePath, treated, {
+    const publicUrl = await uploadToR2(storagePath, treated, {
       contentType: 'image/webp',
       cacheControl: '31536000',
-      upsert: false,
     })
-    if (uploadError) throw new Error(`Storage upload failed for ${article.slug}: ${uploadError.message}`)
-
-    const { data: publicData } = supabase.storage.from(BUCKET).getPublicUrl(storagePath)
-    const publicUrl = publicData.publicUrl
 
     const { error: updateError } = await supabase
       .from('articles')

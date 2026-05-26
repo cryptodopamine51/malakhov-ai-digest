@@ -117,7 +117,20 @@ export function isArticleImagesStorageUrl(value: string | null | undefined): boo
   if (!value) return false
   try {
     const url = new URL(value)
-    return url.pathname.includes('/storage/v1/object/public/article-images/')
+    // Legacy Supabase Storage (до миграции 2026-05-26).
+    if (url.pathname.includes('/storage/v1/object/public/article-images/')) return true
+    // Cloudflare R2 — ключи объектов префиксуются `article-images/` (см. lib/r2.ts),
+    // публичная отдача через свой R2-домен или pub-*.r2.dev.
+    if (!url.pathname.startsWith('/article-images/')) return false
+    const r2Base = process.env.R2_PUBLIC_BASE_URL
+    if (r2Base) {
+      try {
+        if (url.host === new URL(r2Base).host) return true
+      } catch {
+        // ignore malformed env
+      }
+    }
+    return /\.r2\.dev$/i.test(url.hostname)
   } catch {
     return false
   }
