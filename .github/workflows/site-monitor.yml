@@ -1,0 +1,43 @@
+name: Site Monitor
+
+on:
+  schedule:
+    # Каждые 15 минут — synthetic-check публичной ленты (total:0 / endpoint down).
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: site-monitor
+  cancel-in-progress: false
+
+jobs:
+  feed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # main устарела относительно codex/evergreen-quality-standard-2026-05-21,
+          # на котором живёт production-код. Schedule срабатывает только с default-ветки
+          # (main), поэтому триггер здесь, а код берётся с codex-ветки.
+          ref: codex/evergreen-quality-standard-2026-05-21
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Feed uptime check
+        run: npx tsx pipeline/site-feed-monitor.ts
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+          # SITE_MONITOR_URL — опционально; по умолчанию https://news.malakhovai.ru
+          SITE_MONITOR_URL: ${{ vars.SITE_MONITOR_URL }}
