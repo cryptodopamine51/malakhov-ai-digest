@@ -5,6 +5,9 @@ on:
   push:
     branches:
       - main
+      # Production-код деплоится прямым пушем в эту codex-ветку (см. ref-pin в cron-workflow'ах),
+      # поэтому гейт обязан запускаться и на ней, а не только на main/PR.
+      - codex/evergreen-quality-standard-2026-05-21
 
 concurrency:
   group: ci-${{ github.ref }}

@@ -158,11 +158,13 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
 | `ops-report.yml` | утром после дайджеста + вечером | Telegram ops-сводка в admin chat |
 | `ai-covers.yml` | каждые 2 часа, на 10 минуте | дешёвые OpenAI Images low cover для live-статей без обложки |
 | `docs-guard.yml` | push/pull request | проверка doc-impact |
-| `ci.yml` | push в `main` / pull request | quality-гейт качества кода |
+| `ci.yml` | push в `main` и `codex/evergreen-quality-standard-2026-05-21` / pull request | quality-гейт качества кода |
 
 ### CI quality gate (`ci.yml`)
 
-С 2026-05-29 на каждый PR и push в `main` запускается `ci.yml` с двумя job'ами:
+С 2026-05-29 на каждый PR, push в `main` и push в production-ветку
+`codex/evergreen-quality-standard-2026-05-21` запускается `ci.yml` с двумя job'ами
+(production-код деплоится прямым пушем в codex-ветку, поэтому гейт должен покрывать и её):
 
 - **`quality`** (без секретов) — `npx tsc --noEmit` + `npm run lint` + `npm test`. `npm test`
   гоняет весь сьют `tests/node/*.test.ts` (239 тестов, не требуют env). Это основной gate.
