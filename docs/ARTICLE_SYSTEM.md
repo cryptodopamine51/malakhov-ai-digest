@@ -316,7 +316,7 @@ Production fallback backfill пишет обработанные WebP в **Cloud
 > Существующие Supabase-обложки переносит `scripts/migrate-covers-to-r2.ts` (требует
 > разблокированного Supabase). `isArticleImagesStorageUrl` продолжает распознавать оба формата.
 
-#### Responsive cover variants (R2, dormant feature)
+#### Responsive cover variants (R2, активна с 2026-05-29)
 
 `images.unoptimized = true` в `next.config.mjs` означает, что Vercel-оптимизатор
 (`/_next/image`) выключен — иначе на Hobby tier он возвращает HTTP 402 после исчерпания
@@ -342,11 +342,13 @@ Production fallback backfill пишет обработанные WebP в **Cloud
   (`app/categories/[category]/[slug]/page.tsx`) при включённой фиче отдают нативный
   `<img srcset>` для R2-обложек, иначе — обычный `next/image`.
 
-Фича **выключена по умолчанию** (`NEXT_PUBLIC_R2_IMAGE_VARIANTS` ≠ `on`). Инвариант: пока флаг
-включён, у каждой R2-обложки обязаны существовать варианты, иначе выбранный браузером
-кандидат (`-400`/`-800`) даст 404. Порядок включения — в `docs/OPERATIONS.md`
-(секция «Responsive cover variants»). Внешние (не-R2) обложки и режим с выключенным флагом
-по-прежнему идут через `next/image` (`unoptimized`).
+Фича **включена в production с 2026-05-29** (`NEXT_PUBLIC_R2_IMAGE_VARIANTS=on`). Полный backfill
+прогнан (489 R2-обложек: generated=481, skipped=8, failed=0) → инвариант закрыт: у каждой
+R2-обложки есть `-400`/`-800`. Инвариант остаётся в силе: пока флаг включён, отсутствие варианта =
+404 на выбранный браузером кандидат, поэтому новые cover-аплоады обязаны идти через
+`uploadWebpWithVariants` (forward-path уже подключён). Порядок включения/отката — в
+`docs/OPERATIONS.md` (секция «Responsive cover variants»). Внешние (не-R2) обложки по-прежнему идут
+через `next/image` (`unoptimized`).
 
 Homepage-priority AI cover mode (`scripts/generate-ai-covers.ts --homepage`) выбирает только две
 видимые позиции главной: `getHotStoryOfTheDay()` и первый featured item в «Все новости» после

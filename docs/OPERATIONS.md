@@ -172,7 +172,8 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
   `app/sources/[source]`) дёргают Supabase на этапе сборки, поэтому job требует public-read
   секретов: `SUPABASE_URL`, `SUPABASE_ANON_KEY` (прокидываются и как `NEXT_PUBLIC_*`). Если
   `SUPABASE_ANON_KEY` в GitHub-секретах не задан, job не падает, а self-skip'ается с warning —
-  включится автоматически после добавления секрета. (`SUPABASE_ANON_KEY` ещё не настроен в репо.)
+  включится автоматически после добавления секрета. (`SUPABASE_ANON_KEY` настроен в репо
+  2026-05-29 → build-гейт активен, больше не self-skip'ается.)
 
 Рекомендуется сделать оба job'а required status checks для ветки `main`.
 
@@ -476,8 +477,13 @@ npx tsx scripts/migrate-covers-to-r2.ts --limit 50       # ограничить 
 WebP-варианты `-400`/`-800`, а рендер отдаёт их нативным `<img srcset>`. Архитектура и
 файлы — в `docs/ARTICLE_SYSTEM.md` → «Responsive cover variants».
 
-Фича за флагом `NEXT_PUBLIC_R2_IMAGE_VARIANTS` (по умолчанию **выключена**). Forward-аплоады
-(`pipeline/image-generator.ts` + cover-скрипты) уже льют варианты сами через
+Фича за флагом `NEXT_PUBLIC_R2_IMAGE_VARIANTS`. **Статус: включён в production с 2026-05-29**
+(`on` в Vercel production env). Полный backfill прогнан — все R2-обложки (489: generated=481,
+skipped=8, failed=0) имеют `-400`/`-800` варианты; инвариант закрыт. Проверено на проде: home-карточки
+и hero статьи отдают `<img srcset>` с R2-вариантами, варианты возвращают `200 image/webp`. Откат —
+снять флаг + редеплой (см. ниже).
+
+Forward-аплоады (`pipeline/image-generator.ts` + cover-скрипты) уже льют варианты сами через
 `uploadWebpWithVariants`; backfill существующих обложек:
 
 ```bash
