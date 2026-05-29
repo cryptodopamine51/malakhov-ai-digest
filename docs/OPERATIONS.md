@@ -170,7 +170,9 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
   гоняет весь сьют `tests/node/*.test.ts` (239 тестов, не требуют env). Это основной gate.
 - **`build`** — `npm run build`. ISR-страницы с `generateStaticParams` (например
   `app/sources/[source]`) дёргают Supabase на этапе сборки, поэтому job требует public-read
-  секретов: `SUPABASE_URL`, `SUPABASE_ANON_KEY` (прокидываются и как `NEXT_PUBLIC_*`).
+  секретов: `SUPABASE_URL`, `SUPABASE_ANON_KEY` (прокидываются и как `NEXT_PUBLIC_*`). Если
+  `SUPABASE_ANON_KEY` в GitHub-секретах не задан, job не падает, а self-skip'ается с warning —
+  включится автоматически после добавления секрета. (`SUPABASE_ANON_KEY` ещё не настроен в репо.)
 
 Рекомендуется сделать оба job'а required status checks для ветки `main`.
 
