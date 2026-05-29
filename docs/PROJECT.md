@@ -38,6 +38,7 @@ Malakhov AI Digest — русскоязычное AI-медиа, которое 
 | `/search` | site-search по `ru_title/lead/teaser/body` для navigational запросов; `noindex, follow`. Завязан на WebSite SearchAction в JSON-LD |
 | `/llms.txt`, `/llms-full.txt` | LLM-консьюминг: первая — короткая карта сайта, вторая — full markdown dump (топ 100 статей + все гайды), ISR 1ч, лимит 5MB |
 | `/privacy-policy`, `/cookie-policy`, `/consent` | юридический контур по 152-ФЗ: политика ПД, политика cookies, согласие на обработку персональных данных |
+| `/demo/*` (`vector-covers`, `image-lab`) | внутренние визуальные эксперименты по обложкам; не публичная поверхность. Гейт `lib/demo-gate.ts`: доступны локально и в preview, в production отдают 404, кроме `ENABLE_DEMO=on` |
 | Telegram digest | возврат аудитории и daily delivery |
 
 ## Домены и SEO-границы

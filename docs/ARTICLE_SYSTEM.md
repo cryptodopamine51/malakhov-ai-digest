@@ -316,6 +316,38 @@ Production fallback backfill пишет обработанные WebP в **Cloud
 > Существующие Supabase-обложки переносит `scripts/migrate-covers-to-r2.ts` (требует
 > разблокированного Supabase). `isArticleImagesStorageUrl` продолжает распознавать оба формата.
 
+#### Responsive cover variants (R2, dormant feature)
+
+`images.unoptimized = true` в `next.config.mjs` означает, что Vercel-оптимизатор
+(`/_next/image`) выключен — иначе на Hobby tier он возвращает HTTP 402 после исчерпания
+лимита трансформаций. Без оптимизатора браузеру отдаётся полноразмерная (1200px) обложка
+на всех вьюпортах → лишний вес и хуже LCP.
+
+Вариант без зависимости от Vercel-оптимизатора: хранить готовые уменьшенные WebP-варианты
+рядом с base-обложкой в R2 и отдавать их нативным `<img srcset>`.
+
+- `lib/image-variants.ts` (pure, client-safe) — единственный источник истины по ширинам:
+  `COVER_BASE_WIDTH=1200`, `COVER_VARIANT_WIDTHS=[400,800]`; `variantUrlFor`/`variantKeyFor`
+  вставляют `-<width>` перед `.webp`; `isR2ImageUrl` распознаёт наши R2-обложки
+  (host `*.r2.dev` или `NEXT_PUBLIC_R2_PUBLIC_BASE_URL`, путь `/article-images/...`, `.webp`);
+  `r2VariantSrcSet` строит `"<url-400> 400w, <url-800> 800w, <base> 1200w"`.
+- `lib/r2-images.ts::uploadWebpWithVariants` (server, sharp) — drop-in замена `uploadToR2`
+  для cover-аплоадов: льёт base + варианты. Подключена в `pipeline/image-generator.ts`,
+  `scripts/generate-ai-covers.ts`, `scripts/backfill-template-covers.ts`,
+  `scripts/backfill-stock-covers.ts`,
+  `scripts/replace-test-covers-with-editorial-templates.ts`.
+- `scripts/backfill-cover-variants.ts` — генерит варианты для всех уже существующих
+  R2-обложек (base не трогает; `--skip-existing` пропускает готовые).
+- Рендер: `src/components/SafeImage.tsx` (карточки, `fill`) и hero на странице статьи
+  (`app/categories/[category]/[slug]/page.tsx`) при включённой фиче отдают нативный
+  `<img srcset>` для R2-обложек, иначе — обычный `next/image`.
+
+Фича **выключена по умолчанию** (`NEXT_PUBLIC_R2_IMAGE_VARIANTS` ≠ `on`). Инвариант: пока флаг
+включён, у каждой R2-обложки обязаны существовать варианты, иначе выбранный браузером
+кандидат (`-400`/`-800`) даст 404. Порядок включения — в `docs/OPERATIONS.md`
+(секция «Responsive cover variants»). Внешние (не-R2) обложки и режим с выключенным флагом
+по-прежнему идут через `next/image` (`unoptimized`).
+
 Homepage-priority AI cover mode (`scripts/generate-ai-covers.ts --homepage`) выбирает только две
 видимые позиции главной: `getHotStoryOfTheDay()` и первый featured item в «Все новости» после
 исключения hot story. Он генерирует cover только если после sanitizer/card-cover rules нет usable

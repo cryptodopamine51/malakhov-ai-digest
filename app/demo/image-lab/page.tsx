@@ -1,8 +1,10 @@
 import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 import { getArticlePath } from '../../../lib/article-slugs'
 import { getLatestArticles } from '../../../lib/articles'
+import { isDemoEnabled } from '../../../lib/demo-gate'
 import type { Article } from '../../../lib/supabase'
 
 export const dynamic = 'force-dynamic'
@@ -191,6 +193,8 @@ const PALETTES: Palette[] = [
 ]
 
 export default async function ImageLabPage() {
+  if (!isDemoEnabled()) notFound()
+
   let articles: LabArticle[] = []
 
   try {

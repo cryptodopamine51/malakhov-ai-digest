@@ -127,7 +127,7 @@ Doc impact этой сессии: `app/guides/[slug]/page.tsx`, `content/guides/
 | Сайт | Next.js 15, App Router, Tailwind CSS, Vercel |
 | Данные | Supabase PostgreSQL |
 | Ingest | RSS → `pipeline/ingest.ts` |
-| Enrichment | `pipeline/enricher.ts` + Claude Sonnet 4.6 |
+| Enrichment | `editorial:routing --mode=cheap` (DeepSeek-first writer + Claude Sonnet 4.6 selective reviewer / Anthropic Batch fallback). См. `docs/ARTICLE_SYSTEM.md`. |
 | Delivery | сайт + Telegram дайджест |
 | Проверки | GitHub Actions cron + health/verify/retry workflows |
 

@@ -7,7 +7,7 @@
 
 import OpenAI from 'openai'
 import sharp from 'sharp'
-import { uploadToR2 } from '../lib/r2'
+import { uploadWebpWithVariants } from '../lib/r2-images'
 
 // 16:9 стандартный размер OG-изображения
 const OUTPUT_WIDTH = 1200
@@ -55,7 +55,7 @@ export async function generateAndStoreImage(
   // Уникальный URL важен: при регенерации старый URL может быть закэширован CDN на 1 год.
   const filename = `${slug}-${Date.now()}.webp`
 
-  return uploadToR2(filename, compressed, {
+  return uploadWebpWithVariants(filename, compressed, {
     contentType: 'image/webp',
     cacheControl: '31536000', // 1 год кэш в CDN — безопасно, т.к. URL всегда новый
   })

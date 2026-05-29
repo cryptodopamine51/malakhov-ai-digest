@@ -37,6 +37,7 @@
     "publish-verify": "tsx pipeline/publish-verify.ts",
     "tg-digest": "tsx bot/daily-digest.ts",
     "bot": "tsx bot/bot.ts",
+    "test": "tsx --test tests/node/*.test.ts",
     "test:pipeline-reliability": "tsx --test tests/node/pipeline-reliability.test.ts",
     "test:batch-enrich": "tsx --test tests/node/batch-enrich.test.ts"
   },

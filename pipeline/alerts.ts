@@ -26,6 +26,7 @@ const COOLDOWN_HOURS: Record<string, number> = {
   publish_rpc_bypass_active: 6,
   published_low_window: 2,
   digest_low_articles: 12,
+  site_feed_empty: 1,
 }
 
 export interface AlertPayload {

@@ -8,7 +8,7 @@ import sharp from 'sharp'
 import { writeLlmUsageLog } from '../pipeline/llm-usage'
 import { estimateOpenAiImageCostUsd, type ImageQuality, type ImageSize } from '../pipeline/model-pricing'
 import { isArticleImagesStorageUrl, sanitizeArticleMedia } from '../lib/media-sanitizer'
-import { uploadToR2 } from '../lib/r2'
+import { uploadWebpWithVariants } from '../lib/r2-images'
 
 loadDotenv({ path: resolve(process.cwd(), '.env.local') })
 loadDotenv({ path: resolve(process.cwd(), '.env') })
@@ -174,7 +174,7 @@ async function main() {
       // Загрузка в Cloudflare R2. Ключ префиксуется `article-images/` внутри uploadToR2,
       // поэтому публичный URL содержит `/article-images/ai-covers/...` — это нужно для
       // classifyCover/needsAiCover (`.includes('/article-images/ai-covers/')`).
-      const publicUrl = await uploadToR2(storagePath, webp, {
+      const publicUrl = await uploadWebpWithVariants(storagePath, webp, {
         contentType: 'image/webp',
         cacheControl: '31536000',
       })

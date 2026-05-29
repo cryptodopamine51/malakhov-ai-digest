@@ -5,7 +5,7 @@ import { resolve } from 'node:path'
 import sharp from 'sharp'
 import { config as loadDotenv, parse as parseDotenv } from 'dotenv'
 import { createClient } from '@supabase/supabase-js'
-import { uploadToR2 } from '../lib/r2'
+import { uploadWebpWithVariants } from '../lib/r2-images'
 
 loadDotenv({ path: resolve(process.cwd(), '.env.local') })
 loadDotenv({ path: resolve(process.cwd(), '.env') })
@@ -138,7 +138,7 @@ async function main() {
     const treated = await renderEditorialTreatment(raw, article, stock)
     const storagePath = `stock-covers/${date}/${article.slug}-${stock.provider}-${stock.id}-${Date.now()}.webp`
 
-    const publicUrl = await uploadToR2(storagePath, treated, {
+    const publicUrl = await uploadWebpWithVariants(storagePath, treated, {
       contentType: 'image/webp',
       cacheControl: '31536000',
     })

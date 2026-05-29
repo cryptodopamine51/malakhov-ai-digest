@@ -13,7 +13,9 @@ const nextConfig = {
     // размеров в srcSet, и при росте трафика лимит улетает за пару дней. Обходим оптимизатор:
     // браузер грузит исходник напрямую (Supabase Storage / theverge.com / zdnet.com / ...).
     // Cost: нет автоматического AVIF/WebP и нет per-device-resize, но обложки видимы сразу.
-    // Возврат к оптимизатору — после апгрейда на Vercel Pro (или миграции на внешний image-CDN).
+    // Альтернатива оптимизатору — адаптивные R2-варианты + нативный <img srcset> за флагом
+    // NEXT_PUBLIC_R2_IMAGE_VARIANTS (см. docs/ARTICLE_SYSTEM.md → Responsive cover variants).
+    // Возврат к Vercel-оптимизатору — только после апгрейда на Pro.
     unoptimized: true,
     remotePatterns: [
       {

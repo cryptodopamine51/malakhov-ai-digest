@@ -25,9 +25,10 @@ operator page. Он использует `SUPABASE_SERVICE_KEY` через `getA
 ### 2. Pipeline
 
 - `pipeline/ingest.ts` создаёт или обновляет сырьевые записи статей.
-- `pipeline/enrich-submit-batch.ts` забирает pending-статьи, считает score, fetch-ит оригинал и создаёт Anthropic batch jobs.
+- Основной enrich-путь (`enrich.yml`, каждые 30 минут) — `scripts/run-editorial-routing.ts` в режиме `cheap`: DeepSeek-first writer, Claude Sonnet 4.6 как selective reviewer и premium fallback. Детали маршрутизации — `docs/ARTICLE_SYSTEM.md`.
+- `pipeline/enrich-submit-batch.ts` забирает pending-статьи, считает score, fetch-ит оригинал и создаёт Anthropic batch jobs — premium/fallback путь для high-risk статей и провалов DeepSeek.
 - `pipeline/enrich-collect-batch.ts` импортирует provider results и apply-ит final editorial outcome к статье.
-- `pipeline/enricher.ts` остаётся compatibility wrapper для `npm run enrich`.
+- `pipeline/enricher.ts` остаётся compatibility wrapper для `npm run enrich` (retry-путь).
 - Вспомогательные pipeline-модули отвечают за scoring, fetch, slug, retries, verification и monitoring.
 
 ### 3. Data contracts
@@ -104,7 +105,8 @@ RLS contract:
 - Public web и background pipeline разделены: сайт не выполняет enrichment.
 - Operational status fields важнее legacy boolean-флагов; legacy поля сохраняются только для обратной совместимости.
 - Batch-specific states не должны размножаться в `articles.enrich_status`; source of truth для них — batch tables.
-- `legacy/` изолирован и не участвует в текущем runtime.
+- Замороженный Python/FastAPI-контур удалён из рабочего дерева (2026-05-29). История сохранена в git-теге `legacy-python-freeze`; восстанавливается через `git checkout legacy-python-freeze -- legacy`. Текущий стек — только TypeScript.
+- `tests/` содержит только TypeScript-сьют `tests/node` (раннер `npm test` → `tsx --test`).
 
 ## Когда обновлять этот файл
 

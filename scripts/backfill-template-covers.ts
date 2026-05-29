@@ -5,7 +5,7 @@ import { config as loadDotenv, parse as parseDotenv } from 'dotenv'
 import { createClient } from '@supabase/supabase-js'
 import sharp from 'sharp'
 import { isArticleImagesStorageUrl, sanitizeArticleMedia } from '../lib/media-sanitizer'
-import { uploadToR2 } from '../lib/r2'
+import { uploadWebpWithVariants } from '../lib/r2-images'
 
 loadDotenv({ path: resolve(process.cwd(), '.env.local') })
 loadDotenv({ path: resolve(process.cwd(), '.env') })
@@ -115,7 +115,7 @@ async function main() {
 
     const storageDate = toMoscowDate(job.article.created_at)
     const storagePath = `template-covers/${storageDate}/${job.article.slug}-${job.kind}-${Date.now()}.webp`
-    const publicUrl = await uploadToR2(storagePath, webp, {
+    const publicUrl = await uploadWebpWithVariants(storagePath, webp, {
       contentType: 'image/webp',
       cacheControl: '31536000',
     })

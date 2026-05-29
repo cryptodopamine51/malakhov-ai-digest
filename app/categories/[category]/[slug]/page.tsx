@@ -33,6 +33,10 @@ import {
 } from '../../../../src/components/EditorialBlocks'
 import { getPublicReadClient, type Article } from '../../../../lib/supabase'
 import { sanitizeArticleImagesForRender, sanitizeArticleMedia, isArticleImagesStorageUrl } from '../../../../lib/media-sanitizer'
+import { r2VariantSrcSet } from '../../../../lib/image-variants'
+
+// Dormant by default. См. lib/image-variants.ts — включается после backfill вариантов.
+const R2_VARIANTS_ENABLED = process.env.NEXT_PUBLIC_R2_IMAGE_VARIANTS === 'on'
 
 export const revalidate = 3600
 
@@ -571,15 +575,38 @@ export default async function CategoryArticlePage({
         {/* Cover image — 1200×630 (1.91:1) per Open Graph / Twitter Card spec. */}
         {sanitizedMedia.coverImageUrl && !isSvgUrl(sanitizedMedia.coverImageUrl) && (!SOURCES_WITH_TEXT_COVERS.has(article.source_name) || isArticleImagesStorageUrl(sanitizedMedia.coverImageUrl)) && (
           <div className="relative mb-10 w-full overflow-hidden rounded border border-line" style={{ maxHeight: 630 }}>
-            <Image
-              src={sanitizedMedia.coverImageUrl}
-              alt={title}
-              width={1200}
-              height={630}
-              className="w-full object-cover"
-              style={{ maxHeight: 630 }}
-              priority
-            />
+            {(() => {
+              const heroSrcSet = R2_VARIANTS_ENABLED ? r2VariantSrcSet(sanitizedMedia.coverImageUrl) : null
+              if (heroSrcSet) {
+                // LCP-обложка из R2 с готовыми вариантами → нативный <img srcset>, минуя /_next/image.
+                return (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={sanitizedMedia.coverImageUrl}
+                    srcSet={heroSrcSet}
+                    sizes="(max-width: 768px) 100vw, 800px"
+                    alt={title}
+                    width={1200}
+                    height={630}
+                    className="w-full object-cover"
+                    style={{ maxHeight: 630 }}
+                    loading="eager"
+                    decoding="async"
+                  />
+                )
+              }
+              return (
+                <Image
+                  src={sanitizedMedia.coverImageUrl}
+                  alt={title}
+                  width={1200}
+                  height={630}
+                  className="w-full object-cover"
+                  style={{ maxHeight: 630 }}
+                  priority
+                />
+              )
+            })()}
           </div>
         )}
 

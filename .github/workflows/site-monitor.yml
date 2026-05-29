@@ -1,0 +1,32 @@
+name: Site Monitor
+
+on:
+  schedule:
+    # Каждые 15 минут — synthetic-check публичной ленты (total:0 / endpoint down).
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: site-monitor
+  cancel-in-progress: false
+
+jobs:
+  feed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Feed uptime check
+        run: npx tsx pipeline/site-feed-monitor.ts
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+          # SITE_MONITOR_URL — опционально; по умолчанию https://news.malakhovai.ru
+          SITE_MONITOR_URL: ${{ vars.SITE_MONITOR_URL }}
