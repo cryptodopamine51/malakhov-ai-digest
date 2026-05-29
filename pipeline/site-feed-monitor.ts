@@ -35,6 +35,18 @@ export type FeedDecision =
   | { kind: 'fire'; reason: 'empty_feed' | 'fetch_failed' }
   | { kind: 'resolve'; reason: 'feed_ok' }
 
+/**
+ * Нормализует базовый URL мониторинга. `??` ловит только null/undefined, а GitHub
+ * Actions для незаданной `vars.SITE_MONITOR_URL` подставляет ПУСТУЮ СТРОКУ → она
+ * проходит сквозь `??` и порождает относительный `/api/feed`, который `fetch` не парсит
+ * ("Failed to parse URL"). Пустые/пробельные значения трактуем как отсутствующие.
+ */
+export function resolveSiteUrl(raw: string | undefined | null): string {
+  const trimmed = raw?.trim()
+  const base = trimmed && trimmed.length > 0 ? trimmed : DEFAULT_SITE_URL
+  return base.replace(/\/$/, '')
+}
+
 /** Pure decision: пустая лента или недоступный endpoint → fire; иначе resolve. */
 export function decideFeed(snapshot: FeedSnapshot): FeedDecision {
   if (!snapshot.httpOk || snapshot.total === null) {
@@ -83,7 +95,7 @@ export async function runSiteFeedMonitor(
   supabase: SupabaseClient,
   config: SiteFeedMonitorConfig = {},
 ): Promise<{ decision: FeedDecision; snapshot: FeedSnapshot }> {
-  const siteUrl = (config.siteUrl ?? DEFAULT_SITE_URL).replace(/\/$/, '')
+  const siteUrl = resolveSiteUrl(config.siteUrl)
   const feedUrl = `${siteUrl}/api/feed`
   const snapshot = await fetchFeedSnapshot(feedUrl, config.attempts ?? 3)
   const decision = decideFeed(snapshot)

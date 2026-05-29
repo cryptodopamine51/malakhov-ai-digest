@@ -1,7 +1,26 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { decideFeed } from '../../pipeline/site-feed-monitor'
+import { decideFeed, resolveSiteUrl } from '../../pipeline/site-feed-monitor'
+
+const DEFAULT_SITE_URL = 'https://news.malakhovai.ru'
+
+test('resolveSiteUrl falls back to default on empty string (GH Actions unset var)', () => {
+  assert.equal(resolveSiteUrl(''), DEFAULT_SITE_URL)
+})
+
+test('resolveSiteUrl falls back to default on whitespace', () => {
+  assert.equal(resolveSiteUrl('   '), DEFAULT_SITE_URL)
+})
+
+test('resolveSiteUrl falls back to default on null/undefined', () => {
+  assert.equal(resolveSiteUrl(null), DEFAULT_SITE_URL)
+  assert.equal(resolveSiteUrl(undefined), DEFAULT_SITE_URL)
+})
+
+test('resolveSiteUrl honors explicit override and strips trailing slash', () => {
+  assert.equal(resolveSiteUrl('https://staging.example.com/'), 'https://staging.example.com')
+})
 
 test('decideFeed fires on empty feed', () => {
   const d = decideFeed({ httpOk: true, status: 200, total: 0 })
