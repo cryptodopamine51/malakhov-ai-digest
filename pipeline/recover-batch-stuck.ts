@@ -25,6 +25,22 @@ function dedupeBatches(rows: BatchPollRecoveryRow[]): BatchPollRecoveryRow[] {
   return Array.from(new Map(rows.map((row) => [row.id, row])).values())
 }
 
+// Батч может «застрять» в опросе только если он создан раньше порога stuck.
+// Молодой батч (включая те, которым null-poll rescue выставил last_polled_at = эпоху 1970,
+// чтобы поднять их в начало очереди collector-а) застрять ещё не мог — это норма при
+// типичных задержках cron GitHub Actions (1-4 часа). Этот фильтр — защитный дубль к
+// условию created_at в SQL-запросе, чтобы исключить ложный batch_poll_stuck.
+export function filterGenuinelyStuckBatches(
+  rows: BatchPollRecoveryRow[],
+  pollThresholdMs: number,
+): BatchPollRecoveryRow[] {
+  return rows.filter((row) => {
+    if (!row.created_at) return false
+    const createdMs = Date.parse(row.created_at)
+    return Number.isFinite(createdMs) && createdMs <= pollThresholdMs
+  })
+}
+
 export async function runRecoverBatchStuck(): Promise<void> {
   log('=== Запуск recover-batch-stuck.ts ===')
 
@@ -66,6 +82,13 @@ export async function runRecoverBatchStuck(): Promise<void> {
       .select('id, provider_batch_id, processing_status, last_polled_at, created_at')
       .neq('processing_status', 'ended')
       .lte('last_polled_at', pollThreshold)
+      // Требуем, чтобы батч был реально старым (created_at тоже за порогом).
+      // Иначе null-poll rescue выше (выставляет last_polled_at = эпоху 1970, чтобы
+      // молодой батч уехал в начало очереди collector-а) мгновенно роняет молодой
+      // батч в этот фильтр и поднимает ложный batch_poll_stuck. Cron GitHub Actions
+      // часто опаздывает на 1-4 часа, так что свежий, ещё не опрошенный батч —
+      // норма, а не «застрял».
+      .lte('created_at', pollThreshold)
       .limit(50),
     supabase
       .from('anthropic_batches')
@@ -75,10 +98,13 @@ export async function runRecoverBatchStuck(): Promise<void> {
       .lte('created_at', pollThreshold)
       .limit(50),
   ])
-  const stuckBatches = dedupeBatches([
-    ...((stalePolledBatches ?? []) as BatchPollRecoveryRow[]),
-    ...((staleNeverPolledBatches ?? []) as BatchPollRecoveryRow[]),
-  ])
+  const stuckBatches = filterGenuinelyStuckBatches(
+    dedupeBatches([
+      ...((stalePolledBatches ?? []) as BatchPollRecoveryRow[]),
+      ...((staleNeverPolledBatches ?? []) as BatchPollRecoveryRow[]),
+    ]),
+    now - PROVIDER_BATCH_POLL_STUCK_MINUTES * 60_000,
+  )
 
   for (const batch of stuckBatches) {
     await fireAlert({
