@@ -24,6 +24,14 @@ const nextConfig = {
       },
     ],
   },
+  experimental: {
+    // SSG/ISR pages call Supabase during build. Default static generation
+    // concurrency (8) can overload the free/pro PostgREST pool and cause
+    // statement timeouts during deploy, so keep build-time DB pressure modest.
+    staticGenerationMaxConcurrency: 2,
+    staticGenerationMinPagesPerWorker: 10,
+    staticGenerationRetryCount: 3,
+  },
   async headers() {
     return [
       {

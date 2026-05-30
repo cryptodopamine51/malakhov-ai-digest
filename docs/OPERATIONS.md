@@ -178,6 +178,10 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
   `process.env.npm_lifecycle_event === 'build'`: иначе каждая SSG-страница делает 2–4 широких
   Supabase-запроса рекомендаций, и Vercel/Next может уронить deployment по 60s page timeout.
   Runtime ISR по-прежнему считает рекомендации.
+  `next.config.mjs` ограничивает static generation concurrency (`maxConcurrency=2`,
+  `minPagesPerWorker=10`, `retryCount=3`), потому что SSG/ISR-страницы массово читают Supabase
+  во время build; дефолтная параллельность Next.js 15 может вызвать PostgREST statement timeout
+  и сорвать deploy без изменения кода страниц.
 
 Рекомендуется сделать оба job'а required status checks для ветки `main`.
 

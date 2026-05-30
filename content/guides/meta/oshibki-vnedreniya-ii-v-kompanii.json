@@ -1,7 +1,7 @@
 {
   "slug": "oshibki-vnedreniya-ii-v-kompanii",
   "path": "/guides/oshibki-vnedreniya-ii-v-kompanii",
-  "noindex": true,
+  "noindex": false,
   "title": "Ошибки внедрения ИИ в компании: 10 типовых провалов и как их избежать",
   "seoTitle": "Ошибки внедрения ИИ в компании: 10 провалов 2026 года",
   "description": "Десять самых частых ошибок внедрения ИИ в компании: старт с инструмента, нет владельца, плохие данные, нет лимита расходов. Кейс провала и расчёт цены ошибки.",
@@ -21,7 +21,7 @@
   "readingMinutes": 16,
   "heroLead": "Десять самых частых ошибок внедрения ИИ в компании, разобранных по стадиям и ролям. Кейс провала автоматизации поддержки в B2B SaaS, расчёт цены ошибки «нет лимита расходов» в 1,45 млн ₽ и рабочий шаблон против каждой из ошибок.",
   "cover": {
-    "src": "/images/guides/oshibki-vnedreniya-ii-v-kompanii/cover.webp",
+    "src": "/images/guides/oshibki-vnedreniya-ii-v-kompanii/oshibki-ii-cover.webp",
     "width": 1200,
     "height": 675,
     "alt": "Десять типовых ошибок внедрения ИИ в компании: старт с инструмента, нет владельца, плохие данные, нет лимита расходов",
@@ -29,21 +29,21 @@
   },
   "inlineImagesByHeading": {
     "ошибки-внедрения-ии-десять-самых-частых-паттернов": {
-      "src": "/images/guides/oshibki-vnedreniya-ii-v-kompanii/top-mistakes-grid.webp",
+      "src": "/images/guides/oshibki-vnedreniya-ii-v-kompanii/oshibki-ii-10-tipovyh-provalov.webp",
       "width": 1200,
       "height": 800,
       "alt": "Сетка десяти самых частых ошибок внедрения ИИ в компании",
       "caption": "Десять ошибок по стадиям: выбор → пилот → запуск → поддержка."
     },
     "worked-example-сколько-стоит-ошибка-4-нет-лимита-расходов": {
-      "src": "/images/guides/oshibki-vnedreniya-ii-v-kompanii/mistake-cost-flow.webp",
+      "src": "/images/guides/oshibki-vnedreniya-ii-v-kompanii/oshibki-ii-stoimost-oshibki.webp",
       "width": 1200,
       "height": 800,
       "alt": "Расчёт стоимости одной ошибки «нет лимита расходов» на API",
       "caption": "Одна забытая защита: 14 часов, 504 000 запросов, ~1,45 млн ₽ за выходные."
     },
     "вывод-malakhov-ai": {
-      "src": "/images/guides/oshibki-vnedreniya-ii-v-kompanii/recovery-roadmap.webp",
+      "src": "/images/guides/oshibki-vnedreniya-ii-v-kompanii/oshibki-ii-recovery-roadmap.webp",
       "width": 1200,
       "height": 800,
       "alt": "Дорожная карта против десяти ошибок внедрения ИИ",

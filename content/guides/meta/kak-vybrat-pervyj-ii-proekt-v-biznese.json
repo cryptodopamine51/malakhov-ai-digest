@@ -1,7 +1,7 @@
 {
   "slug": "kak-vybrat-pervyj-ii-proekt-v-biznese",
   "path": "/guides/kak-vybrat-pervyj-ii-proekt-v-biznese",
-  "noindex": true,
+  "noindex": false,
   "title": "Как выбрать первый ИИ-проект в бизнесе: скоринг и 12 кандидатов",
   "seoTitle": "Как выбрать первый ИИ-проект в бизнесе: скоринг 2026",
   "description": "Семь критериев выбора первого ИИ-проекта со взвешенным скорингом, оценка 12 типовых кандидатов и кейс решения в дистрибьюторской компании.",
@@ -21,7 +21,7 @@
   "readingMinutes": 16,
   "heroLead": "Как выбрать первый ИИ-проект в бизнесе: семь критериев со взвешенным скорингом (повторяемость, метрика, данные, владелец, цена ошибки, сложность, регуляторика), оценка 12 типовых сценариев и кейс решения в дистрибьюторской компании.",
   "cover": {
-    "src": "/images/guides/kak-vybrat-pervyj-ii-proekt-v-biznese/cover.webp",
+    "src": "/images/guides/kak-vybrat-pervyj-ii-proekt-v-biznese/pervyy-ii-proekt-cover.webp",
     "width": 1200,
     "height": 675,
     "alt": "Скоринг семи критериев для выбора первого ИИ-проекта в бизнесе",
@@ -29,21 +29,21 @@
   },
   "inlineImagesByHeading": {
     "семь-критериев-выбора-первого-проекта-с-весами": {
-      "src": "/images/guides/kak-vybrat-pervyj-ii-proekt-v-biznese/scoring-rubric.webp",
+      "src": "/images/guides/kak-vybrat-pervyj-ii-proekt-v-biznese/pervyy-ii-proekt-skoring-7-kriteriev.webp",
       "width": 1200,
       "height": 800,
       "alt": "Семь критериев выбора первого ИИ-проекта со взвешенным скорингом",
       "caption": "Каждый процесс-кандидат оценивается по 7 критериям с весами от 5 до 20 — итог от 0 до 100."
     },
     "двенадцать-типовых-кандидатов-с-оценками": {
-      "src": "/images/guides/kak-vybrat-pervyj-ii-proekt-v-biznese/candidate-comparison.webp",
+      "src": "/images/guides/kak-vybrat-pervyj-ii-proekt-v-biznese/pervyy-ii-proekt-12-kandidatov.webp",
       "width": 1200,
       "height": 800,
       "alt": "Сравнительный скоринг 12 типовых ИИ-проектов",
       "caption": "Топ-5 кандидатов для первого пилота: квалификация заявок, поддержка по FAQ, анализ звонков, КП и контент."
     },
     "вывод-malakhov-ai": {
-      "src": "/images/guides/kak-vybrat-pervyj-ii-proekt-v-biznese/decision-flow.webp",
+      "src": "/images/guides/kak-vybrat-pervyj-ii-proekt-v-biznese/pervyy-ii-proekt-decision-flow.webp",
       "width": 1200,
       "height": 800,
       "alt": "Шаги выбора первого ИИ-проекта в бизнесе",

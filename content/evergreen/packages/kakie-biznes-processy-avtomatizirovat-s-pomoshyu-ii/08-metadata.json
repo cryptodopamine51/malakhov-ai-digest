@@ -1,7 +1,7 @@
 {
   "slug": "kakie-biznes-processy-avtomatizirovat-s-pomoshyu-ii",
   "path": "/guides/kakie-biznes-processy-avtomatizirovat-s-pomoshyu-ii",
-  "noindex": true,
+  "noindex": false,
   "title": "Какие бизнес-процессы автоматизировать с помощью ИИ: матрица и 10 сценариев",
   "seoTitle": "Какие бизнес-процессы автоматизировать с помощью ИИ в 2026",
   "description": "Какие процессы стоит автоматизировать с помощью ИИ: матрица эффект×сложность×риск×данные, 10 готовых сценариев, кейс и калькулятор окупаемости.",
@@ -21,7 +21,7 @@
   "readingMinutes": 15,
   "heroLead": "Какие процессы реально автоматизировать с помощью ИИ в 2026 году: матрица фильтров эффект×сложность×риск×данные, 10 готовых сценариев, развёрнутый кейс агентства и калькулятор окупаемости поддержки интернет-магазина.",
   "cover": {
-    "src": "/images/guides/kakie-biznes-processy-avtomatizirovat-s-pomoshyu-ii/cover.webp",
+    "src": "/images/guides/kakie-biznes-processy-avtomatizirovat-s-pomoshyu-ii/biznes-processy-ii-cover.webp",
     "width": 1200,
     "height": 675,
     "alt": "Матрица выбора бизнес-процессов для автоматизации с ИИ: эффект, сложность, риск, данные",
@@ -29,21 +29,21 @@
   },
   "inlineImagesByHeading": {
     "десять-процессов-где-ии-работает-прямо-сейчас": {
-      "src": "/images/guides/kakie-biznes-processy-avtomatizirovat-s-pomoshyu-ii/process-automation-matrix.webp",
+      "src": "/images/guides/kakie-biznes-processy-avtomatizirovat-s-pomoshyu-ii/biznes-processy-ii-10-scenariev.webp",
       "width": 1200,
       "height": 800,
       "alt": "Десять бизнес-процессов, готовых к автоматизации с ИИ в 2026 году",
       "caption": "От квалификации лидов до корпоративного поиска — десять рабочих сценариев с разной зрелостью внедрения."
     },
     "матрица-выбора-эффект-сложность-риск-данные": {
-      "src": "/images/guides/kakie-biznes-processy-avtomatizirovat-s-pomoshyu-ii/process-effect-risk-grid.webp",
+      "src": "/images/guides/kakie-biznes-processy-avtomatizirovat-s-pomoshyu-ii/biznes-processy-ii-matrica-vybora.webp",
       "width": 1200,
       "height": 800,
       "alt": "Матрица выбора процесса для автоматизации с ИИ: эффект, сложность, риск, данные",
       "caption": "Первый проект — только из «зелёных» ячеек по всем четырём фильтрам."
     },
     "когда-автоматизация-ии-процесса-не-окупится": {
-      "src": "/images/guides/kakie-biznes-processy-avtomatizirovat-s-pomoshyu-ii/when-not-to-automate.webp",
+      "src": "/images/guides/kakie-biznes-processy-avtomatizirovat-s-pomoshyu-ii/biznes-processy-ii-kogda-ne-okupitsya.webp",
       "width": 1200,
       "height": 800,
       "alt": "Семь критериев, когда автоматизация ИИ-процесса не окупится",
