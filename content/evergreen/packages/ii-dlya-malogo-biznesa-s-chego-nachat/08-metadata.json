@@ -15,13 +15,13 @@
     "YandexGPT"
   ],
   "publishedAt": "2026-05-22T00:00:00+03:00",
-  "updatedAt": "2026-05-22T00:00:00+03:00",
+  "updatedAt": "2026-05-30T00:00:00+03:00",
   "verifiedAt": "2026-05-22",
   "caseSourcing": "editorial",
   "readingMinutes": 13,
   "heroLead": "Какой бюджет, какие сценарии и какие сроки реально подходят малому бизнесу для входа в ИИ в 2026 году. Развёрнутый кейс окупаемости, калькулятор пилота для пекарни и шесть критериев, когда лучше отложить запуск.",
   "cover": {
-    "src": "/images/guides/ii-dlya-malogo-biznesa-s-chego-nachat/cover.webp",
+    "src": "/images/guides/ii-dlya-malogo-biznesa-s-chego-nachat/ii-malyy-biznes-cover.webp",
     "width": 1200,
     "height": 675,
     "alt": "ИИ для малого бизнеса: четыре сценария первого пилота — продажи, поддержка, маркетинг, документы",
@@ -29,21 +29,21 @@
   },
   "inlineImagesByHeading": {
     "четыре-сценария-где-ии-работает-у-малого-бизнеса-прямо-сейчас": {
-      "src": "/images/guides/ii-dlya-malogo-biznesa-s-chego-nachat/scenarios-grid.webp",
+      "src": "/images/guides/ii-dlya-malogo-biznesa-s-chego-nachat/ii-malyy-biznes-4-scenariya.webp",
       "width": 1200,
       "height": 800,
       "alt": "Четыре сценария ИИ для малого бизнеса: продажи, поддержка, маркетинг, документы",
       "caption": "Четыре рабочих сценария первого пилота: ответы на заявки, поддержка по базе знаний, контент для соцсетей и типовые документы."
     },
     "с-чего-начать-7-шагов-первого-пилота-за-30-дней": {
-      "src": "/images/guides/ii-dlya-malogo-biznesa-s-chego-nachat/pilot-30-days-roadmap.webp",
+      "src": "/images/guides/ii-dlya-malogo-biznesa-s-chego-nachat/ii-malyy-biznes-plan-30-dney.webp",
       "width": 1200,
       "height": 800,
       "alt": "Дорожная карта первого пилота ИИ за 30 дней для малого бизнеса",
       "caption": "Семь шагов первого пилота: процесс, метрика, данные, владелец, лимит, узкий запуск, решение stop/go на 31-й день."
     },
     "когда-внедрение-ии-малому-бизнесу-не-окупится": {
-      "src": "/images/guides/ii-dlya-malogo-biznesa-s-chego-nachat/when-not-to-start.webp",
+      "src": "/images/guides/ii-dlya-malogo-biznesa-s-chego-nachat/ii-malyy-biznes-kogda-ne-stoit.webp",
       "width": 1200,
       "height": 800,
       "alt": "Шесть критериев, когда малому бизнесу не стоит запускать пилот ИИ",

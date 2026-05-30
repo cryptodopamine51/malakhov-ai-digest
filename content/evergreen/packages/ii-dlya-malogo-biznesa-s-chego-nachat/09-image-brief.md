@@ -1,90 +1,131 @@
 # Image Brief: ИИ для малого бизнеса: с чего начать
 
-**Generation source:** ChatGPT subscription (Plus/Pro/Codex). No image API calls from this workflow — neither OpenAI Images, nor Anthropic, nor any runtime generator. Локальные SVG/Canvas-схемы допустимы как замена для матриц, roadmap и сравнений.
+**Generation source:** ChatGPT subscription (Plus/Pro/Codex). No image API calls. Local SVG/Canvas is allowed only if an inline decision artifact needs exact Russian text or numbers; this package uses ChatGPT PNGs.
 
-## Workflow
+## Goal
 
-1. Codex/агент готовит для каждого изображения: `prompt`, `negative_prompt`, `alt`, `caption`, `aspect`, `filename_png`, `filename_webp`.
-2. Владелец/редактор открывает ChatGPT, копирует prompt, генерирует PNG, сохраняет в `content/evergreen/packages/ii-dlya-malogo-biznesa-s-chego-nachat/raw-images/<filename>.png`. Имя файла должно совпадать с `filename_png` из brief.
-3. Запускает `npm run images:prep -- --slug=ii-dlya-malogo-biznesa-s-chego-nachat`. Скрипт берёт PNG, режет под нужный размер, конвертирует в WebP quality 82 и кладёт в `public/images/guides/ii-dlya-malogo-biznesa-s-chego-nachat/<filename>.webp`.
-4. `npm run evergreen:check -- --slug=ii-dlya-malogo-biznesa-s-chego-nachat` проверяет наличие файлов и плотность cover (≥ 80 KB).
+Заменить ранние generic filenames и лёгкий cover на SEO-набор картинок, который проходит topic clarity test:
 
-## Visual Direction
+- обложка должна считываться как первый выбор сценариев ИИ для малого бизнеса, а не как абстрактная автоматизация;
+- inline-картинки закрывают три задачи статьи: четыре стартовых сценария, план пилота на 30 дней и критерии, когда запуск стоит отложить;
+- cover/OG без читаемого текста, чисел и лейблов; inline-картинки тоже без текста, чтобы избежать ошибок генерации;
+- финальные WebP получают SEO-имена `ii-malyy-biznes-*`.
 
-- Style: Malakhov AI Digest editorial — спокойный, фактологический, бизнес-фокус. Референс: обложки vc.ru, Bloomberg, The Verge editorial pieces.
-- Палитра: глубокий тёмно-синий / графит как доминанта, тёплый акцент (терракот, охра, янтарь), молочно-белый фон диаграмм. Не пастель.
-- Запрещено внутри изображения: читаемый текст, watermarks, fake-панели с надписями.
-- Запрещённые сюжеты: роботы, светящийся мозг, неон, рукопожатие человек+робот, generic office stock (люди в костюмах у монитора), стоковые «руки на ноутбуке».
-- Допустимо: концептуальные иллюстрации, абстрактные схемы потоков, бизнес-метафоры (карта, мост, инструменты, конструктор), city/architecture metaphors, изометрия в editorial-стиле.
+## Shared Visual System
 
-## Sizing matrix
+- Style: business-editorial + tactile infographic objects, calm factual explainer.
+- Palette: off-white background, graphite/deep navy base, warm terracotta/amber accent.
+- Lighting: soft natural light, clean editorial composition.
+- Forbidden: robots, glowing brain, neon, human+robot handshake, generic stock office, fake dashboards with text, random abstract bars/cards/grids without small-business meaning.
+- Topic clarity test: without the headline, a reader should understand that the visuals are about small business choosing a narrow first AI pilot.
 
-| Тип | ChatGPT (генерация) | Финальный WebP | Назначение |
-|---|---|---|---|
-| Cover | 1792×1024 (затем crop) | 1200×675 (16:9) | hero, og:image |
-| Inline diagram/scene | 1792×1024 или 1024×1024 | 1200×800 (3:2) | в теле статьи |
-| Inline square | 1024×1024 | 1200×1200 | специфические визуалы |
+## Scenario Cards
 
-## Cover
+### 1. Cover
 
-- `filename_png`: `cover.png`
-- `filename_webp`: `cover.webp`
-- Финальный путь: `public/images/guides/ii-dlya-malogo-biznesa-s-chego-nachat/cover.webp`
+- `filename_png`: `ii-malyy-biznes-cover.png`
+- `filename_webp`: `ii-malyy-biznes-cover.webp`
 - Placement: guide hero
 - Aspect: 16:9
-- Prompt:
-  > Editorial concept illustration for a Russian business magazine article about small business adopting AI in 2026. Composition: a small craft workshop or boutique storefront on the left side, opening into a clean diagram-like map on the right showing four converging paths labeled by simple geometric icons (a chat bubble, a knowledge book, a megaphone, a document). Top-down isometric perspective. Muted palette: graphite, deep navy, warm terracotta accent, off-white background. No people, no robots, no glowing screens, no neon. Tone: calm, factual, business-editorial — like a vc.ru or Bloomberg lead illustration. Soft natural lighting, no text or labels inside the image.
-- Negative prompt / anti-cliché:
-  > No robots, no glowing brain, no handshake, no human-robot handshake, no readable text or numbers inside the image, no neon sci-fi, no generic office stock with people in suits at monitors, no fake panels with text, no watermarks, no clichéd "AI cloud" or wireframe head, no stock-photo hands on keyboards.
-- Alt: ИИ для малого бизнеса: четыре сценария первого пилота — продажи, поддержка, маркетинг, документы
+- Visual job: `conceptual-cover`
+- Reader takeaway: малому бизнесу лучше начать с четырёх понятных сценариев ИИ, а не с абстрактной цифровизации.
+- Scene: небольшая мастерская или бутик раскрывается в карту с четырьмя расходящимися маршрутами: продажи, поддержка, маркетинг и документы показаны предметными иконками без текста.
+- Must show:
+  - малый бизнес как конкретное место: мастерская, витрина, рабочий стол или товары;
+  - четыре маршрута от одной стартовой точки;
+  - иконки чата, книги знаний, мегафона и документов;
+  - чистая изометрическая композиция;
+  - тёплый акцент на одном выбранном направлении.
+- Avoid:
+  - офис корпорации вместо малого бизнеса;
+  - абстрактные AI-волны;
+  - читаемый текст, цифры, лейблы;
+  - роботы, неон, мозг;
+  - перегруженная карта без ясных сценариев.
+- Acceptance check: без заголовка должно быть понятно, что владелец малого бизнеса выбирает стартовый сценарий ИИ.
+- Alt: ИИ для малого бизнеса: четыре сценария первого пилота — продажи, поддержка, маркетинг, документы.
 - Caption: Малому бизнесу удобнее начать ИИ с одного узкого сценария и пилота на 30 дней, чем с абстрактной цифровизации.
 
-## Inline Image 1 — scenarios-grid
+### 2. Четыре стартовых сценария
 
-- `filename_png`: `scenarios-grid.png`
-- `filename_webp`: `scenarios-grid.webp`
-- Финальный путь: `public/images/guides/ii-dlya-malogo-biznesa-s-chego-nachat/scenarios-grid.webp`
-- Place after H2 slug: `четыре-сценария-где-ии-работает-у-малого-бизнеса-прямо-сейчас`
-- Aspect: 3:2 (1200×800 финал)
-- Prompt:
-  > Editorial 2×2 conceptual grid showing four business scenarios where AI works for small business: top-left — a chat-bubble cluster (sales replies), top-right — an open book with a question mark (knowledge-base support), bottom-left — a megaphone with confetti shapes (marketing content), bottom-right — a stack of forms with a checkmark (documents). Clean editorial illustration, isometric or flat geometric. Muted palette: graphite, deep navy, terracotta accent, off-white background. No people, no robots, no readable text inside icons. Style — calm and factual, like a Bloomberg or vc.ru explainer infographic.
-- Negative prompt:
-  > No robots, no glowing brain, no readable text or numbers inside the image, no fake panels, no neon, no human-robot handshake, no generic office stock, no watermarks, no clichéd "AI head" or wireframe brain.
-- Alt: Четыре сценария ИИ для малого бизнеса: продажи, поддержка, маркетинг, документы
+- `filename_png`: `ii-malyy-biznes-4-scenariya.png`
+- `filename_webp`: `ii-malyy-biznes-4-scenariya.webp`
+- Placement after H2 slug: `четыре-сценария-где-ии-работает-у-малого-бизнеса-прямо-сейчас`
+- Aspect: 3:2
+- Visual job: `decision-artifact`
+- Reader takeaway: у малого бизнеса есть четыре практичных входа в ИИ: заявки, база знаний, контент и документы.
+- Scene: чистая 2x2-сетка из предметных tactile-иконок: чат-пузырь, открытая книга с вопросом, мегафон, стопка форм с галочками.
+- Must show:
+  - четыре равные зоны;
+  - визуально разные сценарии без подписей;
+  - единый материал и свет;
+  - акцент на прикладных задачах, а не на технологии;
+  - отсутствие fake UI.
+- Avoid:
+  - псевдотекст и цифры;
+  - случайные app icons;
+  - роботы в иконках;
+  - декоративная сетка без бизнес-смысла;
+  - слишком яркая рекламная палитра.
+- Acceptance check: должно считываться, что это четыре сценария работы малого бизнеса, а не просто набор tech-иконок.
+- Alt: Четыре сценария ИИ для малого бизнеса: продажи, поддержка, маркетинг, документы.
 - Caption: Четыре рабочих сценария первого пилота: ответы на заявки, поддержка по базе знаний, контент для соцсетей и типовые документы.
 
-## Inline Image 2 — pilot-30-days-roadmap
+### 3. План пилота на 30 дней
 
-- `filename_png`: `pilot-30-days-roadmap.png`
-- `filename_webp`: `pilot-30-days-roadmap.webp`
-- Финальный путь: `public/images/guides/ii-dlya-malogo-biznesa-s-chego-nachat/pilot-30-days-roadmap.webp`
-- Place after H2 slug: `с-чего-начать-7-шагов-первого-пилота-за-30-дней`
-- Aspect: 3:2 (1200×800 финал)
-- Prompt:
-  > Horizontal editorial roadmap illustration showing a calm, factual 30-day pilot path. Left to right: a starting marker, then seven evenly spaced waypoints (small geometric markers like circles and squares of varying size), ending in a fork — one path continues forward, one curves back. The path is drawn on a clean diagram-like surface, with a soft topographic background. Muted palette: graphite, deep navy, warm terracotta accent, off-white background. No people, no robots, no readable labels or numbers. Style — editorial business explainer, like a Bloomberg or Harvard Business Review article header.
-- Negative prompt:
-  > No robots, no glowing brain, no readable text or numbers inside the image, no neon timelines, no calendar pages with dates, no human figures, no generic office stock, no watermarks, no clichéd "AI brain" or wireframe head.
-- Alt: Дорожная карта первого пилота ИИ за 30 дней для малого бизнеса
+- `filename_png`: `ii-malyy-biznes-plan-30-dney.png`
+- `filename_webp`: `ii-malyy-biznes-plan-30-dney.webp`
+- Placement after H2 slug: `с-чего-начать-7-шагов-первого-пилота-за-30-дней`
+- Aspect: 3:2
+- Visual job: `decision-artifact`
+- Reader takeaway: первый пилот ИИ — это короткий маршрут с контрольными точками и решением продолжать или остановиться.
+- Scene: горизонтальная дорожная карта: старт от малого бизнеса, несколько контрольных маркеров, финальная развилка продолжить/остановить без текста и чисел.
+- Must show:
+  - стартовую точку малого бизнеса;
+  - семь последовательных waypoint-маркеров;
+  - развилку в конце маршрута;
+  - один путь продолжения и один путь остановки;
+  - чистый топографический фон.
+- Avoid:
+  - календарные страницы с датами;
+  - читаемые подписи и числа;
+  - тревожную красную палитру;
+  - sci-fi интерфейсы;
+  - слишком мелкие пиктограммы.
+- Acceptance check: визуал должен читаться как план короткого пилота с решением stop/go, а не как декоративная линия.
+- Alt: Дорожная карта первого пилота ИИ за 30 дней для малого бизнеса.
 - Caption: Семь шагов первого пилота: процесс, метрика, данные, владелец, лимит, узкий запуск, решение stop/go на 31-й день.
 
-## Inline Image 3 — when-not-to-start
+### 4. Когда не стоит запускать
 
-- `filename_png`: `when-not-to-start.png`
-- `filename_webp`: `when-not-to-start.webp`
-- Финальный путь: `public/images/guides/ii-dlya-malogo-biznesa-s-chego-nachat/when-not-to-start.webp`
-- Place after H2 slug: `когда-внедрение-ии-малому-бизнесу-не-окупится`
-- Aspect: 3:2 (1200×800 финал)
-- Prompt:
-  > Editorial conceptual illustration of caution and pause: an unfinished bridge that stops mid-span over a small canyon, with six small "warning" markers along the path (simple geometric shapes — triangle, diamond, square, octagon, hexagon, circle) without any readable text. The bridge is drawn in clean isometric style, with calm engineering-blueprint mood. Muted palette: graphite, deep navy, warm amber accent, off-white background. Atmosphere — factual, not alarming. No people, no robots, no neon, no readable text inside the image. Style — like a Bloomberg or The Verge feature illustration.
-- Negative prompt:
-  > No robots, no glowing brain, no readable text or numbers, no stop signs with letters, no neon, no human figures, no handshake, no generic office stock, no watermarks, no apocalyptic mood — keep it calm and analytical.
-- Alt: Шесть критериев, когда малому бизнесу не стоит запускать пилот ИИ
+- `filename_png`: `ii-malyy-biznes-kogda-ne-stoit.png`
+- `filename_webp`: `ii-malyy-biznes-kogda-ne-stoit.webp`
+- Placement after H2 slug: `когда-внедрение-ии-малому-бизнесу-не-окупится`
+- Aspect: 3:2
+- Visual job: `conceptual-cover`
+- Reader takeaway: если условий для окупаемости нет, пилот лучше остановить до старта.
+- Scene: недостроенный мост через разрыв, на подходе стоят шесть предупреждающих геометрических маркеров без текста.
+- Must show:
+  - мост или маршрут, который обрывается до результата;
+  - шесть предупреждающих маркеров;
+  - спокойную инженерную композицию;
+  - свободное место и ясный главный объект;
+  - отсутствие катастрофы и драматизации.
+- Avoid:
+  - апокалипсис и аварии;
+  - стоп-знаки с буквами;
+  - красный alarm design;
+  - роботы и AI-символы;
+  - нечитаемую перегруженную сцену.
+- Acceptance check: должно быть понятно, что запуск останавливают из-за рисков и отсутствия условий, а не потому что «ИИ опасен».
+- Alt: Шесть критериев, когда малому бизнесу не стоит запускать пилот ИИ.
 - Caption: Когда пилот ИИ малому бизнесу не окупится: мало повторяемости, нет владельца, нестабильный процесс, регуляторные риски, премиум-ниша, нет 20 часов владельца.
 
-## Local SVG / Diagram Candidates
+## Production Note
 
-Не применяются для этого выпуска: все 4 картинки (cover + 3 inline) генерируются в ChatGPT.
+Metadata is synced to the SEO filenames above before `images:prep`. Final expected WebP files:
 
-## Owner SLA
-
-После статуса `ready_for_codex` владелец/редактор обязуется сгенерировать cover + 3 inline в ChatGPT и положить PNG в `raw-images/` в течение 48 часов. Иначе гайд переходит в `blocked` со статусом «cover_pending».
+- `ii-malyy-biznes-cover.webp` (1200x675)
+- `ii-malyy-biznes-4-scenariya.webp` (1200x800)
+- `ii-malyy-biznes-plan-30-dney.webp` (1200x800)
+- `ii-malyy-biznes-kogda-ne-stoit.webp` (1200x800)
