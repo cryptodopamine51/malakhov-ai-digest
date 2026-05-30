@@ -174,6 +174,10 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
   `SUPABASE_ANON_KEY` в GitHub-секретах не задан, job не падает, а self-skip'ается с warning —
   включится автоматически после добавления секрета. (`SUPABASE_ANON_KEY` настроен в репо
   2026-05-29 → build-гейт активен, больше не self-skip'ается.)
+  Article recommendations на `/categories/<category>/<slug>` во время build отключены через
+  `process.env.npm_lifecycle_event === 'build'`: иначе каждая SSG-страница делает 2–4 широких
+  Supabase-запроса рекомендаций, и Vercel/Next может уронить deployment по 60s page timeout.
+  Runtime ISR по-прежнему считает рекомендации.
 
 Рекомендуется сделать оба job'а required status checks для ветки `main`.
 
@@ -728,7 +732,7 @@ Cтратегия рендеринга по типам страниц:
 | `/` | Static (ISR) | 300s |
 | `/russia` | Static (ISR) | 300s |
 | `/categories/<category>` | SSG (через `generateStaticParams`) + ISR | 300s |
-| `/categories/<category>/<slug>` | SSG + ISR | 1h |
+| `/categories/<category>/<slug>` | SSG + ISR; recommendations skipped only during build | 1h |
 | `/guides`, `/guides/<slug>` | SSG/Static | 1d |
 | `/sources`, `/sources/<source>` | Static / SSG | 1h |
 | `/sitemap.xml`, `/rss.xml`, `/llms.txt`, `/indexnow.txt`, `/robots.txt` | Static (ISR) | 30m–1h |

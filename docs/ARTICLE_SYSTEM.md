@@ -594,6 +594,11 @@ Broad RSS feeds допускаются только с keyword filters:
   (`не X, а Y`, `proof of concept`, `production`, `no-code`, `AI-сигналы` и т.п.) в финальном
   markdown/metadata, cover ≥ 80 KB и `noindex` старше 14 дней.
 - Archive и source pages используют те же article records.
+- Article pages (`app/categories/[category]/[slug]/page.tsx`) SSG/ISR-ятся с `revalidate=3600`.
+  Related/recommendation cards намеренно пропускаются во время `npm run build`
+  (`process.env.npm_lifecycle_event === 'build'`), потому что они делают несколько широких
+  Supabase-запросов на каждую статью и могут выбить Vercel/Next static generation timeout.
+  На runtime ISR/revalidation рекомендации снова считаются обычным `getArticleRecommendations()`.
 - Telegram digest использует `tg_teaser`, `ru_title`, score и public article URL (`/categories/<primary>/<slug>`).
   Selection (`bot/daily-digest-core.ts`):
   - SELECT top-50 за вчерашний MSK-день по `score desc, pub_date desc` среди

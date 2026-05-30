@@ -39,6 +39,7 @@ import { r2VariantSrcSet } from '../../../../lib/image-variants'
 const R2_VARIANTS_ENABLED = process.env.NEXT_PUBLIC_R2_IMAGE_VARIANTS === 'on'
 
 export const revalidate = 3600
+const SKIP_RECOMMENDATIONS_DURING_BUILD = process.env.npm_lifecycle_event === 'build'
 
 type AnchorLink = { anchor: string; slug: string; primaryCategory: string; title: string }
 type InlineImage = { src: string; alt: string }
@@ -449,7 +450,7 @@ export default async function CategoryArticlePage({
   const inlineVideos = article.article_videos ?? []
 
   const [related, anchorLinks] = await Promise.all([
-    getArticleRecommendations(article, 3),
+    SKIP_RECOMMENDATIONS_DURING_BUILD ? Promise.resolve([]) : getArticleRecommendations(article, 3),
     resolveAnchorLinks(article.link_anchors ?? [], article.id),
   ])
 
