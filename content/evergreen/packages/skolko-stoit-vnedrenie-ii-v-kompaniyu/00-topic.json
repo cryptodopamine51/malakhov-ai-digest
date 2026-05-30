@@ -1,6 +1,6 @@
 {
   "id": 2,
-  "status": "ready_for_codex",
+  "status": "published",
   "cluster": "ИИ для бизнеса",
   "title": "Сколько стоит внедрение ИИ в компанию",
   "primaryKeyword": "сколько стоит внедрение ИИ",
@@ -21,5 +21,5 @@
   "targetSlug": "skolko-stoit-vnedrenie-ii-v-kompaniyu",
   "priority": "high",
   "cta": "architectural_ai_audit",
-  "notes": "Production preview подготовлен с noindex до редакторских правок. Сильный калькулятор бюджета: пилот, интеграции, данные, поддержка, API, ошибки."
+  "notes": "Published with final ChatGPT-generated WebP images, SEO filenames cena-ii-*, and noindex=false. Сильный калькулятор бюджета: пилот, интеграции, данные, поддержка, API, ошибки."
 }

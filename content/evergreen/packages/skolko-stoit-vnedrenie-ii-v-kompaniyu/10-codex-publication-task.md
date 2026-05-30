@@ -4,8 +4,8 @@
 
 - Publication mode: `create`.
 - Slug: `skolko-stoit-vnedrenie-ii-v-kompaniyu`.
-- Public preview URL: `/guides/skolko-stoit-vnedrenie-ii-v-kompaniyu`.
-- Indexing: hidden from indexing with `noindex: true` until owner review.
+- Public URL: `/guides/skolko-stoit-vnedrenie-ii-v-kompaniyu`.
+- Indexing: published with `noindex: false` after final image generation.
 
 ## Production Files
 
@@ -16,8 +16,8 @@
 ## Render Requirements
 
 - Page must be accessible by direct URL.
-- Page must emit `noindex` robots metadata while preview flag is set.
-- Page must not appear in `/guides`, homepage featured guide or sitemap while noindex.
+- Page must be indexable after final image generation.
+- Page may appear in `/guides`, homepage featured guide and sitemap after `noindex` is removed.
 - Schema contract remains `Article`, `FAQPage` and `BreadcrumbList`.
 - FAQ metadata must match visible FAQ.
 - Related links only point to existing local routes.
@@ -34,6 +34,5 @@ Manual browser checks:
 
 - `/guides/skolko-stoit-vnedrenie-ii-v-kompaniyu` returns 200.
 - H1, cover and inline images render.
-- `robots` meta contains noindex.
+- `robots` meta does not contain noindex.
 - JSON-LD includes `Article`, `FAQPage`, `BreadcrumbList`.
-

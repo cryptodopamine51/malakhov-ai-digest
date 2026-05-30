@@ -18,7 +18,7 @@
 - FAQ: visible in Markdown and mirrored in metadata.
 - URL: `/guides/skolko-stoit-vnedrenie-ii-v-kompaniyu`.
 - Anti-cannibalization: links to first guide, does not duplicate full implementation plan.
-- Indexing: `noindex` until owner review.
+- Indexing: published with `noindex: false` after final image generation.
 
 ## Fact Review
 
@@ -35,6 +35,5 @@
 - [x] Metadata in `08-metadata.json`.
 - [x] Image brief complete.
 - [x] Production Markdown created.
-- [x] Production metadata created with `noindex: true`.
+- [x] Production metadata published with `noindex: false`.
 - [x] Local WebP images generated without image API.
-

@@ -1,7 +1,7 @@
 {
   "slug": "skolko-stoit-vnedrenie-ii-v-kompaniyu",
   "path": "/guides/skolko-stoit-vnedrenie-ii-v-kompaniyu",
-  "noindex": true,
+  "noindex": false,
   "title": "Сколько стоит внедрение ИИ в компанию: бюджет, статьи расходов и калькулятор",
   "seoTitle": "Сколько стоит внедрение ИИ в компанию: бюджет и калькулятор",
   "description": "Практический разбор стоимости внедрения ИИ: бюджет пилота и рабочего запуска, статьи расходов, калькулятор, примеры для продаж, поддержки и документов.",
@@ -20,7 +20,7 @@
   "readingMinutes": 14,
   "heroLead": "Практический бюджетный ориентир для руководителя: сколько стоит пилот по ИИ, рабочий запуск, поддержка, API, данные и интеграции.",
   "cover": {
-    "src": "/images/guides/skolko-stoit-vnedrenie-ii-v-kompaniyu/cover.webp",
+    "src": "/images/guides/skolko-stoit-vnedrenie-ii-v-kompaniyu/cena-ii-cover.webp",
     "width": 1200,
     "height": 675,
     "alt": "Бюджет внедрения ИИ как карта расходов на процессы, данные, интеграции и поддержку",
@@ -28,28 +28,28 @@
   },
   "inlineImagesByHeading": {
     "из-чего-складывается-бюджет-внедрения-ии": {
-      "src": "/images/guides/skolko-stoit-vnedrenie-ii-v-kompaniyu/ai-budget-breakdown.webp",
+      "src": "/images/guides/skolko-stoit-vnedrenie-ii-v-kompaniyu/cena-ii-statyi-budzheta.webp",
       "width": 1200,
       "height": 800,
       "alt": "Схема статей бюджета внедрения ИИ: данные, интеграции, API, безопасность и поддержка",
       "caption": "Самые недооцененные статьи бюджета — данные, интеграции, контроль качества и поддержка после запуска."
     },
     "сколько-стоит-быстрый-пилот-по-ии": {
-      "src": "/images/guides/skolko-stoit-vnedrenie-ii-v-kompaniyu/pilot-vs-working-launch.webp",
+      "src": "/images/guides/skolko-stoit-vnedrenie-ii-v-kompaniyu/cena-ii-pilot-vs-zapusk.webp",
       "width": 1200,
       "height": 800,
       "alt": "Сравнение бюджета пилота по ИИ и рабочего внедрения",
       "caption": "Пилот проверяет гипотезу. Рабочий контур добавляет права, логи, мониторинг, доступность и поддержку."
     },
     "калькулятор-бюджета-внедрения-ии": {
-      "src": "/images/guides/skolko-stoit-vnedrenie-ii-v-kompaniyu/ai-budget-calculator.webp",
+      "src": "/images/guides/skolko-stoit-vnedrenie-ii-v-kompaniyu/cena-ii-kalkulyator.webp",
       "width": 1200,
       "height": 800,
       "alt": "Калькулятор бюджета проекта по ИИ: запуск и ежемесячная эксплуатация",
       "caption": "Считать нужно два бюджета: разовый запуск и ежемесячную эксплуатацию."
     },
     "как-снизить-стоимость-без-потери-качества": {
-      "src": "/images/guides/skolko-stoit-vnedrenie-ii-v-kompaniyu/cost-control-matrix.webp",
+      "src": "/images/guides/skolko-stoit-vnedrenie-ii-v-kompaniyu/cena-ii-snizit-stoimost.webp",
       "width": 1200,
       "height": 800,
       "alt": "Матрица снижения стоимости внедрения ИИ без потери качества",

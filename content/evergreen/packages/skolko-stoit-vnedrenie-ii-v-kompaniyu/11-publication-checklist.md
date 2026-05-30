@@ -18,7 +18,7 @@
 - [x] Canonical path is `/guides/skolko-stoit-vnedrenie-ii-v-kompaniyu`.
 - [x] FAQ is visible and mirrored in metadata.
 - [x] Internal links point to existing routes.
-- [x] Page is `noindex` until owner review.
+- [x] Page is indexable after final image generation.
 
 ## Images
 
