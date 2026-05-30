@@ -394,6 +394,25 @@ npx tsx scripts/rescore-recent.ts --days=7 --apply
 Скрипт не вызывает Claude/OpenAI/fetcher, работает только со строками в БД. Печатает
 распределение diff'ов и top-15 изменений перед apply.
 
+### Audit Telegram digest selection
+
+`scripts/audit-digest-selection.ts` — read-only retro-аудит отбора Telegram-дайджеста.
+Нужен после жалоб на повторяющиеся инфоповоды или перед изменением selector-а.
+
+```bash
+npm run digest:audit-selection -- --date=2026-05-30
+npm run digest:audit-selection -- --days=14
+```
+
+Скрипт реконструирует eligible pool за digest date, показывает старый source-only selector
+и текущий story-aware selector (`bot/digest-selection.ts`), а также причины skipped:
+`duplicate_story`, `recent_story_duplicate`, `primary_entity_cap`, `source_cap`.
+По incident 2026-05-30 он должен показывать:
+
+- 2026-05-29: второй материал про Anthropic funding пропущен как `duplicate_story`;
+- 2026-05-30: The Decoder про тот же Anthropic funding пропущен как
+  `recent_story_duplicate`, а Claude Opus 4.8 остаётся как отдельный `model_release`.
+
 ### Source cover backfill
 
 Для восстановления отсутствующих source cover и удаления плохих SVG/placeholder cover используется

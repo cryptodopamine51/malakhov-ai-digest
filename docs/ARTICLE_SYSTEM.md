@@ -596,14 +596,27 @@ Broad RSS feeds допускаются только с keyword filters:
 - Archive и source pages используют те же article records.
 - Telegram digest использует `tg_teaser`, `ru_title`, score и public article URL (`/categories/<primary>/<slug>`).
   Selection (`bot/daily-digest-core.ts`):
-  - SELECT top-25 за вчерашний MSK-день по `score desc, pub_date desc` среди
+  - SELECT top-50 за вчерашний MSK-день по `score desc, pub_date desc` среди
     `live + quality_ok + verified_live + tg_sent=false + tg_teaser/slug present`.
   - `filterLiveArticles` отсекает недоступные URL (HEAD-проверка с timeout 5s).
-  - `applyDiversityCap(perSourceCap=2, target=5)` — не больше 2 статей с одного `source_name`.
-    Без этого кэпа Habr AI регулярно занимал 4–5 из 5 слотов и заталкивал индустриальные сюжеты
-    (Gemini-launches, OpenAI-релизы) ниже. См. `docs/spec_2026-05-22_digest_editorial_priority.md`
-    Wave 1.
-  - Финальный список = `digest.slice(0, 5)` после кэпа.
+  - `selectDigestArticles()` (`bot/digest-selection.ts`) сохраняет source cap:
+    `perSourceCap=2`, `target=5`. Без этого кэпа Habr AI регулярно занимал 4–5 из 5
+    слотов и заталкивал индустриальные сюжеты (Gemini-launches, OpenAI-релизы) ниже.
+  - Тот же selector строит deterministic `storyKey` по `primaryEntity + eventType + signature`
+    и не берёт две strong-статьи про один инфоповод в один дайджест. Пример:
+    Crunchbase/TechCrunch/The Decoder про раунд Anthropic $65B → один
+    `anthropic:funding:65b`.
+  - Перед selection загружается память последних successful дайджестов за 72 часа через
+    `digest_runs.article_ids`; strong `storyKey`, уже отправленный недавно, пропускается.
+    Это закрывает кейс, когда один источник публикует тот же инфоповод после границы
+    MSK-дня и он всплывает на следующий день.
+  - Дополнительный cap: не больше 2 strong-статей с одной `primaryEntity` в финальных 5.
+    Разные события одной компании допустимы: `Anthropic funding` и `Claude Opus release`
+    имеют разные `eventType` и могут сосуществовать.
+  - `validateDigestComposition()` проверяет финальный список перед отправкой и логирует
+    duplicate story keys, source/entity distribution и skipped-причины. Runtime не требует
+    новой миграции: диагностика идёт в logs, а retro-аудит доступен через
+    `npm run digest:audit-selection -- --date=YYYY-MM-DD`.
 - Category pages (`/categories/[category]`, `/russia`) и главная под hero рендерят `TopicTabs`
   (см. `docs/DESIGN.md`) — это навигационный слой, не источник фильтрации; сам список статей берётся
   через `getArticlesByCategoryPage` (primary OR secondary, `.range()` + `count: exact`) /

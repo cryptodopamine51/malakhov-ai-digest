@@ -16,6 +16,11 @@ import { getArticleUrl } from '../lib/article-slugs'
 import { readSiteUrlFromEnv } from '../lib/site'
 import { getMoscowDateKey } from '../lib/utils'
 import { fireAlert } from '../pipeline/alerts'
+import {
+  selectDigestArticles,
+  validateDigestComposition,
+  type DigestSelectionDiagnostics,
+} from './digest-selection'
 
 // ── Утилиты ───────────────────────────────────────────────────────────────────
 
@@ -35,6 +40,8 @@ const RU_MONTHS = [
   'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
   'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
 ]
+
+const DIGEST_RECENT_STORY_MEMORY_HOURS = 72
 
 function formatDateRu(date: Date): string {
   return `${date.getDate()} ${RU_MONTHS[date.getMonth()]}`
@@ -194,6 +201,55 @@ export function buildSourceDistribution<T extends Pick<Article, 'source_name'>>(
     distribution[article.source_name] = (distribution[article.source_name] ?? 0) + 1
   }
   return distribution
+}
+
+async function fetchRecentSentDigestArticles(
+  supabase: DigestSupabase,
+  sinceIso: string,
+): Promise<Article[]> {
+  const { data: runs, error: runsError } = await supabase
+    .from('digest_runs')
+    .select('article_ids')
+    .eq('status', 'success')
+    .gte('sent_at', sinceIso)
+    .order('sent_at', { ascending: false, nullsFirst: false })
+    .limit(10)
+
+  if (runsError) throw new Error(`recent digest runs query failed: ${runsError.message}`)
+
+  const ids = [
+    ...new Set(
+      (runs ?? [])
+        .flatMap((run) => Array.isArray(run.article_ids) ? run.article_ids : [])
+        .filter((id): id is string => typeof id === 'string' && id.length > 0),
+    ),
+  ]
+  if (ids.length === 0) return []
+
+  const { data: articles, error: articlesError } = await supabase
+    .from('articles')
+    .select('*')
+    .in('id', ids)
+
+  if (articlesError) throw new Error(`recent digest articles query failed: ${articlesError.message}`)
+  return (articles ?? []) as Article[]
+}
+
+function logDigestSelectionDiagnostics(diagnostics: DigestSelectionDiagnostics): void {
+  log(`Story-selection diagnostics: ${JSON.stringify({
+    candidateCount: diagnostics.candidateCount,
+    recentMemoryCount: diagnostics.recentMemoryCount,
+    selectedCount: diagnostics.selectedCount,
+    sourceDistribution: diagnostics.sourceDistribution,
+    primaryEntityDistribution: diagnostics.primaryEntityDistribution,
+    storyKeys: diagnostics.storyKeys,
+    skipped: diagnostics.skipped.slice(0, 10).map((entry) => ({
+      reason: entry.reason,
+      source: entry.sourceName,
+      storyKey: entry.storyKey,
+      title: entry.title.slice(0, 90),
+    })),
+  })}`)
 }
 
 // ── UTM-ссылки ────────────────────────────────────────────────────────────────
@@ -600,10 +656,10 @@ async function runClaimedDigest(ctx: ClaimedContext): Promise<DigestResult> {
       .order('score', { ascending: false })
       .order('pub_date', { ascending: false })
 
-    // Берём с запасом, чтобы diversity-кэп (см. applyDiversityCap) и filterLiveArticles
+    // Берём с запасом, чтобы source/story diversity и filterLiveArticles
     // не оставили нас без 5 финальных слотов, если 4–5 верхних по score материалов — с одного
-    // источника (типичный случай: один день — пять Habr AI подряд).
-    const { data, error } = await q.limit(25)
+    // источника или про один инфоповод (типичный случай: один раунд Anthropic из трёх изданий).
+    const { data, error } = await q.limit(50)
     if (error) throw error
     articles = (data ?? []) as Article[]
   } catch (err) {
@@ -662,13 +718,30 @@ async function runClaimedDigest(ctx: ClaimedContext): Promise<DigestResult> {
   // Проверяем доступность на сайте
   const liveArticles = await filterLiveArticles(articles, siteUrl)
 
-  // Diversity-кэп: не больше 2 статей с одного source_name. Без кэпа Habr AI / vc.ru / CNews
-  // регулярно забирали 4–5 из 5 слотов, заталкивая индустриальные сюжеты (Gemini-launches,
-  // OpenAI-релизы) ниже. См. spec_2026-05-22_digest_editorial_priority.md Wave 1.
-  const digest = applyDiversityCap(liveArticles, { perSourceCap: 2, target: 5 })
+  let recentSentArticles: Article[] = []
+  const recentSinceIso = new Date(Date.now() - DIGEST_RECENT_STORY_MEMORY_HOURS * 60 * 60 * 1000).toISOString()
+  try {
+    recentSentArticles = await fetchRecentSentDigestArticles(supabase, recentSinceIso)
+  } catch (err) {
+    logError('Не удалось загрузить recent digest memory — продолжаем только с intra-digest dedup', err)
+  }
+
+  const selection = selectDigestArticles(liveArticles, recentSentArticles, {
+    perSourceCap: 2,
+    perPrimaryEntityCap: 2,
+    target: 5,
+  })
+  const digest = selection.articles
+  logDigestSelectionDiagnostics(selection.diagnostics)
+
+  const composition = validateDigestComposition(digest)
+  if (!composition.ok) {
+    log(`⚠ Composition guard нашёл duplicate story keys: ${composition.duplicateStoryKeys.join(', ')}`)
+  }
+
   const digestSourceDistribution = buildSourceDistribution(digest)
   if (digest.length > 0) {
-    log(`Diversity-кэп оставил ${digest.length} из ${liveArticles.length}: ${JSON.stringify(digestSourceDistribution)}`)
+    log(`Story/source selection оставил ${digest.length} из ${liveArticles.length}: ${JSON.stringify(digestSourceDistribution)}`)
   }
 
   // Если меньше 3 — health-отчёт и не шлём в канал
