@@ -10,6 +10,7 @@ import {
   type DashboardDigestRunRow,
   type DashboardRecentLiveRow,
   type DashboardStuckBatchItemRow,
+  type DashboardTelegramPostRow,
 } from '../../../lib/internal-dashboard'
 
 export const dynamic = 'force-dynamic'
@@ -104,9 +105,11 @@ function HealthCards({ data }: { data: Awaited<ReturnType<typeof getInternalDash
           <div className="mt-1 text-xs text-muted">{formatDateTime(data.enrich?.finished_at)}</div>
         </div>
         <div className="rounded border border-line p-3">
-          <div className="text-muted">Digest</div>
-          <div className="mt-1 text-ink">{data.digest?.status ?? '-'}</div>
-          <div className="mt-1 text-xs text-muted">{data.digest?.digest_date ?? '-'} · {formatDateTime(data.digest?.sent_at)}</div>
+          <div className="text-muted">Telegram</div>
+          <div className="mt-1 text-ink">{data.telegram?.status ?? '-'}</div>
+          <div className="mt-1 text-xs text-muted">
+            {data.telegram?.delivery_date ?? '-'} · {data.telegram ? `${data.telegram.slots_success}/${data.telegram.slots_total}` : '-'} · {formatDateTime(data.telegram?.sent_at)}
+          </div>
         </div>
       </div>
     </section>
@@ -213,6 +216,42 @@ function RecentLiveTable({ rows }: { rows: DashboardRecentLiveRow[] }) {
   )
 }
 
+function TelegramPostsTable({ rows }: { rows: DashboardTelegramPostRow[] }) {
+  return (
+    <section id="telegram-posts-table" className="border-t border-line py-6">
+      <h2 className="mb-3 font-serif text-xl font-bold text-ink">Telegram Posts</h2>
+      <div className="overflow-x-auto rounded border border-line">
+        <table className="w-full min-w-[840px] border-collapse text-left text-sm">
+          <thead className="bg-surface text-xs uppercase text-muted">
+            <tr>
+              <th className="px-3 py-2">Created</th>
+              <th className="px-3 py-2">Date</th>
+              <th className="px-3 py-2">Slot</th>
+              <th className="px-3 py-2">Status</th>
+              <th className="px-3 py-2">Article</th>
+              <th className="px-3 py-2">Sent</th>
+              <th className="px-3 py-2">Error</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {rows.length === 0 ? <EmptyRow colSpan={7} /> : rows.map((row) => (
+              <tr key={row.id}>
+                <td className="px-3 py-2 whitespace-nowrap">{formatDateTime(row.created_at)}</td>
+                <td className="px-3 py-2">{row.delivery_date ?? '-'}</td>
+                <td className="px-3 py-2 font-mono">{formatNumber(row.slot_no)}</td>
+                <td className="px-3 py-2"><StatusPill value={row.status} /></td>
+                <td className="px-3 py-2 font-mono text-xs">{shortText(row.article_id, 36)}</td>
+                <td className="px-3 py-2 whitespace-nowrap">{formatDateTime(row.sent_at)}</td>
+                <td className="px-3 py-2">{shortText(row.error_message, 80)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
 function DigestsTable({ rows }: { rows: DashboardDigestRunRow[] }) {
   return (
     <section id="digest-runs-table" className="border-t border-line py-6">
@@ -281,6 +320,7 @@ export default async function InternalDashboardPage({
       <AlertsTable rows={data.alerts} />
       <StuckBatchesTable rows={data.stuckBatchItems} />
       <RecentLiveTable rows={data.recentLive} />
+      <TelegramPostsTable rows={data.telegramPosts} />
       <DigestsTable rows={data.digestRuns} />
     </div>
   )

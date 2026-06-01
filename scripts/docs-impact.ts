@@ -24,7 +24,7 @@ const RULES: Rule[] = [
   {
     doc: 'docs/ARTICLE_SYSTEM.md',
     matches: (file) =>
-      /^(app\/articles\/|app\/archive\/|app\/topics\/|app\/sources\/|bot\/daily-digest\.ts$|bot\/daily-digest-core\.ts$|lib\/articles\.ts$|lib\/article-slugs\.ts$|app\/sitemap\.ts$|src\/components\/ArticleCard\.tsx$)/.test(file),
+      /^(app\/articles\/|app\/archive\/|app\/topics\/|app\/sources\/|bot\/daily-digest\.ts$|bot\/daily-digest-core\.ts$|bot\/channel-post\.ts$|bot\/channel-post-core\.ts$|lib\/articles\.ts$|lib\/article-slugs\.ts$|app\/sitemap\.ts$|src\/components\/ArticleCard\.tsx$)/.test(file),
   },
   {
     doc: 'docs/ARCHITECTURE.md',

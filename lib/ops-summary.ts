@@ -70,6 +70,29 @@ export interface OpsDigestRunRow {
   error_message: string | null
 }
 
+export interface OpsTelegramPostRow {
+  created_at: string
+  delivery_date: string | null
+  slot_no: number | null
+  status: string
+  article_id: string | null
+  sent_at: string | null
+  failed_at: string | null
+  error_message: string | null
+}
+
+export interface OpsTelegramDelivery {
+  delivery_date: string
+  expected_slots: number
+  success_count: number
+  failed_count: number
+  skipped_count: number
+  planned_count: number
+  status: string
+  latest_sent_at: string | null
+  latest_error: string | null
+}
+
 export interface OpsAlertRow {
   alert_type: string
   severity: 'info' | 'warning' | 'critical'
@@ -106,6 +129,8 @@ export interface OpsSummary {
   articles: OpsArticleFunnel
   latestIngest: OpsIngestRunRow | null
   latestEnrich: OpsEnrichRunRow | null
+  telegramToday: OpsTelegramDelivery | null
+  latestTelegram: OpsTelegramDelivery | null
   digestToday: OpsDigestRunRow | null
   latestDigest: OpsDigestRunRow | null
   openAlerts: OpsAlertRow[]
@@ -160,6 +185,7 @@ export async function getOpsSummary(
     publishedTodayRes,
     ingestRowsRes,
     enrichRowsRes,
+    telegramRowsRes,
     digestRowsRes,
     openAlertsRes,
     sourceRowsRes,
@@ -194,6 +220,12 @@ export async function getOpsSummary(
       .order('started_at', { ascending: false })
       .limit(5),
     supabase
+      .from('telegram_channel_posts')
+      .select('created_at, delivery_date, slot_no, status, article_id, sent_at, failed_at, error_message')
+      .order('delivery_date', { ascending: false })
+      .order('slot_no', { ascending: false })
+      .limit(30),
+    supabase
       .from('digest_runs')
       .select('created_at, digest_date, status, articles_count, sent_at, failed_at, error_message')
       .order('created_at', { ascending: false })
@@ -221,6 +253,7 @@ export async function getOpsSummary(
   const publishedTodayRows = rowsOrThrow<OpsArticleFunnel['recentPublished'][number]>(publishedTodayRes, 'published today')
   const ingestRows = rowsOrThrow<OpsIngestRunRow>(ingestRowsRes, 'ingest runs')
   const enrichRows = rowsOrThrow<OpsEnrichRunRow>(enrichRowsRes, 'enrich runs')
+  const telegramRows = rowsOrEmptyOnMissing<OpsTelegramPostRow>(telegramRowsRes)
   const digestRows = rowsOrThrow<OpsDigestRunRow>(digestRowsRes, 'digest runs')
   const openAlerts = rowsOrThrow<OpsAlertRow>(openAlertsRes, 'pipeline alerts')
   const sourceRows = rowsOrThrow<SourceRunRow>(sourceRowsRes, 'source runs')
@@ -228,6 +261,19 @@ export async function getOpsSummary(
 
   const digestToday = selectRepresentativeDigestRun(digestRows.filter((row) => row.digest_date === mskDateKey))
   const latestDigest = selectRepresentativeDigestRun(digestRows)
+  const telegramToday = summarizeTelegramDelivery(
+    telegramRows.filter((row) => row.delivery_date === mskDateKey),
+    mskDateKey,
+    expectedTelegramSlots(now),
+  )
+  const latestTelegramDate = telegramRows[0]?.delivery_date ?? null
+  const latestTelegram = latestTelegramDate
+    ? summarizeTelegramDelivery(
+        telegramRows.filter((row) => row.delivery_date === latestTelegramDate),
+        latestTelegramDate,
+        latestTelegramDate === mskDateKey ? expectedTelegramSlots(now) : 5,
+      )
+    : null
   const articles = summarizeArticles(articleRows, queueRows, publishedTodayRows, publishedTodayRes.count)
   const alertGroups = groupAlerts(openAlerts)
   const costs = summarizeCosts(costRows)
@@ -241,6 +287,8 @@ export async function getOpsSummary(
     articles,
     latestIngest: ingestRows[0] ?? null,
     latestEnrich: enrichRows[0] ?? null,
+    telegramToday,
+    latestTelegram,
     digestToday,
     latestDigest,
     openAlerts,
@@ -259,10 +307,66 @@ function rowsOrThrow<T>(response: unknown, label: string): T[] {
   return typed.data ?? []
 }
 
+function rowsOrEmptyOnMissing<T>(response: unknown): T[] {
+  const typed = response as { data?: T[] | null; error?: { message?: string; code?: string } | null }
+  if (typed.error) return []
+  return typed.data ?? []
+}
+
 function startOfMskDayUtcIso(now: Date): string {
   const msk = new Date(now.getTime() + MSK_OFFSET_MS)
   msk.setUTCHours(0, 0, 0, 0)
   return new Date(msk.getTime() - MSK_OFFSET_MS).toISOString()
+}
+
+export function expectedTelegramSlots(now: Date): number {
+  const mskHour = new Date(now.getTime() + MSK_OFFSET_MS).getUTCHours()
+  const mskMinute = new Date(now.getTime() + MSK_OFFSET_MS).getUTCMinutes()
+  const minutes = mskHour * 60 + mskMinute
+  if (minutes >= 21 * 60) return 5
+  if (minutes >= 18 * 60 + 30) return 4
+  if (minutes >= 15 * 60 + 30) return 3
+  if (minutes >= 12 * 60 + 30) return 2
+  if (minutes >= 9 * 60 + 30) return 1
+  return 0
+}
+
+function summarizeTelegramDelivery(
+  rows: OpsTelegramPostRow[],
+  deliveryDate: string,
+  expectedSlots: number,
+): OpsTelegramDelivery | null {
+  if (rows.length === 0) return null
+
+  const success = rows.filter((row) => row.status === 'success')
+  const failed = rows.filter((row) => row.status.startsWith('failed'))
+  const skipped = rows.filter((row) => row.status.startsWith('skipped'))
+  const planned = rows.filter((row) => row.status === 'planned' || row.status === 'sending')
+  const latestSentAt = success
+    .map((row) => row.sent_at)
+    .filter((value): value is string => Boolean(value))
+    .sort()
+    .at(-1) ?? null
+  const latestError = failed[0]?.error_message ?? null
+
+  let status = rows[0]?.status ?? 'unknown'
+  if (failed.length > 0) status = 'failed'
+  else if (success.length >= Math.max(1, expectedSlots) && expectedSlots > 0) status = 'success'
+  else if (success.length > 0) status = 'partial_success'
+  else if (skipped.some((row) => row.status === 'skipped_low_articles')) status = 'skipped_low_articles'
+  else if (planned.length > 0) status = 'planned'
+
+  return {
+    delivery_date: deliveryDate,
+    expected_slots: expectedSlots,
+    success_count: success.length,
+    failed_count: failed.length,
+    skipped_count: skipped.length,
+    planned_count: planned.length,
+    status,
+    latest_sent_at: latestSentAt,
+    latest_error: latestError,
+  }
 }
 
 function summarizeArticles(
@@ -391,20 +495,25 @@ export function evaluateOpsStatus(summary: Omit<OpsSummary, 'status'>): OpsStatu
   const warningAlerts = summary.openAlerts.filter((alert) => alert.severity === 'warning')
   const sourceDownWarnings = warningAlerts.filter((alert) => alert.alert_type === 'source_down')
   const latestDigest = summary.digestToday ?? summary.latestDigest
+  const telegram = summary.telegramToday ?? summary.latestTelegram
+  const expectedSlotsNow = expectedTelegramSlots(new Date(summary.generatedAt))
 
   if (criticalAlerts.length > 0) {
     redReasons.push(`есть ${criticalAlerts.length} critical ${pluralize(criticalAlerts.length, 'алёрт', 'алёрта', 'алёртов')}`)
   }
   if (summary.latestIngest?.status === 'failed') redReasons.push('последний сбор источников завершился ошибкой')
   if (summary.latestEnrich?.status === 'failed') redReasons.push('последняя обработка статей завершилась ошибкой')
-  if (latestDigest?.status?.startsWith('failed')) {
+  if (!telegram && latestDigest?.status?.startsWith('failed')) {
     redReasons.push(`Telegram-дайджест не отправился: ${humanDigestStatus(latestDigest.status)}`)
   }
+  if (telegram?.status === 'failed') {
+    redReasons.push(`Telegram-пост не отправился${telegram.latest_error ? `: ${telegram.latest_error}` : ''}`)
+  }
 
-  if (summary.reportKind === 'morning') {
-    if (!summary.digestToday) yellowReasons.push('нет записи об утреннем Telegram-дайджесте за сегодня')
-    else if (summary.digestToday.status !== 'success' && !summary.digestToday.status.startsWith('failed')) {
-      yellowReasons.push(`утренний Telegram-дайджест в статусе ${humanDigestStatus(summary.digestToday.status)}`)
+  if (summary.reportKind === 'morning' && expectedSlotsNow > 0) {
+    if (!summary.telegramToday) yellowReasons.push('нет записи о Telegram-постах за сегодня')
+    else if (summary.telegramToday.success_count < summary.telegramToday.expected_slots && summary.telegramToday.status !== 'skipped_low_articles') {
+      yellowReasons.push(`Telegram-посты: отправлено ${summary.telegramToday.success_count}/${summary.telegramToday.expected_slots}`)
     }
   }
 
@@ -470,7 +579,7 @@ export function formatOpsSummaryForTelegram(summary: OpsSummary): string {
   lines.push('<b>Публикации</b>')
   lines.push(`• сегодня опубликовано: <b>${summary.articles.publishedTodayCount}</b>; за 6ч: <b>${summary.health.live_window_6h_count}</b>`)
   lines.push(`• за 24ч создано: <b>${summary.articles.created24h}</b>; опубликовано: ${count(summary.articles.byPublishStatus, 'live')}; в работе: ${count(summary.articles.byEnrichStatus, 'processing')}; с ошибкой: ${count(summary.articles.byEnrichStatus, 'failed')}; отклонено: ${count(summary.articles.byEnrichStatus, 'rejected')}`)
-  lines.push(`• дайджест: ${formatDigest(summary.digestToday ?? summary.latestDigest)}`)
+  lines.push(`• Telegram-посты: ${formatTelegramDelivery(summary.telegramToday ?? summary.latestTelegram)}`)
   const rejectReasons = Object.entries(summary.health.articles_rejected_today_by_reason)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 4)
@@ -588,7 +697,7 @@ function formatDeliveryOverview(summary: OpsSummary): string[] {
   const warningAlerts = summary.openAlerts.filter((alert) => alert.severity === 'warning')
   const deliveryProblems = buildDeliveryProblems(summary)
 
-  lines.push(`• Telegram-дайджест: ${formatDigestDelivery(summary.digestToday ?? summary.latestDigest)}`)
+  lines.push(`• Telegram-посты: ${formatTelegramDelivery(summary.telegramToday ?? summary.latestTelegram)}`)
   lines.push(`• Статьи на сайте: ${formatPublicationDelivery(summary)}`)
 
   if (deliveryProblems.length) {
@@ -650,17 +759,19 @@ function buildGreenPathActions(summary: OpsSummary): string[] {
   const actions: string[] = []
   const criticalAlerts = summary.openAlerts.filter((alert) => alert.severity === 'critical')
   const warningAlerts = summary.openAlerts.filter((alert) => alert.severity === 'warning')
-  const latestDigest = summary.digestToday ?? summary.latestDigest
+  const telegram = summary.telegramToday ?? summary.latestTelegram
 
   if (criticalAlerts.length) {
     actions.push(`устранить ${criticalAlerts.length} critical ${pluralize(criticalAlerts.length, 'алёрт', 'алёрта', 'алёртов')} и закрыть его в pipeline_alerts`)
   }
   if (summary.latestIngest?.status === 'failed') actions.push('починить последний сбор источников')
   if (summary.latestEnrich?.status === 'failed') actions.push('починить последнюю обработку статей')
-  if (latestDigest?.status?.startsWith('failed')) actions.push('починить отправку Telegram-дайджеста')
-  if (summary.reportKind === 'morning' && !summary.digestToday) actions.push('добиться записи success в digest_runs за сегодняшний дайджест')
-  if (summary.reportKind === 'morning' && summary.digestToday && summary.digestToday.status !== 'success') {
-    actions.push('довести утренний Telegram-дайджест до статуса success')
+  if (telegram?.status === 'failed') actions.push('починить отправку Telegram-поста')
+  if (summary.reportKind === 'morning' && expectedTelegramSlots(new Date(summary.generatedAt)) > 0 && !summary.telegramToday) {
+    actions.push('добиться записи success в telegram_channel_posts за текущий слот')
+  }
+  if (summary.telegramToday && summary.telegramToday.success_count < summary.telegramToday.expected_slots && summary.telegramToday.status !== 'skipped_low_articles') {
+    actions.push('довести Telegram-посты до ожидаемого количества отправленных слотов')
   }
   if (summary.reportKind === 'evening' && summary.articles.publishedTodayCount === 0) {
     actions.push('выпустить хотя бы одну live-статью сегодня')
@@ -687,7 +798,7 @@ function buildCodexPrompt(summary: OpsSummary): string {
   const facts = [
     `Сигнал: ${summary.status.emoji} ${summary.status.label}`,
     `Причины: ${summary.status.reasons.join('; ')}`,
-    `Дайджест: ${stripTags(formatDigestDelivery(summary.digestToday ?? summary.latestDigest))}`,
+    `Telegram: ${stripTags(formatTelegramDelivery(summary.telegramToday ?? summary.latestTelegram))}`,
     `Публикации: сегодня ${summary.articles.publishedTodayCount}, за 6ч ${summary.health.live_window_6h_count}`,
     `Очередь: pending ${count(summary.articles.currentQueue, 'pending')}, retry ${count(summary.articles.currentQueue, 'retry_wait')}, processing ${count(summary.articles.currentQueue, 'processing')}`,
     `Open batches: ${summary.health.batches_open}`,
@@ -700,20 +811,20 @@ function buildCodexPrompt(summary: OpsSummary): string {
     facts,
     'Задача: найти root cause, объяснить простым языком, что сломалось, и по возможности исправить до зелёного статуса.',
     'Начни с dry-run: npm run ops:report -- --dry-run --kind=manual',
-    'Проверь pipeline_alerts, anthropic_batches, digest_runs и GitHub Actions. Не трогай unrelated changes.',
+    'Проверь pipeline_alerts, anthropic_batches, telegram_channel_posts, pg_cron и GitHub Actions. Не трогай unrelated changes.',
   ].join('\n')
 }
 
 function buildDeliveryProblems(summary: OpsSummary): string[] {
   const problems: string[] = []
-  const digest = summary.digestToday ?? summary.latestDigest
+  const expectedSlots = expectedTelegramSlots(new Date(summary.generatedAt))
 
-  if (!summary.digestToday && summary.reportKind === 'morning') {
-    problems.push('нет подтверждения, что утренний Telegram-дайджест сегодня отправлялся')
-  } else if (digest?.status?.startsWith('failed')) {
-    problems.push(`Telegram-дайджест не отправился: ${humanDigestStatus(digest.status)}`)
-  } else if (summary.reportKind === 'morning' && digest && digest.status !== 'success') {
-    problems.push(`Telegram-дайджест сегодня не в статусе "отправлен": ${humanDigestStatus(digest.status)}`)
+  if (!summary.telegramToday && expectedSlots > 0) {
+    problems.push('нет подтверждения, что текущий Telegram-слот сегодня отправлялся')
+  } else if (summary.telegramToday?.status === 'failed') {
+    problems.push(`Telegram-пост не отправился${summary.telegramToday.latest_error ? `: ${summary.telegramToday.latest_error}` : ''}`)
+  } else if (summary.telegramToday && summary.telegramToday.success_count < summary.telegramToday.expected_slots && summary.telegramToday.status !== 'skipped_low_articles') {
+    problems.push(`Telegram-посты сегодня ниже плана: ${summary.telegramToday.success_count}/${summary.telegramToday.expected_slots}`)
   }
 
   if (summary.reportKind === 'evening' && summary.articles.publishedTodayCount === 0) {
@@ -730,7 +841,7 @@ function buildAdminIssueLines(summary: OpsSummary): string[] {
   const lines: string[] = []
   const criticalAlerts = summary.openAlerts.filter((alert) => alert.severity === 'critical')
   const warningAlerts = summary.openAlerts.filter((alert) => alert.severity === 'warning')
-  const latestDigest = summary.digestToday ?? summary.latestDigest
+  const expectedSlots = expectedTelegramSlots(new Date(summary.generatedAt))
 
   if (criticalAlerts.length) {
     lines.push(`Критические алёрты: ${criticalAlerts.length}. ${formatAlertGroups(summary.alertGroups.filter((group) => group.severity === 'critical'))}.`)
@@ -745,14 +856,14 @@ function buildAdminIssueLines(summary: OpsSummary): string[] {
   if (summary.latestEnrich?.status === 'failed') {
     lines.push(`Обработка статей упала. Последняя ошибка: ${summary.latestEnrich.error_summary ?? 'детали не записаны'}.`)
   }
-  if (latestDigest?.status?.startsWith('failed')) {
-    lines.push(`Telegram-дайджест не отправился: ${humanDigestStatus(latestDigest.status)}${latestDigest.error_message ? `; ${latestDigest.error_message}` : ''}.`)
+  if (summary.telegramToday?.status === 'failed') {
+    lines.push(`Telegram-пост не отправился${summary.telegramToday.latest_error ? `: ${summary.telegramToday.latest_error}` : ''}.`)
   }
 
-  if (summary.reportKind === 'morning' && !summary.digestToday) {
-    lines.push('Нет записи о сегодняшнем утреннем дайджесте: нужно проверить GitHub Actions `tg-digest.yml` и таблицу `digest_runs`.')
-  } else if (summary.reportKind === 'morning' && summary.digestToday?.status !== 'success') {
-    lines.push(`Утренний дайджест сегодня не подтверждён как отправленный: ${humanDigestStatus(summary.digestToday?.status ?? 'unknown')}.`)
+  if (expectedSlots > 0 && !summary.telegramToday) {
+    lines.push('Нет записи о сегодняшних Telegram-постах: нужно проверить pg_cron `tg-channel-post-*` и таблицу `telegram_channel_posts`.')
+  } else if (summary.telegramToday && summary.telegramToday.success_count < summary.telegramToday.expected_slots && summary.telegramToday.status !== 'skipped_low_articles') {
+    lines.push(`Telegram-посты сегодня ниже плана: ${summary.telegramToday.success_count}/${summary.telegramToday.expected_slots}.`)
   }
 
   if (summary.reportKind === 'evening' && summary.articles.publishedTodayCount === 0) {
@@ -792,26 +903,30 @@ function firstRecommendedAction(summary: OpsSummary): string {
   if (summary.openAlerts.some((alert) => alert.severity === 'critical')) return 'открой критические алёрты ниже и проверь последнюю ошибку'
   if (summary.latestIngest?.status === 'failed') return 'проверь сбор RSS/источников'
   if (summary.latestEnrich?.status === 'failed') return 'проверь обработку статей и ключи LLM-провайдеров'
-  const digest = summary.digestToday ?? summary.latestDigest
-  if (digest?.status?.startsWith('failed') || (summary.reportKind === 'morning' && !summary.digestToday)) return 'проверь workflow Telegram-дайджеста'
+  if (summary.telegramToday?.status === 'failed' || (expectedTelegramSlots(new Date(summary.generatedAt)) > 0 && !summary.telegramToday)) return 'проверь pg_cron и отправку Telegram-постов'
   if (summary.health.batches_open > 0) return 'проверь пакетную обработку Anthropic/Claude'
   if (summary.openAlerts.some((alert) => alert.severity === 'warning')) return 'посмотри группы warning-алёртов в блоке "Проблемы"'
   if (summary.health.live_window_6h_count === 0) return 'проверь, почему нет свежих live-публикаций'
   return 'смотри технические метрики ниже'
 }
 
-function formatDigestDelivery(row: OpsDigestRunRow | null): string {
-  if (!row) return 'нет данных о запуске'
+function formatTelegramDelivery(row: OpsTelegramDelivery | null): string {
+  if (!row) return 'нет данных о слотах'
+  const expected = row.expected_slots > 0 ? row.expected_slots : 5
+  const countText = `${row.success_count}/${expected} ${pluralize(expected, 'слот', 'слота', 'слотов')}`
   if (row.status === 'success') {
-    const countText = row.articles_count === null || row.articles_count === undefined
-      ? ''
-      : `, ${row.articles_count} ${pluralize(row.articles_count, 'статья', 'статьи', 'статей')}`
-    return `отправлен в ${formatMskTime(row.sent_at ?? row.created_at)}${countText}`
+    return `по плану, отправлено ${countText}${row.latest_sent_at ? `, последний в ${formatMskTime(row.latest_sent_at)}` : ''}`
   }
-  if (row.status.startsWith('failed')) {
-    return `не отправился: ${humanDigestStatus(row.status)}${row.error_message ? ` (${row.error_message})` : ''}`
+  if (row.status === 'partial_success') {
+    return `частично отправлено ${countText}${row.latest_sent_at ? `, последний в ${formatMskTime(row.latest_sent_at)}` : ''}`
   }
-  return `не подтверждён как отправленный: ${humanDigestStatus(row.status)}`
+  if (row.status === 'skipped_low_articles') {
+    return `не отправлялись: мало подходящих статей (${row.skipped_count} слотов skipped)`
+  }
+  if (row.status === 'failed') {
+    return `ошибка отправки: ${row.latest_error ?? 'без деталей'}`
+  }
+  return `ожидает отправки: ${countText}, статус ${escapeHtml(row.status)}`
 }
 
 function formatPublicationDelivery(summary: OpsSummary): string {
@@ -992,9 +1107,12 @@ function severityRank(severity: OpsAlertRow['severity']): number {
 
 export const _internals = {
   evaluateOpsStatus,
+  expectedTelegramSlots,
   formatDigest,
+  formatTelegramDelivery,
   groupAlerts,
   resolveOpsReportKind,
   selectRepresentativeDigestRun,
+  summarizeTelegramDelivery,
   startOfMskDayUtcIso,
 }

@@ -215,29 +215,35 @@ re-enrich (`scripts/reenrich-all.ts`, `scripts/reenrich-topic-slices.ts`) пер
 - `pipeline/slug.ts::normalizeSlug` — defensive helper, который приводит slug из любого источника (legacy backfill, ручной импорт) к каноническому виду. Использует тот же 75-символьный cap и word-boundary cut.
 - `pipeline/slug.ts::assertAsciiSlug` — runtime guard, бросает на slug-ах с не-ASCII символами или с битой структурой. Вызывается в `pipeline/enrich-collect-batch.ts` после `ensureUniqueSlug`. Невалидный slug приводит item в `apply_failed_terminal` и НЕ записывается в `articles.slug` — это защита от регрессий вроде incident 2026-05-01.
 
-### Telegram digest и pipeline-health detection
+### Telegram channel posts
 
-С 2026-05-02 ядро дайджеста живёт в `bot/daily-digest-core.ts` (экспортирует `runDailyDigest()`, возвращает `DigestResult` вместо `process.exit`). Точки входа:
+С 2026-06-01 production delivery в Telegram — не один утренний дайджест, а 5 отдельных постов
+в течение дня. Активное ядро: `bot/channel-post-core.ts`; CLI: `npm run tg-channel-post -- --slot=1`;
+cron-route: `app/api/cron/tg-channel-post/route.ts?slot=1..5`.
 
-- CLI: `bot/daily-digest.ts` (тонкий враппер с dotenv и `process.exit`) — `npm run tg-digest`.
-- Vercel Cron: `app/api/cron/tg-digest/route.ts` — расписание 09:30 МСК Пн–Пт и 11:30 МСК Сб+Вс, см. `docs/OPERATIONS.md` секцию «Vercel Cron».
+Каждый пост отправляется через Telegram `sendPhoto`: `cover_image_url` как картинка, короткий
+caption из `ru_title` + `tg_teaser`, inline-кнопка `Читать на сайте` на canonical article URL
+с UTM `utm_source=tg&utm_medium=channel&utm_campaign=dayfeed_YYYYMMDD&utm_content=slot_N`.
 
-`runDailyDigest()` при пустой выборке статей за вчерашний день дополнительно проверяет количество статей в `enrich_status='processing'` старше 6 часов. Если их > 0, ядро:
-- пишет `digest_runs.status='failed_pipeline_stalled'` (миграция 015) с `error_message='pipeline_stalled: N processing>6h'`,
-- отправляет критический алёрт `digest_pipeline_stalled` в админский Telegram.
+Source pool сохраняет старую editorial-логику дайджеста: top-50 за предыдущий MSK-день среди
+`published=true + quality_ok=true + verified_live=true + publish_status='live' + tg_sent=false`
+с обязательными `slug`, `tg_teaser`, `cover_image_url`. URL статьи проверяется HEAD-запросом.
+Если после story-aware selection меньше 3 подходящих материалов, все 5 слотов дня пишутся как
+`skipped_low_articles` и канал не получает посты.
 
-Без этого gate скрипт молча писал `skipped`, и проблему обнаруживали только постфактум по отсутствию сообщения в канале.
+Slot 1 планирует весь день в `telegram_channel_posts`, но любой slot-runner умеет создать план,
+если предыдущий запуск не состоялся. Уникальность `(delivery_date, slot_no, channel_id)` защищает
+от дубля слота; partial unique `(channel_id, article_id) where status='success'` не даёт повторно
+отправить одну статью в тот же канал. После успешной отправки строка получает `status='success'`,
+`telegram_message_id`, `sent_at`, а `articles.tg_sent` остаётся compatibility-флагом «материал
+уже отправлялся в Telegram».
 
-С W2.4 (миграция 015) каждая ветка `runDailyDigest()` пишет digest_runs row с точным кодом:
+Story selection переиспользует `bot/digest-selection.ts`: source cap `2`, entity cap `2`,
+dedup по deterministic `storyKey`, recent memory за 72 часа из legacy `digest_runs.article_ids`
+и новых successful `telegram_channel_posts.article_id`.
 
-- `success` — отправка прошла, message_id сохранён;
-- `skipped_already_claimed` — slot уже взят (через `claimDigestSlot`/UNIQUE partial index `idx_digest_runs_date_channel_live`) или tg_sent fallback;
-- `skipped_no_articles` — нет live-статей за окно (без признаков заклинивания);
-- `low_articles` — < 3 live статей, дайджест пропущен, health-отчёт админу (legacy код, остаётся);
-- `failed_pipeline_stalled` — описано выше;
-- `failed_send` — ошибка запроса в Supabase или ошибка Telegram API.
-
-См. `docs/OPERATIONS.md` секция «digest_runs status enum (Wave 2.4, миграция 015)».
+Legacy `bot/daily-digest-core.ts` и `digest_runs` оставлены для аудита и обратной совместимости,
+но `/api/cron/tg-digest` больше не отправляет production-сообщения.
 
 ### `enrich_runs.rejected_breakdown` (Wave 2.3)
 
@@ -599,10 +605,10 @@ Broad RSS feeds допускаются только с keyword filters:
   (`process.env.npm_lifecycle_event === 'build'`), потому что они делают несколько широких
   Supabase-запросов на каждую статью и могут выбить Vercel/Next static generation timeout.
   На runtime ISR/revalidation рекомендации снова считаются обычным `getArticleRecommendations()`.
-- Telegram digest использует `tg_teaser`, `ru_title`, score и public article URL (`/categories/<primary>/<slug>`).
-  Selection (`bot/daily-digest-core.ts`):
+- Telegram channel posts используют `cover_image_url`, `tg_teaser`, `ru_title`, score и public article URL (`/categories/<primary>/<slug>`).
+  Selection (`bot/channel-post-core.ts`):
   - SELECT top-50 за вчерашний MSK-день по `score desc, pub_date desc` среди
-    `live + quality_ok + verified_live + tg_sent=false + tg_teaser/slug present`.
+    `live + quality_ok + verified_live + tg_sent=false + tg_teaser/slug/cover present`.
   - `filterLiveArticles` отсекает недоступные URL (HEAD-проверка с timeout 5s).
   - `selectDigestArticles()` (`bot/digest-selection.ts`) сохраняет source cap:
     `perSourceCap=2`, `target=5`. Без этого кэпа Habr AI регулярно занимал 4–5 из 5
@@ -611,8 +617,9 @@ Broad RSS feeds допускаются только с keyword filters:
     и не берёт две strong-статьи про один инфоповод в один дайджест. Пример:
     Crunchbase/TechCrunch/The Decoder про раунд Anthropic $65B → один
     `anthropic:funding:65b`.
-  - Перед selection загружается память последних successful дайджестов за 72 часа через
-    `digest_runs.article_ids`; strong `storyKey`, уже отправленный недавно, пропускается.
+  - Перед selection загружается память последних successful Telegram-отправок за 72 часа через
+    `digest_runs.article_ids` и `telegram_channel_posts.article_id`; strong `storyKey`,
+    уже отправленный недавно, пропускается.
     Это закрывает кейс, когда один источник публикует тот же инфоповод после границы
     MSK-дня и он всплывает на следующий день.
   - Дополнительный cap: не больше 2 strong-статей с одной `primaryEntity` в финальных 5.
@@ -621,7 +628,7 @@ Broad RSS feeds допускаются только с keyword filters:
   - `validateDigestComposition()` проверяет финальный список перед отправкой и логирует
     duplicate story keys, source/entity distribution и skipped-причины. Runtime не требует
     новой миграции: диагностика идёт в logs, а retro-аудит доступен через
-    `npm run digest:audit-selection -- --date=YYYY-MM-DD`.
+    `npm run digest:audit-selection -- --date=YYYY-MM-DD` для legacy digest selection.
 - Category pages (`/categories/[category]`, `/russia`) и главная под hero рендерят `TopicTabs`
   (см. `docs/DESIGN.md`) — это навигационный слой, не источник фильтрации; сам список статей берётся
   через `getArticlesByCategoryPage` (primary OR secondary, `.range()` + `count: exact`) /

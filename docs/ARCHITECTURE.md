@@ -7,7 +7,7 @@
 1. Web app: Next.js приложение в `app/` и `src/components/`, отрендеренное на Vercel.
 2. Data layer: Supabase PostgreSQL как единый источник данных.
 3. Content pipeline: TypeScript-скрипты в `pipeline/`, запускаемые по cron через GitHub Actions.
-4. Delivery and observability: Telegram digest, publish verification, health checks, alerts.
+4. Delivery and observability: Telegram channel posts, publish verification, health checks, alerts.
 
 ## Runtime Boundaries
 
@@ -46,7 +46,7 @@ RLS contract:
 - public tables в схеме `public` работают с включённым RLS;
 - единственная публичная policy на `articles` разрешает `SELECT` только для live-материалов (`published=true`, `quality_ok=true`, `verified_live=true`, `publish_status='live'`);
 - `categories` имеет public read только для `is_active=true`; запись — только через `service_role`;
-- operational tables (`article_attempts`, `ingest_runs`, `enrich_runs`, `digest_runs`, `pipeline_alerts`, `source_runs`) не имеют public policies и должны читаться/писаться только через `service_role`.
+- operational tables (`article_attempts`, `ingest_runs`, `enrich_runs`, `digest_runs`, `telegram_channel_posts`, `pipeline_alerts`, `source_runs`) не имеют public policies и должны читаться/писаться только через `service_role`.
 
 Модель категорий:
 - одна основная категория на статью (`articles.primary_category`, FK на `categories.slug`, NOT NULL);
@@ -61,6 +61,7 @@ RLS contract:
 - `anthropic_batch_items`
 - `source_runs`
 - `digest_runs`
+- `telegram_channel_posts`
 - `article_attempts`
 - `pipeline_alerts`
 
@@ -84,7 +85,10 @@ RLS contract:
 - `digest_runs_status_check_v2` — расширен надмножеством, легаси значения (`running/success/skipped/low_articles/error/failed`) сохранены, добавлены точные коды для веток `main()` дайджеста (см. `docs/OPERATIONS.md`);
 - `idx_articles_published_at` — partial index `WHERE publish_status='live'` под `published_low_window` мониторинг и health endpoint.
 
-Миграция 016 (2026-05-04) добавляет primary cron для Telegram-дайджеста через `pg_cron` + `pg_net` внутри Postgres — расписания исполняются с минутной точностью и дёргают Vercel-route с bearer-токеном из `vault.secrets`. Vercel Cron остаётся как fallback. См. `docs/OPERATIONS.md` секцию «Cron-расписание Telegram-дайджеста».
+Миграция 016 (2026-05-04) добавила primary cron для legacy Telegram-дайджеста через `pg_cron` + `pg_net`.
+Миграция 017 (2026-06-01) заменяет delivery на 5 `telegram_channel_posts` в день, создаёт таблицу
+slot-level отправок и unschedule-ит legacy `tg-digest-*` jobs. См. `docs/OPERATIONS.md` секцию
+«Cron-расписание Telegram channel posts».
 
 ## Основные модули
 

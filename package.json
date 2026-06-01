@@ -36,6 +36,7 @@
     "covers:template": "tsx scripts/backfill-template-covers.ts",
     "publish-verify": "tsx pipeline/publish-verify.ts",
     "tg-digest": "tsx bot/daily-digest.ts",
+    "tg-channel-post": "tsx bot/channel-post.ts",
     "digest:audit-selection": "tsx scripts/audit-digest-selection.ts",
     "bot": "tsx bot/bot.ts",
     "test": "tsx --test tests/node/*.test.ts",

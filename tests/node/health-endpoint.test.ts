@@ -91,6 +91,7 @@ test('getHealthSummary contract shape — all required keys present', async () =
     tables: {
       ingest_runs: { rows: [{ finished_at: '2026-05-02T08:00:00Z', status: 'ok' }] },
       enrich_runs: { rows: [{ rejected_breakdown: { rejected_low_visual: 2 } }], count: 1 },
+      telegram_channel_posts: { rows: [{ delivery_date: '2026-05-02', slot_no: 1, status: 'success', sent_at: '2026-05-02T06:30:00Z', created_at: '2026-05-02T06:30:00Z' }] },
       digest_runs: { rows: [{ digest_date: '2026-05-02', status: 'success', sent_at: '2026-05-02T06:00:00Z' }] },
       pipeline_alerts: { rows: [{ alert_type: 'backlog_high', severity: 'warning', first_seen_at: '2026-05-02T07:00:00Z', last_seen_at: '2026-05-02T08:00:00Z', occurrence_count: 3, message: 'msg' }], count: 2 },
       anthropic_batches: { rows: [], count: 1 },
@@ -104,6 +105,7 @@ test('getHealthSummary contract shape — all required keys present', async () =
   assert.ok(typeof summary.server_time === 'string')
   assert.ok('ingest' in summary)
   assert.ok('enrich' in summary)
+  assert.ok('telegram' in summary)
   assert.ok('digest' in summary)
   assert.equal(typeof summary.alerts_open, 'number')
   assert.equal(typeof summary.batches_open, 'number')
@@ -125,6 +127,7 @@ test('getHealthSummary aggregates rejected_breakdown across runs', async () => {
           { rejected_breakdown: { rejected_low_visual: 3, scorer_below_threshold: 5 } },
         ],
       },
+      telegram_channel_posts: { rows: [] },
       digest_runs: { rows: [] },
       pipeline_alerts: { rows: [], count: 0 },
       anthropic_batches: { rows: [], count: 0 },
@@ -146,6 +149,7 @@ test('getHealthSummary cost is rounded to micro-USD precision', async () => {
     tables: {
       ingest_runs: { rows: [] },
       enrich_runs: { rows: [] },
+      telegram_channel_posts: { rows: [] },
       digest_runs: { rows: [] },
       pipeline_alerts: { rows: [], count: 0 },
       anthropic_batches: { rows: [], count: 0 },
@@ -163,6 +167,7 @@ test('getHealthSummary returns null age when no pending articles', async () => {
     tables: {
       ingest_runs: { rows: [] },
       enrich_runs: { rows: [] },
+      telegram_channel_posts: { rows: [] },
       digest_runs: { rows: [] },
       pipeline_alerts: { rows: [], count: 0 },
       anthropic_batches: { rows: [], count: 0 },

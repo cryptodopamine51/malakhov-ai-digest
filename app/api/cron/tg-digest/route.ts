@@ -1,24 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { runDailyDigest } from '../../../../bot/daily-digest-core'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-// Серверная функция должна успеть отработать дайджест за один заход:
-// HEAD-проверки 5 статей (~5s) + Telegram send + Supabase writes. С запасом.
-export const maxDuration = 60
+export const maxDuration = 10
 
 /**
- * Vercel Cron endpoint для ежедневного Telegram-дайджеста.
- *
- * Расписание задано в `vercel.json`:
- *   - `30 6 * * 1-5` → 09:30 МСК, Пн–Пт
- *   - `30 8 * * 6,0` → 11:30 МСК, Сб + Вс
- *
- * Vercel автоматически добавляет `Authorization: Bearer ${CRON_SECRET}`
- * к запросам, если в проектных env есть переменная `CRON_SECRET`.
- *
- * UNIQUE-claim в `digest_runs(digest_date+channel_id)` гарантирует,
- * что повторный вызов (ручной / случайный) не отправит дубль.
+ * Legacy endpoint for the old single-message daily digest.
+ * Production Telegram delivery now uses /api/cron/tg-channel-post?slot=1..5.
  */
 export async function GET(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET
@@ -34,19 +22,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
   }
 
-  try {
-    const result = await runDailyDigest()
-    const httpStatus =
-      result.status === 'failed' || result.status === 'preflight_failed' ? 500 : 200
-    return NextResponse.json(
-      { ok: httpStatus === 200, ...result },
-      { status: httpStatus, headers: { 'Cache-Control': 'no-store' } },
-    )
-  } catch (err) {
-    console.error('[cron/tg-digest] unhandled error:', err)
-    return NextResponse.json(
-      { ok: false, status: 'failed', error: err instanceof Error ? err.message : String(err) },
-      { status: 500 },
-    )
-  }
+  return NextResponse.json(
+    {
+      ok: true,
+      status: 'disabled_replaced_by_channel_posts',
+      replacement: '/api/cron/tg-channel-post?slot=1..5',
+    },
+    { status: 200, headers: { 'Cache-Control': 'no-store' } },
+  )
 }

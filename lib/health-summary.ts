@@ -8,6 +8,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { getMoscowDateKey } from './utils'
 
 const MSK_OFFSET_MS = 3 * 60 * 60 * 1000
 
@@ -15,6 +16,8 @@ export interface HealthSummary {
   server_time: string
   ingest: { finished_at: string | null; status: string } | null
   enrich: { finished_at: string | null; status: string; run_kind: string | null } | null
+  telegram: TelegramDeliveryHealth | null
+  // Legacy single-message digest signal; kept for backward-compatible health consumers.
   digest: { digest_date: string | null; status: string; sent_at: string | null } | null
   alerts_open: number
   batches_open: number
@@ -34,6 +37,23 @@ export interface HealthSummary {
 }
 
 type DigestHealthRow = { digest_date: string | null; status: string; sent_at: string | null }
+type TelegramPostHealthRow = {
+  delivery_date: string | null
+  slot_no: number | null
+  status: string
+  sent_at: string | null
+  created_at: string | null
+}
+
+export interface TelegramDeliveryHealth {
+  delivery_date: string | null
+  status: string
+  slots_success: number
+  slots_failed: number
+  slots_planned: number
+  slots_total: number
+  sent_at: string | null
+}
 
 function startOfMskDayUtcIso(now: Date = new Date()): string {
   const msk = new Date(now.getTime() + MSK_OFFSET_MS)
@@ -68,6 +88,7 @@ export async function getHealthSummary(supabase: SupabaseClient): Promise<Health
   const [
     ingestRes,
     enrichRes,
+    telegramRowsRes,
     digestRowsRes,
     alertsCountRes,
     batchesCountRes,
@@ -90,6 +111,12 @@ export async function getHealthSummary(supabase: SupabaseClient): Promise<Health
       .order('finished_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
+    supabase
+      .from('telegram_channel_posts')
+      .select('delivery_date, slot_no, status, sent_at, created_at')
+      .order('delivery_date', { ascending: false })
+      .order('slot_no', { ascending: false })
+      .limit(20),
     supabase
       .from('digest_runs')
       .select('digest_date, status, sent_at')
@@ -150,6 +177,8 @@ export async function getHealthSummary(supabase: SupabaseClient): Promise<Health
     return Number.isFinite(value) ? sum + value : sum
   }, 0)
 
+  const telegramRows = rowsOrEmpty<TelegramPostHealthRow>(telegramRowsRes)
+  const telegram = selectRepresentativeTelegramDelivery(telegramRows, getMoscowDateKey(now))
   const digestRows = (digestRowsRes.data ?? []) as DigestHealthRow[]
   const digest = selectRepresentativeDigestRun(digestRows)
 
@@ -157,6 +186,7 @@ export async function getHealthSummary(supabase: SupabaseClient): Promise<Health
     server_time: now.toISOString(),
     ingest: ingestRes.data ?? null,
     enrich: enrichRes.data ?? null,
+    telegram,
     digest,
     alerts_open: alertsCountRes.count ?? 0,
     batches_open: batchesCountRes.count ?? 0,
@@ -176,6 +206,7 @@ export const _internals = {
   mergeBreakdownPrefix,
   normalizeRejectReasonKey,
   selectRepresentativeDigestRun,
+  selectRepresentativeTelegramDelivery,
 }
 
 function selectRepresentativeDigestRun(rows: DigestHealthRow[]): DigestHealthRow | null {
@@ -190,4 +221,48 @@ function selectRepresentativeDigestRun(rows: DigestHealthRow[]): DigestHealthRow
   }
 
   return latest
+}
+
+function rowsOrEmpty<T>(response: unknown): T[] {
+  const typed = response as { data?: T[] | null; error?: { message?: string; code?: string } | null }
+  if (typed.error) return []
+  return typed.data ?? []
+}
+
+function selectRepresentativeTelegramDelivery(
+  rows: TelegramPostHealthRow[],
+  today: string,
+): TelegramDeliveryHealth | null {
+  const scoped = rows.filter((row) => row.delivery_date === today)
+  const targetRows = scoped.length > 0 ? scoped : rows.filter((row) => row.delivery_date === rows[0]?.delivery_date)
+  if (targetRows.length === 0) return null
+
+  const success = targetRows.filter((row) => row.status === 'success')
+  const failed = targetRows.filter((row) => row.status.startsWith('failed'))
+  const planned = targetRows.filter((row) => row.status === 'planned' || row.status === 'sending')
+  const skippedLow = targetRows.filter((row) => row.status === 'skipped_low_articles')
+  const latest = [...targetRows].sort((a, b) =>
+    String(b.sent_at ?? b.created_at ?? '').localeCompare(String(a.sent_at ?? a.created_at ?? '')),
+  )[0]
+
+  let status = latest?.status ?? 'unknown'
+  if (failed.length > 0) status = 'failed'
+  else if (success.length >= 5) status = 'success'
+  else if (success.length > 0) status = 'partial_success'
+  else if (skippedLow.length > 0) status = 'skipped_low_articles'
+  else if (planned.length > 0) status = 'planned'
+
+  return {
+    delivery_date: targetRows[0]?.delivery_date ?? null,
+    status,
+    slots_success: success.length,
+    slots_failed: failed.length,
+    slots_planned: planned.length,
+    slots_total: targetRows.length,
+    sent_at: success
+      .map((row) => row.sent_at)
+      .filter((value): value is string => Boolean(value))
+      .sort()
+      .at(-1) ?? null,
+  }
 }

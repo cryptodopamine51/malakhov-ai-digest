@@ -53,11 +53,25 @@ export interface DashboardDigestRunRow {
   error_message: string | null
 }
 
+export interface DashboardTelegramPostRow {
+  id: string
+  delivery_date: string | null
+  slot_no: number | null
+  status: string
+  article_id: string | null
+  telegram_message_id: number | null
+  sent_at: string | null
+  failed_at: string | null
+  created_at: string
+  error_message: string | null
+}
+
 export interface InternalDashboardData {
   health: HealthSummary
   alerts: DashboardAlertRow[]
   stuckBatchItems: DashboardStuckBatchItemRow[]
   recentLive: DashboardRecentLiveRow[]
+  telegramPosts: DashboardTelegramPostRow[]
   digestRuns: DashboardDigestRunRow[]
 }
 
@@ -83,7 +97,7 @@ function minutesBetween(startIso: string | null, endIso: string | null): number 
 export async function getInternalDashboardData(supabase: SupabaseClient): Promise<InternalDashboardData> {
   const stuckCutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString()
 
-  const [health, alertsRes, stuckRes, recentLiveRes, digestRes] = await Promise.all([
+  const [health, alertsRes, stuckRes, recentLiveRes, telegramPostsRes, digestRes] = await Promise.all([
     getHealthSummary(supabase),
     supabase
       .from('pipeline_alerts')
@@ -106,6 +120,12 @@ export async function getInternalDashboardData(supabase: SupabaseClient): Promis
       .order('published_at', { ascending: false, nullsFirst: false })
       .limit(20),
     supabase
+      .from('telegram_channel_posts')
+      .select('id, delivery_date, slot_no, status, article_id, telegram_message_id, sent_at, failed_at, created_at, error_message')
+      .order('delivery_date', { ascending: false })
+      .order('slot_no', { ascending: false })
+      .limit(10),
+    supabase
       .from('digest_runs')
       .select('id, digest_date, channel_id, status, articles_count, sent_at, failed_at, created_at, error_message')
       .order('created_at', { ascending: false })
@@ -123,6 +143,7 @@ export async function getInternalDashboardData(supabase: SupabaseClient): Promis
     alerts: (alertsRes.data ?? []) as DashboardAlertRow[],
     stuckBatchItems: (stuckRes.data ?? []) as DashboardStuckBatchItemRow[],
     recentLive,
+    telegramPosts: (telegramPostsRes.data ?? []) as DashboardTelegramPostRow[],
     digestRuns: (digestRes.data ?? []) as DashboardDigestRunRow[],
   }
 }
