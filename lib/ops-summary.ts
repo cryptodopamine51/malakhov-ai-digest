@@ -713,18 +713,19 @@ export function evaluateOpsStatus(summary: Omit<OpsSummary, 'status'>): OpsStatu
 export function formatOpsSummaryForTelegram(summary: OpsSummary): string {
   const lines: string[] = []
   const promptDecision = getFixPromptDecision(summary)
+  const displayStatus = getDisplayStatus(summary, promptDecision.show)
   const title = reportTitle(summary)
 
-  lines.push(`${summary.status.emoji} <b>${title} · ${formatDateKeyShort(summary.mskDateKey)}</b>`)
+  lines.push(`${displayStatus.emoji} <b>${title} · ${formatDateKeyShort(summary.mskDateKey)}</b>`)
   lines.push(`Период: сегодня 00:00-${formatMskTime(summary.generatedAt)} МСК · трафик: вчера ${formatDateKeyShort(summary.traffic.date)}`)
   lines.push('')
-  lines.push(`<b>Главное:</b> ${escapeHtml(compactMainLine(summary, promptDecision.show))}`)
+  lines.push(`<b>Главное:</b> ${escapeHtml(compactMainLine(summary, promptDecision.show, displayStatus))}`)
   lines.push('')
   lines.push('<b>✅ Что работает</b>')
   for (const line of buildWhatWorksLines(summary)) lines.push(`• ${escapeHtml(line)}`)
   lines.push('')
   lines.push('<b>⚠️ Что не идеально</b>')
-  for (const line of buildCompactIssueLines(summary, promptDecision.show)) lines.push(`• ${escapeHtml(line)}`)
+  for (const line of buildCompactIssueLines(summary, promptDecision.show, displayStatus)) lines.push(`• ${escapeHtml(line)}`)
   lines.push('')
   lines.push('<b>📈 Трафик вчера</b>')
   for (const line of formatTrafficLines(summary.traffic)) lines.push(`• ${escapeHtml(line)}`)
@@ -735,7 +736,7 @@ export function formatOpsSummaryForTelegram(summary: OpsSummary): string {
   lines.push(`• Расход ИИ сегодня: ${formatUsd(summary.costs.totalCostUsd)}`)
   lines.push('')
   lines.push('<b>🎯 Что делать</b>')
-  lines.push(escapeHtml(compactActionLine(summary, promptDecision.show)))
+  lines.push(escapeHtml(compactActionLine(promptDecision.show, displayStatus)))
   if (promptDecision.show) {
     lines.push('')
     lines.push(...formatCodexPromptBlock(summary, promptDecision.reason))
@@ -746,6 +747,18 @@ export function formatOpsSummaryForTelegram(summary: OpsSummary): string {
 
 export function shouldShowFixPrompt(summary: OpsSummary): boolean {
   return getFixPromptDecision(summary).show
+}
+
+function getDisplayStatus(summary: OpsSummary, hasPrompt: boolean): OpsStatus {
+  if (summary.status.level === 'yellow' && !hasPrompt) {
+    return {
+      level: 'green',
+      emoji: '🟢',
+      label: 'зеленый',
+      reasons: ['нет проблем, требующих действий'],
+    }
+  }
+  return summary.status
 }
 
 function getFixPromptDecision(summary: OpsSummary): { show: boolean; reason: string } {
@@ -782,13 +795,13 @@ function reportTitle(summary: OpsSummary): string {
   return 'Ручной отчет'
 }
 
-function compactMainLine(summary: OpsSummary, hasPrompt: boolean): string {
-  if (summary.status.level === 'green') return 'все ключевые контуры работают.'
-  if (summary.status.level === 'red') {
+function compactMainLine(summary: OpsSummary, hasPrompt: boolean, displayStatus: OpsStatus): string {
+  if (displayStatus.level === 'green') return 'все ключевые контуры работают.'
+  if (displayStatus.level === 'red') {
     return `есть критическая проблема: ${summary.status.reasons[0] ?? 'требуется проверка'}.`
   }
   if (hasPrompt) return 'есть проблема, которую стоит разобрать системно.'
-  return 'день выполнен, но есть небольшой технический хвост.'
+  return 'все ключевые контуры работают.'
 }
 
 function buildWhatWorksLines(summary: OpsSummary): string[] {
@@ -803,7 +816,9 @@ function buildWhatWorksLines(summary: OpsSummary): string[] {
   return lines
 }
 
-function buildCompactIssueLines(summary: OpsSummary, hasPrompt: boolean): string[] {
+function buildCompactIssueLines(summary: OpsSummary, hasPrompt: boolean, displayStatus: OpsStatus): string[] {
+  if (displayStatus.level === 'green' && !hasPrompt) return ['Ничего существенного не вижу.']
+
   const issues = buildAdminIssueLines(summary)
     .map((line) => line.replace(/`/g, ''))
     .slice(0, 3)
@@ -830,10 +845,10 @@ function formatTrafficLines(traffic: OpsTrafficSummary): string[] {
   ]
 }
 
-function compactActionLine(summary: OpsSummary, hasPrompt: boolean): string {
+function compactActionLine(hasPrompt: boolean, displayStatus: OpsStatus): string {
   if (hasPrompt) return 'Запустить Codex-промпт ниже: он уже содержит контекст, файлы и проверки.'
-  if (summary.status.level === 'green') return 'Ничего не делать.'
-  return 'Сейчас: наблюдать. Если сигнал повторится в следующем отчете или станет критичным, появится промпт для фикса.'
+  if (displayStatus.level === 'green') return 'Ничего не делать.'
+  return 'Если сигнал повторится или станет критичным, появится промпт для фикса.'
 }
 
 export function formatOpsAlertsForTelegram(summary: OpsSummary): string {

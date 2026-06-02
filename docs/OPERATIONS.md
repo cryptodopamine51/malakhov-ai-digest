@@ -973,8 +973,9 @@ rejected/fetch errors и LLM/image cost за московский день. Ес
 
 Формат начинается со светофора и короткого бизнес-блока:
 
-- `🟢` — ingest/enrich/Telegram/live/cost без существенных проблем;
-- `🟡` — есть warning alerts, open batches, старый pending, низкое насыщение или source failures;
+- `🟢` — ключевые контуры работают и действий не требуется; незначительные diagnostic warning
+  в регулярном отчёте не подсвечиваются, если для них не нужен Codex-fix prompt;
+- `🟡` — есть проблема, которую стоит разобрать системно, и ниже появится prompt для Codex;
 - `🔴` — есть critical alerts, failed ingest/enrich/Telegram или за день нет live-публикаций.
 
 Секции основного отчёта: `Главное`, `Что работает`, `Что не идеально`, `Трафик вчера`,
@@ -990,9 +991,9 @@ rejected/fetch errors и LLM/image cost за московский день. Ес
 
 Временные хвосты вроде единичного `claude_parse_failed`, пары открытых batch-задач,
 одного source warning или низкого 6h-window без критического эффекта не получают
-prompt сразу: отчёт показывает `Действие: наблюдать, промпт не нужен`. Когда prompt
-нужен, он упакован в Telegram HTML `<blockquote expandable>` и содержит root-cause
-задачу, релевантные таблицы/файлы, dry-run команду, тесты и docs impact.
+prompt сразу и показываются как `🟢`: отчёт не отвлекает владельца на неважные
+условности. Когда prompt нужен, он упакован в Telegram HTML `<blockquote expandable>`
+и содержит root-cause задачу, релевантные таблицы/файлы, dry-run команду, тесты и docs impact.
 
 Warning/info по умолчанию не присылаются отдельными сообщениями: они копятся в
 `pipeline_alerts` и объясняются в утренне-вечерней ops-сводке.
