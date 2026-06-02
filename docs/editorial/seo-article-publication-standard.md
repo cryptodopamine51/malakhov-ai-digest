@@ -455,6 +455,21 @@ Evergreen guide:
   - **«Личный разговор» / «Написать в Telegram»** → `t.me/malakhovai` (personal Telegram).
   Default `ctaCards` for guides that do not override are defined in
   `app/guides/[slug]/page.tsx::DEFAULT_FINAL_CTA_CARDS` and use exactly these three slots.
+- **Author card (`AuthorCard`).** `src/components/AuthorCard.tsx` is the shared author/funnel
+  surface (owner decision 2026-06-01). It is not a lead-magnet — it links only to real assets:
+  personal Telegram (`PERSONAL_TELEGRAM_URL` → `t.me/malakhovai`) and a consultation link.
+  - Guides: visible byline (photo + name + «проверено <date>») in the header, plus `AuthorCard`
+    at the end. Personal authorship is shown because guides are expert content.
+  - News: a «Подготовлено редакцией Malakhov AI» line under the H1 (never sign pipeline-generated
+    news as Ivan Malakhov personally) plus `AuthorCard` next to `TelegramCTA`.
+  - The consultation button points to `/services` from guides/news, and straight to
+    `malakhovai.ru/contacts` on `/services` itself (`consultationHref="contacts"`).
+  - Channel digest (`@malakhovaidigest`) and personal Telegram (`@malakhovai`) are distinct
+    buttons — keep them separate. Source of truth: `lib/site.ts`.
+- **Consultation CTA on news** (owner decision 2026-06-01). News pages carry an accent block
+  «Внедряю ИИ в бизнес — обсудим задачу» → `/services` (internal, with `utm_medium=article_cta`),
+  plus a «Разобраться глубже» bridge to a topical guide (`lib/guide-bridge.ts`). These are real
+  surfaces (services page + published guide), so they respect the no-lead-magnet rule.
 
 Digest issue links are not mandatory because public digest issue pages do not exist in the current architecture.
 
@@ -471,6 +486,7 @@ Current implemented schema:
 - category/russia pages: `CollectionPage`;
 - `/sources`: `CollectionPage` with `mainEntity: ItemList` of source links;
 - `/about`: `AboutPage` JSON-LD with `mainEntity: Person` (editor) — indexable surface with editorial policy and E-E-A-T signals; the Person record is also referenced from `NewsArticle.author` and `Organization.founder`;
+- `/services`: `ProfessionalService` JSON-LD (`provider: Person` linked to `/about#person`, `offers: Offer` consultation, `areaServed: RU`) + `BreadcrumbList` (Главная → Услуги). Commercial landing surface; canonical `news.malakhovai.ru/services`;
 - search results (`/search`): `SearchResultsPage` (the page itself is `noindex, follow`);
 - `/archive/<date>`: `noindex, follow` (no JSON-LD — thin navigational surface).
 

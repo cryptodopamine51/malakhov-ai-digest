@@ -17,6 +17,7 @@ import { readSiteUrlFromEnv } from '../lib/site'
 import { getMoscowDateKey } from '../lib/utils'
 import { fireAlert } from '../pipeline/alerts'
 import {
+  rankDigestCandidates,
   selectDigestArticles,
   validateDigestComposition,
   type DigestSelectionDiagnostics,
@@ -726,7 +727,7 @@ async function runClaimedDigest(ctx: ClaimedContext): Promise<DigestResult> {
     logError('Не удалось загрузить recent digest memory — продолжаем только с intra-digest dedup', err)
   }
 
-  const selection = selectDigestArticles(liveArticles, recentSentArticles, {
+  const selection = selectDigestArticles(rankDigestCandidates(liveArticles), recentSentArticles, {
     perSourceCap: 2,
     perPrimaryEntityCap: 2,
     target: 5,

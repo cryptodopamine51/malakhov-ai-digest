@@ -1,9 +1,10 @@
 import Link from 'next/link'
 
 const NAV_MAIN = [
-  { href: '/',        label: 'Главная' },
-  { href: '/guides',  label: 'Гайды' },
-  { href: '/sources', label: 'Источники' },
+  { href: '/',         label: 'Главная' },
+  { href: '/guides',   label: 'Гайды' },
+  { href: '/services', label: 'Услуги' },
+  { href: '/sources',  label: 'Источники' },
 ]
 
 const NAV_LEGAL = [
@@ -23,7 +24,7 @@ const NAV_TOPICS = [
 ]
 
 export default function Footer() {
-  const tgUrl = process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL ?? 'https://t.me/malakhovai'
+  const tgUrl = process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL ?? 'https://t.me/malakhovaidigest'
 
   return (
     <footer className="bg-footer text-white/70 mt-16">

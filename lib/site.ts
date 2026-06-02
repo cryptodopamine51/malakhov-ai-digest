@@ -12,6 +12,20 @@ export const SITE_LOGO_URL = `${SITE_URL}${SITE_LOGO_PATH}`
 export const SITE_TELEGRAM_URL = 'https://t.me/malakhovaidigest'
 export const SITE_SAME_AS: string[] = [SITE_TELEGRAM_URL]
 
+// Two distinct Telegram destinations — never conflate them in CTAs:
+//   - SITE_TELEGRAM_URL / TELEGRAM_CHANNEL_URL → @malakhovaidigest (content channel)
+//   - PERSONAL_TELEGRAM_URL → @malakhovai (owner's personal account, brand/sales)
+// Both read from env with safe production fallbacks.
+export const TELEGRAM_CHANNEL_URL =
+  process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL ?? SITE_TELEGRAM_URL
+export const PERSONAL_TELEGRAM_URL =
+  process.env.NEXT_PUBLIC_PERSONAL_TELEGRAM_URL ?? 'https://t.me/malakhovai'
+
+// Owner's services live on the separate landing malakhovai.ru. The news domain
+// surfaces them via the indexable /services page, which links onward here.
+export const CONTACTS_URL = 'https://malakhovai.ru/contacts'
+export const SERVICES_PATH = '/services'
+
 // Editor identity for E-E-A-T signals: used by NewsArticle.author (Person),
 // the AboutPage block, and Organization.founder. Keep these in sync with the
 // `/about` page copy — they are the single source of truth.

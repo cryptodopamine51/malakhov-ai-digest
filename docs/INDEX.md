@@ -85,8 +85,8 @@ npm run context
 | `app/articles/**`, `app/archive/**`, `app/topics/**`, `app/sources/**`, `bot/daily-digest.ts`, `bot/daily-digest-core.ts`, `bot/channel-post.ts`, `bot/channel-post-core.ts`, `lib/articles.ts`, `lib/article-slugs.ts`, `app/sitemap.ts`, `src/components/ArticleCard.tsx` | `docs/ARTICLE_SYSTEM.md` |
 | `lib/supabase.ts`, `supabase/**`, `app/internal/**` | `docs/ARCHITECTURE.md` |
 | `.github/workflows/**`, `vercel.json`, `package.json`, runtime scripts в `scripts/`, recovery/health/publish verification в `pipeline/` | `docs/OPERATIONS.md` |
-| `app/page.tsx`, `app/layout.tsx`, `src/components/Header.tsx` | `docs/PROJECT.md` |
-| `app/globals.css`, общие UI-компоненты в `src/components/**`, кроме компонентов с отдельной доменной ответственностью | `docs/DESIGN.md` |
+| `app/page.tsx`, `app/layout.tsx`, `app/services/**`, `src/components/Header.tsx`, `src/components/Footer.tsx` | `docs/PROJECT.md` |
+| `app/globals.css`, общие UI-компоненты в `src/components/**` (включая `AuthorCard.tsx`), кроме компонентов с отдельной доменной ответственностью | `docs/DESIGN.md` |
 
 Если файл не попал в матрицу, решение принимается вручную. Матрицу нужно расширять вместе с проектом.
 

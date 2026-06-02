@@ -12,7 +12,16 @@ import {
   type GuideImage,
 } from '../../../lib/guides'
 import { getGuideRelatedArticles } from '../../../lib/articles'
-import { absoluteUrl, SITE_LOGO_URL, SITE_NAME, SITE_URL } from '../../../lib/site'
+import {
+  absoluteUrl,
+  EDITOR_IMAGE_PATH,
+  EDITOR_NAME,
+  EDITOR_PATH,
+  SITE_LOGO_URL,
+  SITE_NAME,
+  SITE_URL,
+} from '../../../lib/site'
+import AuthorCard from '../../../src/components/AuthorCard'
 import ArticleRecommendations from '../../../src/components/ArticleRecommendations'
 import { GuideBackToTop, GuideDesktopToc, GuideMobileToc } from '../../../src/components/GuideScrollTools'
 import GuideTrackedLink from '../../../src/components/GuideTrackedLink'
@@ -140,6 +149,23 @@ export default async function GuideArticlePage({
           <p className={guideArticleStyles.heroLead}>
             {guide.heroLead}
           </p>
+          <div className="mt-5 flex items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={EDITOR_IMAGE_PATH}
+              alt={EDITOR_NAME}
+              width={40}
+              height={40}
+              loading="lazy"
+              className="h-10 w-10 flex-shrink-0 rounded-full border border-line object-cover"
+            />
+            <div className="text-sm leading-tight">
+              <Link href={EDITOR_PATH} className="font-semibold text-ink hover:text-accent">
+                {EDITOR_NAME}
+              </Link>
+              <p className="text-xs text-muted">Автор · проверено {verifiedDate}</p>
+            </div>
+          </div>
           <div className={guideArticleStyles.meta}>
             <span>Обновлено: {updatedDate}</span>
             <span>Актуальность проверена: {verifiedDate}</span>
@@ -182,6 +208,7 @@ export default async function GuideArticlePage({
               personalTelegramUrl={PERSONAL_TELEGRAM_URL}
               contactsUrl={CONTACTS_URL}
             />
+            <AuthorCard className="mt-12" />
             <RelatedLinks guide={guide} />
             <RelatedGuideArticles articles={relatedArticles} />
           </div>

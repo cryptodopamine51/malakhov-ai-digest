@@ -5,6 +5,7 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import { getArticleBySlug, getArticleRecommendations, resolveAnchorLinks } from '../../../../lib/articles'
 import { getArticlePath, toPublicArticleSlug } from '../../../../lib/article-slugs'
+import { getGuideBridge } from '../../../../lib/guide-bridge'
 import { getCategoryMeta } from '../../../../lib/category-meta'
 import { isKnownCategory, DEFAULT_CATEGORY } from '../../../../lib/categories'
 import { selectInlineImageSlots } from '../../../../lib/article-media-placement'
@@ -19,6 +20,7 @@ import {
   absoluteUrl,
 } from '../../../../lib/site'
 import { formatRelativeTime } from '../../../../lib/utils'
+import AuthorCard from '../../../../src/components/AuthorCard'
 import TopicBadge from '../../../../src/components/TopicBadge'
 import ArticleRecommendations from '../../../../src/components/ArticleRecommendations'
 import ArticleSectionNav from '../../../../src/components/ArticleSectionNav'
@@ -482,6 +484,7 @@ export default async function CategoryArticlePage({
 
   const categoryMeta = getCategoryMeta(article.primary_category)
   const categoryLabel = categoryMeta?.shortLabel ?? article.primary_category
+  const guideBridge = getGuideBridge(article.primary_category)
 
   const editorialBodyText = (article.editorial_body ?? article.ru_text ?? '').trim()
   const wordCount = editorialBodyText
@@ -674,6 +677,8 @@ export default async function CategoryArticlePage({
               {title}
             </h1>
 
+            <p className="mb-4 text-[13px] text-muted">Подготовлено редакцией Malakhov AI</p>
+
             <div className="mb-6 flex flex-wrap items-center gap-x-2 gap-y-2 text-[13px] text-muted lg:hidden">
               <a
                 href={article.original_url}
@@ -751,17 +756,45 @@ export default async function CategoryArticlePage({
               {bodyContent}
             </div>
 
+            {guideBridge && (
+              <Link
+                href={guideBridge.path}
+                className="my-8 block rounded border border-line bg-surface p-5 transition-colors hover:border-accent"
+              >
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-accent">
+                  Разобраться глубже
+                </p>
+                <p className="text-base font-semibold text-ink">{guideBridge.title}</p>
+                <p className="mt-2 text-sm leading-relaxed text-muted">{guideBridge.heroLead}</p>
+              </Link>
+            )}
+
+            <section className="my-8 rounded border border-accent/40 bg-accent/5 p-5">
+              <p className="text-base font-semibold text-ink">Внедряю ИИ в бизнес — обсудим задачу</p>
+              <p className="mt-1 text-sm leading-relaxed text-muted">
+                Аудит, пилотные проекты, полное внедрение. Начинаем с консультации.
+              </p>
+              <Link
+                href={`/services?utm_source=news_malakhovai_ru&utm_medium=article_cta&utm_campaign=ai_consultation&utm_content=${article.primary_category}`}
+                className="mt-4 inline-flex rounded border border-ink px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-ink hover:text-[var(--base)]"
+              >
+                Перейти к услугам
+              </Link>
+            </section>
+
             <TelegramCTA />
+
+            <AuthorCard className="my-8" />
 
           </div>
         </div>
 
         {related.length > 0 && (
           <section className="mt-14 border-t border-line pt-10">
-            <p className="mb-1 font-serif text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
+            <p className="mb-1 font-serif text-[11px] font-semibold uppercase tracking-[0.2em] text-accent">
               По теме
             </p>
-            <h3 className="mb-5 font-serif text-xl font-bold text-ink">Читать также</h3>
+            <h3 className="mb-6 font-serif text-2xl font-bold text-ink">Читать дальше</h3>
             <ArticleRecommendations articles={related} />
           </section>
         )}

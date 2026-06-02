@@ -1,5 +1,9 @@
 import type { Article } from './supabase'
 import { sanitizeArticleMedia } from './media-sanitizer'
+import { buildStorySourceCounts, getStoryImportance } from './story-signal'
+import type { ImportanceComponents } from './story-signal'
+
+export type { ImportanceComponents } from './story-signal'
 
 export interface RankedInterestArticle {
   article: Article
@@ -7,9 +11,11 @@ export interface RankedInterestArticle {
   components: {
     editorialScore: number
     freshnessScore: number
+    importanceScore: number
     sourceWeight: number
     contentQualityBonus: number
     mediaQualityBonus: number
+    importance: ImportanceComponents
   }
 }
 
@@ -21,9 +27,11 @@ export interface RankedRecommendationArticle {
     relevanceScore: number
     editorialScore: number
     freshnessScore: number
+    importanceScore: number
     sourceWeight: number
     contentQualityBonus: number
     mediaQualityBonus: number
+    importance: ImportanceComponents
   }
 }
 
@@ -101,6 +109,12 @@ function getMediaQualityBonus(article: Article): number {
   return 0
 }
 
+// Вклад importance в итоговый ранг. В блоке «Самое интересное» важность сопоставима со
+// свежестью (freshness уменьшен с ×3 до ×2), в рекомендациях — мягче, чтобы не перебивать
+// тематическую релевантность. Само importance-ядро — в lib/story-signal.ts.
+const INTEREST_IMPORTANCE_WEIGHT = 1.5
+const RECOMMENDATION_IMPORTANCE_WEIGHT = 0.8
+
 function list(value: string[] | null | undefined): string[] {
   return Array.isArray(value) ? value.filter(Boolean) : []
 }
@@ -129,7 +143,11 @@ function getRecommendationRelevance(current: Article, candidate: Article): {
   return { samePrimaryCategory, relevanceScore }
 }
 
-export function scoreInterestingArticle(article: Article, now = new Date()): RankedInterestArticle {
+export function scoreInterestingArticle(
+  article: Article,
+  now = new Date(),
+  storySourceCounts?: Map<string, number>,
+): RankedInterestArticle {
   const editorialScore = clamp(Number(article.score ?? 0), 0, 10)
   const ageMs = Math.max(0, now.getTime() - freshnessTimestamp(article))
   const ageHours = ageMs / (60 * 60 * 1000)
@@ -137,9 +155,11 @@ export function scoreInterestingArticle(article: Article, now = new Date()): Ran
   const sourceWeight = getSourceWeight(article.source_name)
   const contentQualityBonus = getContentQualityBonus(article)
   const mediaQualityBonus = getMediaQualityBonus(article)
+  const importance = getStoryImportance(article, storySourceCounts)
   const interest =
     editorialScore * 1.0 +
-    freshnessScore * 3.0 +
+    freshnessScore * 2.0 +
+    importance.importanceScore * INTEREST_IMPORTANCE_WEIGHT +
     sourceWeight +
     contentQualityBonus +
     mediaQualityBonus
@@ -150,9 +170,11 @@ export function scoreInterestingArticle(article: Article, now = new Date()): Ran
     components: {
       editorialScore,
       freshnessScore,
+      importanceScore: importance.importanceScore,
       sourceWeight,
       contentQualityBonus,
       mediaQualityBonus,
+      importance,
     },
   }
 }
@@ -165,9 +187,10 @@ export function rankInterestingArticles(
   const minItems = options.minItems ?? 3
   const excluded = new Set(options.excludeIds ?? [])
   const now = options.now ?? new Date()
-  const ranked = candidates
-    .filter((article) => !excluded.has(article.id))
-    .map((article) => scoreInterestingArticle(article, now))
+  const visible = candidates.filter((article) => !excluded.has(article.id))
+  const storySourceCounts = buildStorySourceCounts(visible)
+  const ranked = visible
+    .map((article) => scoreInterestingArticle(article, now, storySourceCounts))
     .sort((a, b) => {
       const interestDiff = b.interest - a.interest
       if (interestDiff !== 0) return interestDiff
@@ -218,6 +241,7 @@ export function scoreArticleRecommendation(
   current: Article,
   candidate: Article,
   now = new Date(),
+  storySourceCounts?: Map<string, number>,
 ): RankedRecommendationArticle {
   const editorialScore = clamp(Number(candidate.score ?? 0), 0, 10)
   const ageMs = Math.max(0, now.getTime() - freshnessTimestamp(candidate))
@@ -226,11 +250,13 @@ export function scoreArticleRecommendation(
   const sourceWeight = getSourceWeight(candidate.source_name)
   const contentQualityBonus = getContentQualityBonus(candidate)
   const mediaQualityBonus = getMediaQualityBonus(candidate)
+  const importance = getStoryImportance(candidate, storySourceCounts)
   const { samePrimaryCategory, relevanceScore } = getRecommendationRelevance(current, candidate)
   const recommendation =
     relevanceScore * 4.0 +
     freshnessScore * 2.4 +
     editorialScore * 0.9 +
+    importance.importanceScore * RECOMMENDATION_IMPORTANCE_WEIGHT +
     sourceWeight +
     contentQualityBonus +
     mediaQualityBonus
@@ -243,9 +269,11 @@ export function scoreArticleRecommendation(
       relevanceScore,
       editorialScore,
       freshnessScore,
+      importanceScore: importance.importanceScore,
       sourceWeight,
       contentQualityBonus,
       mediaQualityBonus,
+      importance,
     },
   }
 }
@@ -259,9 +287,10 @@ export function rankArticleRecommendations(
   const minItems = options.minItems ?? 3
   const excluded = new Set([current.id, ...(options.excludeIds ?? [])])
   const now = options.now ?? new Date()
-  const ranked = candidates
-    .filter((article) => !excluded.has(article.id))
-    .map((article) => scoreArticleRecommendation(current, article, now))
+  const visible = candidates.filter((article) => !excluded.has(article.id))
+  const storySourceCounts = buildStorySourceCounts(visible)
+  const ranked = visible
+    .map((article) => scoreArticleRecommendation(current, article, now, storySourceCounts))
     .sort((a, b) => {
       const primaryDiff = Number(b.components.samePrimaryCategory) - Number(a.components.samePrimaryCategory)
       if (primaryDiff !== 0) return primaryDiff

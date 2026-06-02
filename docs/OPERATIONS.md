@@ -218,6 +218,11 @@ slot не отправится дважды.
 заголовком `Authorization: Bearer <secret>`, секрет хранится в `vault.secrets` под именем
 `cron_bearer_token` и читается через `vault.decrypted_secrets`.
 
+Caption генерируется локально в `bot/channel-post-core.ts::buildTelegramCaption()` без LLM/API:
+bold title → короткий редакционный angle по topic/event эвристикам → `<b>Зачем открыть:</b>`
+с `tg_teaser`. Это не требует новых env и не добавляет latency/стоимость в cron. Лимит Telegram
+photo caption соблюдается консервативно: итоговая HTML-строка удерживается ≤ 1024 символов.
+
 Конфигурация — в `supabase/migrations/017_telegram_channel_posts.sql`. Эта миграция также
 unschedule-ит legacy `tg-digest-weekday` и `tg-digest-weekend`. Секрет в Vault создаётся
 **один раз** руками:
@@ -238,6 +243,24 @@ SELECT id, status_code, content::text, created FROM net._http_response ORDER BY 
 SELECT delivery_date, slot_no, status, article_id, telegram_message_id, sent_at, error_message
   FROM telegram_channel_posts ORDER BY delivery_date DESC, slot_no DESC LIMIT 10;
 ```
+
+### Supabase RLS на public-таблицах (advisor `rls_disabled_in_public`)
+
+Все рабочие таблицы в `public` имеют RLS (см. `20260423195035_enable_public_article_rls.sql`,
+`013`, `008`, `006`, `017`). `articles`/`categories` отдают данные анону осознанно через
+read-policy; остальные закрыты (анон-`count`=0). View `batch_enrich_operational_state` —
+`security_invoker = true`, уважает RLS статей, отдельный фикс не нужен.
+
+Инцидент 2026-06-01 (Supabase security email): две backup-таблицы, созданные руками через
+`CREATE TABLE AS` вне истории миграций, остались без RLS и читались публичным anon-ключом:
+`articles_category_migration_backup_20260425` (581 строк) и `articles_cover_snapshot_20260507`
+(764). Фикс — `supabase/migrations/20260602120000_secure_backup_tables_rls.sql`
+(`enable row level security`, без политик: service_role обходит RLS, анон теряет доступ, данные
+сохранены). Урок: **ad-hoc backup-таблицы тоже создавать с RLS** (или дропать после миграции).
+
+Проверка дрейфа «прод ≠ миграции» (read-only, anon-ключом): запросить
+`GET <SUPABASE_URL>/rest/v1/` (OpenAPI-спека перечисляет все public-таблицы/вьюхи), затем
+анон-`count` по каждой — `count`>0 на внутренней таблице = RLS выключен.
 
 ### Vercel: production branch и GitHub default branch (две разные «main»)
 
@@ -415,6 +438,26 @@ npx tsx scripts/rescore-recent.ts --days=7 --apply
 
 Скрипт не вызывает Claude/OpenAI/fetcher, работает только со строками в БД. Печатает
 распределение diff'ов и top-15 изменений перед apply.
+
+### Withdraw off-topic articles
+
+`scripts/withdraw-off-topic.ts` — снимает с публикации (`publish_status='withdrawn'`) живые
+статьи, ранжирующиеся по не-AI запросам. Список slug'ов захардкожен и собран по экспорту
+топ-запросов Яндекс.Вебмастера (T5 из `docs/spec_2026-06-01_organic_growth_implementation.md`).
+Механизм обратимый: статья уходит из ленты / sitemap / индекса (страница отдаёт 404), строка
+остаётся в БД — вернуть можно установив `publish_status='live'` обратно.
+
+```bash
+npx tsx scripts/withdraw-off-topic.ts                       # dry-run: печатает title/lead/category
+npx tsx scripts/withdraw-off-topic.ts --apply              # снять DEFINITE-список
+npx tsx scripts/withdraw-off-topic.ts --include-borderline --apply
+```
+
+Запуск 2026-06-01: сняты 8 статей (все — старые ZDNet consumer-reviews, просочившиеся до
+включения `needsKeywordFilter` у ZDNet): NAS-гайд, 2× Sony-наушники, 2× NordVPN, RS-232,
+Android-файл-менеджер, Fitbit/Whoop. Borderline оставлены live (`falcongaze` — DLP с AI-фильтрацией,
+`flutter-3.44` — Agentic Hot Reload), у них есть реальная AI-грань. Скрипт не вызывает
+Claude/OpenAI/fetcher.
 
 ### Audit Telegram digest selection
 
@@ -816,6 +859,38 @@ Cтратегия рендеринга по типам страниц:
    не появляется в Network. Выбор «Принять все» — `mc.yandex.ru/metrika/tag.js` грузится.
 14. `/consent` открывается как страница согласия на обработку персональных данных и не содержит
    видимой кнопки «Отозвать согласие».
+
+## Новостные агрегаторы (T6)
+
+Цель: попасть в Google News / Google Publisher Center и (по решению владельца) в Яндекс-новостной
+формат. Раздел делится на **тех-готовность** (наша зона, автоматизировано) и **подачу** (зона
+владельца — внешние аккаунты, СМИ-регистрация).
+
+### Тех-готовность — проверено 2026-06-01 ✅
+
+- **`/news-sitemap.xml`** (`app/news-sitemap.xml/route.ts`) соответствует протоколу Google News:
+  только `news:` namespace, обязательные теги `news:publication` (`news:name` + `news:language=ru`),
+  `news:publication_date` (ISO-8601), `news:title`, `loc`; окно публикации 48 ч (Google требует
+  «последние 2 дня»), ≤ 1000 URL, выборка `published + quality_ok + verified_live + live`, ISR 10 мин.
+  Изменений в коде не потребовалось.
+- **`/sitemap.xml`** (общий, ISR 30 мин) и **`/rss.xml`** (RSS 2.0 + `atom:link rel=self`, 50 свежих)
+  валидны и пригодны для Яндекс.Вебмастера (общая индексация) и читалок.
+- Оба sitemap-а перечислены в `robots.txt` (`app/robots.ts`).
+
+### Подача — зона владельца (статус: ожидает подачи)
+
+| Агрегатор | Что нужно от владельца | Тех-предусловие | Статус |
+|---|---|---|---|
+| Google Publisher Center / Google News | Зарегистрировать издание, указать `https://news.malakhovai.ru`, подтвердить владение в Search Console | news-sitemap готов ✅ | ⏳ ожидает подачи |
+| Яндекс.Вебмастер (общая индексация) | Добавить и подтвердить сайт, отправить `sitemap.xml` | sitemap готов ✅ | ⏳ ожидает подачи |
+| Яндекс-новостной формат (Дзен/СМИ) | Требует регистрации как СМИ + отдельный RSS с `yandex:` namespace (`yandex:full-text` и т.п.); это не покрывается Google-форматом news-sitemap | нужен отдельный фид — НЕ реализован | 🔶 решение владельца (стоит ли заводить) |
+
+Примечания:
+- Google News больше не требует ручной подачи для попадания в индекс (сайты рассматриваются
+  автоматически), но Publisher Center нужен для управления карточкой издания и логотипом.
+- Яндекс-новостной партнёрский фид — отдельная инициатива (СМИ-регистрация в РФ, иной формат RSS).
+  Не начинать без явного решения владельца; общая индексация Яндексом и так идёт через `sitemap.xml`.
+- После подачи зафиксировать дату и статус в этой таблице.
 
 ## Аналитика (Яндекс Метрика) и согласие
 

@@ -136,4 +136,31 @@ export const OFF_TOPIC_KEYWORDS: string[] = [
   'black friday deal',
   'cyber monday deal',
   'amazon prime day',
+  // VPN products (keep tokens specific — bare "vpn" would reject legitimate
+  // "доступ к Gemini через VPN" AI-access explainers).
+  'nordvpn',
+  'nordwhisper',
+  'meshnet',
+  // Serial / legacy AV connectors (TV RS-232 control questions).
+  'rs-232',
+  'rs 232',
+  'rs232',
+  // Fitness wearables (Whoop / Fitbit bands, not AI).
+  'whoop',
+  'fitbit',
+  'фитнес-браслет',
+  'фитнес-трекер',
+  // Consumer headphones (Sony WH-1000XM, Bose QuietComfort comparisons).
+  'wh-1000xm',
+  'quietcomfort',
+  'quiet comfort',
+  // Network attached storage buyer guides (keep tokens specific — bare "nas"
+  // is a substring of unrelated words; Cyrillic "нас" is a separate codepoint set).
+  'network attached storage',
+  'nas для дома',
+  'nas устройств',
+  'nas-накопител',
+  // Generic file-manager app reviews (Android "Material Files", etc.).
+  'material files',
+  'file manager',
 ]

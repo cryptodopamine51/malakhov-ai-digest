@@ -164,6 +164,21 @@ export const FEEDS: FeedConfig[] = [
     topics: ['ai-industry'],
   },
 
+  // ── First-party лаборатории без пригодного RSS (проверено 2026-06-01) ────────
+  // Дыры охвата из аудита T8 (spec_2026-06-01_organic_growth_implementation.md):
+  // у этих лабораторий нет публичного AI-RSS, поэтому их новости долетают только через
+  // посредников (Verge/TechCrunch/Decoder/Crunchbase) и НЕ получают first-party multiSource-сигнал.
+  // Проверенные эндпоинты (все непригодны — не возвращать без живого URL):
+  //   Anthropic     — /rss.xml, /feed.xml, /news.rss, /news/atom.xml → 404 (RSS нет)
+  //   Mistral       — /rss.xml, /feed.xml, /news/feed.xml, /news/atom.xml → 404
+  //   xAI           — /rss.xml, /blog/rss.xml → 403 (Cloudflare, фид недоступен парсеру)
+  //   Meta AI       — ai.meta.com/blog/{rss,feed}.xml → 404. about.fb.com/news/feed валиден,
+  //                   но это широкий корпоративный newsroom (FIFA и пр.) — отклонено как шум (см. T5).
+  //   Cohere        — /blog/rss.xml → SPA HTML, не фид
+  //   Stability AI  — /news?format=rss → SPA HTML, не фид
+  //   Yandex Research — research.yandex.com/blog/rss.xml → отдаёт HTML-SPA (200, но не XML)
+  // Перепроверять при ревью охвата; добавить запись здесь, как только появится настоящий XML-фид.
+
   // ── Инвестиции (en) ────────────────────────────────────────────────────────
 
   {

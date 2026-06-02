@@ -16,6 +16,8 @@ import { fetchAllFeeds, summarizeRejected, type ParsedItem, type RssRejectedSumm
 import { getServerClient } from '../lib/supabase'
 import { splitTopicsToCategories } from '../lib/categories'
 
+const DEFAULT_MAX_AGE_MINUTES = 6 * 60
+
 function log(message: string): void {
   const ts = new Date().toTimeString().slice(0, 8)
   console.log(`[${ts}] ${message}`)
@@ -33,6 +35,18 @@ function logError(message: string, error?: unknown): void {
     errMsg = String(error ?? '')
   }
   console.error(`[${ts}] ОШИБКА: ${message}${errMsg ? ' — ' + errMsg : ''}`)
+}
+
+function arg(name: string): string | undefined {
+  return process.argv.find((item) => item.startsWith(`--${name}=`))?.split('=').slice(1).join('=')
+}
+
+export function resolveIngestMaxAgeMinutes(
+  raw = arg('max-age-minutes') ?? process.env.INGEST_MAX_AGE_MINUTES,
+): number {
+  const value = raw ? Number(raw) : DEFAULT_MAX_AGE_MINUTES
+  if (!Number.isFinite(value) || value <= 0) return DEFAULT_MAX_AGE_MINUTES
+  return Math.round(value)
 }
 
 async function insertArticle(
@@ -189,7 +203,9 @@ async function main(): Promise<void> {
   log('Начинаем парсинг RSS-фидов...')
   let fetchResult: Awaited<ReturnType<typeof fetchAllFeeds>>
   try {
-    fetchResult = await fetchAllFeeds(60)
+    const maxAgeMinutes = resolveIngestMaxAgeMinutes()
+    log(`Окно свежести RSS: ${maxAgeMinutes} мин`)
+    fetchResult = await fetchAllFeeds(maxAgeMinutes)
     log(`Получено записей из фидов: ${fetchResult.items.length} (из ${fetchResult.sourceResults.length} источников)`)
   } catch (error) {
     logError('Критическая ошибка при парсинге фидов', error)

@@ -78,9 +78,9 @@ end $$;
 
 do $$
 declare
-  job text;
+  job_name text;
 begin
-  foreach job in array array[
+  foreach job_name in array array[
     'tg-digest-weekday',
     'tg-digest-weekend',
     'tg-channel-post-1',
@@ -90,8 +90,8 @@ begin
     'tg-channel-post-5'
   ]
   loop
-    if exists (select 1 from cron.job where jobname = job) then
-      perform cron.unschedule(job);
+    if exists (select 1 from cron.job where cron.job.jobname = job_name) then
+      perform cron.unschedule(job_name);
     end if;
   end loop;
 exception when others then

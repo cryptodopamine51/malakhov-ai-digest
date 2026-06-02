@@ -291,6 +291,21 @@ featured-вариант `ArticleCard` + источник данных `getHotSto
 - Тонкая левая полоска `3px solid #0055FF` у карточки
 - Или бейдж "ТОП" акцентного цвета рядом с тегами
 
+### Карточка автора (AuthorCard)
+
+`src/components/AuthorCard.tsx` — единый компонент авторства/воронки, общий для гайдов и
+новостей. Server-компонент без client-JS.
+- Состав: круглый портрет (`/about/editor.jpg`, 72×72), имя со ссылкой на `/about`,
+  строка-роль, две кнопки — **личный Telegram** (`PERSONAL_TELEGRAM_URL` → `@malakhovai`) и
+  **Консультация**.
+- Контейнер: `rounded border border-line bg-surface p-5`, на мобиле колонкой, на `sm+` —
+  фото слева, текст справа.
+- Проп `consultationHref`: `'services'` (default, внутренняя ссылка на `/services`) или
+  `'contacts'` (внешняя на `malakhovai.ru/contacts`, используется на самой `/services`).
+- Источник истины по URL и имени — `lib/site.ts` (`PERSONAL_TELEGRAM_URL`, `CONTACTS_URL`,
+  `SERVICES_PATH`, `EDITOR_*`). Канал-дайджест (`SITE_TELEGRAM_URL`/`TELEGRAM_CHANNEL_URL` →
+  `@malakhovaidigest`) и личный TG — разные значения, не путать.
+
 ### Кнопки
 
 | Тип | Стиль |

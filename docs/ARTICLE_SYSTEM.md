@@ -221,9 +221,13 @@ re-enrich (`scripts/reenrich-all.ts`, `scripts/reenrich-topic-slices.ts`) пер
 в течение дня. Активное ядро: `bot/channel-post-core.ts`; CLI: `npm run tg-channel-post -- --slot=1`;
 cron-route: `app/api/cron/tg-channel-post/route.ts?slot=1..5`.
 
-Каждый пост отправляется через Telegram `sendPhoto`: `cover_image_url` как картинка, короткий
-caption из `ru_title` + `tg_teaser`, inline-кнопка `Читать на сайте` на canonical article URL
-с UTM `utm_source=tg&utm_medium=channel&utm_campaign=dayfeed_YYYYMMDD&utm_content=slot_N`.
+Каждый пост отправляется через Telegram `sendPhoto`: `cover_image_url` как картинка, caption до
+1024 символов и inline-кнопка `Читать на сайте` на canonical article URL с UTM
+`utm_source=tg&utm_medium=channel&utm_campaign=dayfeed_YYYYMMDD&utm_content=slot_N`. Caption строится
+без LLM/API: `<b>ru_title</b>` → короткий редакционный angle по topic/event эвристикам →
+`<b>Зачем открыть:</b> tg_teaser`. Если точного topic-rule нет, fallback берётся из
+`deriveDigestStory()` (`funding`, `model_release`, `product_launch`, `research`, `security`,
+`regulation`, etc.) и `primary_category`.
 
 Source pool сохраняет старую editorial-логику дайджеста: top-50 за предыдущий MSK-день среди
 `published=true + quality_ok=true + verified_live=true + publish_status='live' + tg_sent=false`
@@ -485,7 +489,14 @@ Broad RSS feeds допускаются только с keyword filters:
   AI-тэгнутых feeds (ZDNet AI, Wired AI, CNet AI) в стадию enrichment, чтобы не тратить токены и
   не размывать topical authority. Совпадение даёт reason `off_topic_filter` в
   `source_runs.items_rejected_breakdown`. Список расширяется по мере наблюдаемых off-topic
-  кейсов.
+  кейсов. Расширение 2026-06-01 (по топ-запросам Яндекс.Вебмастера, где не-AI статьи всё же
+  ранжировались): VPN-продукты (`nordvpn`, `nordwhisper`, `meshnet`), AV-разъёмы
+  (`rs-232`/`rs 232`/`rs232`), фитнес-браслеты (`whoop`, `fitbit`, `фитнес-браслет/трекер`),
+  потребительские наушники (`wh-1000xm`, `quietcomfort`), NAS-гайды
+  (`network attached storage`, `nas для дома/устройств`, `nas-накопител`), файловые менеджеры
+  (`material files`, `file manager`). Правило подбора токенов: только специфичные substring'ы —
+  бэрные `nas`/`vpn` запрещены (побьют легитимные «VPN-доступ к Gemini», и латинский `nas`
+  как подстрока чужих слов; кириллическое «нас» — отдельный набор кодпоинтов).
 - `ZDNet AI` и `Wired AI` дополнительно переведены на `needsKeywordFilter: true` с
   `EN_AI_CORE_KEYWORDS` и `keywordSearchFields: 'title'` — даже если RSS назван «AI», он де-факто
   смешанный, поэтому требуется явный AI-токен в заголовке.
@@ -544,7 +555,7 @@ Broad RSS feeds допускаются только с keyword filters:
 - evergreen-гайды хранят Markdown в `content/guides/`, metadata registry в
   `content/guides/meta/<slug>.json`, картинки в `public/images/guides/<slug>/`;
   `lib/guides.ts` читает registry и добавляет гайды в sitemap как статичные monthly URL;
-- `app/sitemap.ts` использует ISR (`export const revalidate = 1800`), чтобы пересобираться каждые 30 минут из live-выборки и не зависать на состоянии последнего деплоя — без этого свежие статьи невидимы для Яндекс/Google до следующего билда;
+- `app/sitemap.ts` использует ISR (`export const revalidate = 1800`), чтобы пересобираться каждые 30 минут из live-выборки и не зависать на состоянии последнего деплоя — без этого свежие статьи невидимы для Яндекс/Google до следующего билда. Статичные маршруты включают коммерческую surface `/services` (monthly, priority 0.8) — индексируемая страница услуг, см. `docs/PROJECT.md`;
 - `pipeline/publish-verify.ts` после успешного перехода статьи в `live` вызывает `pingIndexNow()` (`lib/indexnow.ts`) на `https://api.indexnow.org/indexnow`, чтобы Yandex / Bing узнали о новом URL за минуты, а не за дни. Ключ — env `INDEXNOW_KEY`, проверочный файл — `app/indexnow.txt/route.ts`. Без env-переменной ping молча no-op'ится, publish-path не ломается. Google не участвует в IndexNow и продолжает индексировать через sitemap;
 - публичные листинги (`/archive/[date]`, `/sources`, `/sources/[source]`, `/categories/[category]`, `/russia`) задают canonical / `og:url` на news-домен через `lib/site.ts::absoluteUrl`;
 - новые slug создаются без случайных hex/uuid-хвостов; при коллизии используются понятные суффиксы `-2`, `-3`, ...;
@@ -564,6 +575,17 @@ Broad RSS feeds допускаются только с keyword filters:
 - source attribution;
 - internal linking и SEO metadata;
 - JSON-LD, включая `VideoObject` при наличии видео.
+
+Зона перелинковки и воронки в конце статьи (после тела):
+- мост «Разобраться глубже» — карточка-ссылка на тематический evergreen-гайд. Маппинг
+  `primary_category` → guide slug в `lib/guide-bridge.ts::getGuideBridge`; возвращает только
+  индексируемый (`noindex !== true`) гайд, иначе блок пропускается (напр. `coding` — пока нет
+  AI-coding-гайда). Все текущие гайды — кластер «ИИ для бизнеса», поэтому дефолт — pillar
+  `kak-vnedrit-ii-v-biznes-2026`;
+- акцентный CTA на консультацию → `/services` (с UTM `utm_medium=article_cta`);
+- `TelegramCTA` (канал-дайджест) и `AuthorCard` (личный TG + автор), см. `docs/PROJECT.md`;
+- блок related-рекомендаций (`getArticleRecommendations`) под заголовком «Читать дальше» —
+  усилен визуально для роста глубины просмотра.
 
 ## Связанные поверхности
 
@@ -610,6 +632,14 @@ Broad RSS feeds допускаются только с keyword filters:
   - SELECT top-50 за вчерашний MSK-день по `score desc, pub_date desc` среди
     `live + quality_ok + verified_live + tg_sent=false + tg_teaser/slug/cover present`.
   - `filterLiveArticles` отсекает недоступные URL (HEAD-проверка с timeout 5s).
+  - `rankDigestCandidates()` (`bot/digest-selection.ts`) детерминированно переупорядочивает
+    кандидатов ПЕРЕД отбором по композиту `editorial score + DIGEST_IMPORTANCE_WEIGHT (0.5) ×
+    importance`. Importance — общий слой `lib/story-signal.ts::getStoryImportance` (eventType
+    scale, money tier по numeric anchors `$65B`/`65 млрд`, prominence известной сущности и
+    мульти-источниковое подтверждение: distinct sources на один `storyKey` дают бонус). Внутри
+    окна «вчера по МСК» свежесть кандидатов почти не различает (все за один день), поэтому крупный
+    подтверждённый инфоповод (раунд/релиз известной лабы из 3 источников) поднимается к топу и
+    первым борется за слот. Сами caps/дедуп не трогаются — importance лишь меняет порядок входа.
   - `selectDigestArticles()` (`bot/digest-selection.ts`) сохраняет source cap:
     `perSourceCap=2`, `target=5`. Без этого кэпа Habr AI регулярно занимал 4–5 из 5
     слотов и заталкивал индустриальные сюжеты (Gemini-launches, OpenAI-релизы) ниже.
@@ -645,13 +675,28 @@ Broad RSS feeds допускаются только с keyword filters:
   считается уже после исключения, чтобы page 1 и последующие страницы не дублировали один материал.
 - Блок «Самое интересное» на `/categories/[category]` и `/russia` строится отдельным
   deterministic ranking-ом (`lib/interest-ranking.ts`): editorial score + time decay +
-  source weight + content/media quality + diversity по источникам. Primary-окно кандидатов —
-  72 часа по `created_at`, fallback — до 30 дней; freshness decay использует `exp(-ageHours / 24)`.
-  Блок скрывается, если после фильтрации меньше трёх кандидатов, и не требует персонального tracking.
+  **importance (вес важности истории)** + source weight + content/media quality + diversity по
+  источникам. Primary-окно кандидатов — 72 часа по `created_at`, fallback — до 30 дней; freshness
+  decay использует `exp(-ageHours / 24)`. Блок скрывается, если после фильтрации меньше трёх
+  кандидатов, и не требует персонального tracking.
+- **Importance (вес важности истории).** `getStoryImportance()` переиспользует
+  `deriveDigestStory()` из `lib/story-signal.ts` (вынесен из `bot/digest-selection.ts`, дайджест
+  ре-экспортит) и складывает четыре сигнала: (1) `eventTypeWeight` — масштаб события (funding /
+  model_release / acquisition = 3; product_launch / partnership / regulation / security = 2;
+  benchmark / research / business_case = 1; other = 0); (2) `magnitudeBonus` — денежный тир из
+  `numericAnchors` (≥$1B → +3, ≥$100M → +2, любая сумма → +1); (3) `entityBonus` — узнаваемый
+  игрок (+1 за `primaryEntity`, +0.5 за strong storyKey); (4) `multiSourceBonus` — подтверждение
+  несколькими источниками: пред-проход строит карту `storyKey → число различных source_name` по
+  пулу кандидатов, 2 источника → +1, 3 → +2, ≥4 → +3. Веса итоговой формулы: `editorialScore×1.0
+  + freshnessScore×2.0 + importanceScore×1.5 + sourceWeight + content/media`. До 2026-06-01 было
+  `freshnessScore×3.0` без importance — свежесть перекрывала важность, поэтому крупные раунды/
+  релизы, подтверждённые несколькими источниками, проигрывали свежему проходняку.
 - Рекомендации на странице статьи используют `getArticleRecommendations(article)`: same primary
   category имеет первый приоритет, затем shared secondary/topics, freshness, score, source diversity
-  и content/media quality. Primary-окно кандидатов — последние 72 часа, fallback — до 30 дней;
-  блок скрывается, если после исключения текущей статьи меньше трёх рекомендаций.
+  и content/media quality. Тот же importance-сигнал добавляется мягко (`importanceScore×0.8`) как
+  тай-брейк внутри одинаковой релевантности — он не перебивает primary-category/relevance-приоритет.
+  Primary-окно кандидатов — последние 72 часа, fallback — до 30 дней; блок скрывается, если после
+  исключения текущей статьи меньше трёх рекомендаций.
 - Legacy маршруты `/articles/[slug]` и `/topics/[topic]` остаются только как 308-редиректы.
 - Главная страница в верхнем VC-блоке использует `getHotStoryOfTheDay()`
   (статья с наивысшим score за последние 24 часа из live; если score ниже порога —

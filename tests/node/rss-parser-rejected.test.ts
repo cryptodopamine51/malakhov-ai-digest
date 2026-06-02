@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import RSSParser from 'rss-parser'
 
 import { keywordMatches, parseFeed, parseFeedWithRetry } from '../../pipeline/rss-parser'
-import { buildSourceRejectedStats, writeSourceRun } from '../../pipeline/ingest'
+import { buildSourceRejectedStats, resolveIngestMaxAgeMinutes, writeSourceRun } from '../../pipeline/ingest'
 import type { FeedConfig } from '../../pipeline/feeds.config'
 import type { SourceFeedResult } from '../../pipeline/rss-parser'
 
@@ -21,6 +21,13 @@ const feed: FeedConfig = {
   keywordSearchFields: 'title',
   requireDateInUrl: true,
 }
+
+test('resolveIngestMaxAgeMinutes defaults to a schedule-tolerant six-hour window', () => {
+  assert.equal(resolveIngestMaxAgeMinutes(undefined), 360)
+  assert.equal(resolveIngestMaxAgeMinutes('90'), 90)
+  assert.equal(resolveIngestMaxAgeMinutes('bad'), 360)
+  assert.equal(resolveIngestMaxAgeMinutes('-1'), 360)
+})
 
 test('parseFeed rejects off-topic gadget items via OFF_TOPIC_KEYWORDS blocklist', async () => {
   const zdnetFeed: FeedConfig = {
@@ -63,6 +70,58 @@ test('parseFeed rejects off-topic gadget items via OFF_TOPIC_KEYWORDS blocklist'
     )
     assert.equal(reasons.off_topic_filter, 1)
     assert.ok(!('keyword_filter' in reasons))
+  } finally {
+    global.fetch = originalFetch
+  }
+})
+
+test('parseFeed rejects consumer-tech clusters added from Webmaster off-topic queries', async () => {
+  const verge: FeedConfig = {
+    name: 'The Verge AI',
+    url: 'https://www.theverge.com/rss/ai-artificial-intelligence/index.xml',
+    lang: 'en',
+    topics: ['ai-industry'],
+  }
+  const offTopicTitles = [
+    'Best NAS for home 2026: network attached storage compared',
+    'Sony WH-1000XM6 vs Bose QuietComfort Ultra 2',
+    'NordVPN Meshnet: how to set up free remote access',
+    'What is the RS-232 port on your TV for',
+    'Fitbit Air vs Whoop: Google enters the fitness band market',
+    'Material Files is the best Android file manager',
+  ]
+  const items = offTopicTitles
+    .map(
+      (title, i) => `
+        <item>
+          <title>${title}</title>
+          <link>https://www.theverge.com/article/off-topic-${i}</link>
+          <pubDate>Sat, 02 May 2026 10:0${i}:00 GMT</pubDate>
+          <description>Consumer gadget coverage.</description>
+        </item>`,
+    )
+    .join('')
+
+  const originalFetch = global.fetch
+  global.fetch = (async () => new Response(`
+    <rss version="2.0"><channel>${items}
+      <item>
+        <title>OpenAI ships agentic workflows for enterprise</title>
+        <link>https://www.theverge.com/article/openai-agentic</link>
+        <pubDate>Sat, 02 May 2026 10:09:00 GMT</pubDate>
+        <description>Enterprise AI.</description>
+      </item>
+    </channel></rss>
+  `, { status: 200 })) as typeof fetch
+
+  try {
+    const parser = new RSSParser()
+    const result = await parseFeed(parser, verge, new Date('2026-05-02T09:00:00.000Z'))
+
+    assert.equal(result.items.length, 1)
+    assert.match(result.items[0]!.originalTitle, /OpenAI/)
+    const reasons = Object.fromEntries(result.rejected.map((entry) => [entry.reason, entry.count]))
+    assert.equal(reasons.off_topic_filter, offTopicTitles.length)
   } finally {
     global.fetch = originalFetch
   }

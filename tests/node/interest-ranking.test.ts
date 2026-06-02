@@ -202,6 +202,124 @@ test('rankInterestingArticlesWithFallback uses wider window after excluded fresh
   assert.deepEqual(ranked.map((item) => item.article.id), ['older-1', 'older-2', 'older-3'])
 })
 
+test('importance: multi-source big funding beats a fresher trivial item', () => {
+  // Один крупный раунд, подтверждённый тремя независимыми источниками, но опубликованный
+  // на ~6 часов раньше, чем проходная заметка без entity/события.
+  const fundingBase = {
+    original_title: 'Anthropic raises $3.5B in new funding round',
+    ru_title: 'Anthropic привлекла $3,5 млрд в новом раунде',
+    lead: 'Anthropic закрыла раунд на $3,5 млрд.',
+    primary_category: 'ai-startups',
+    score: 5,
+    created_at: '2026-05-01T06:00:00.000Z',
+    pub_date: '2026-05-01T06:00:00.000Z',
+  }
+  const fundingCluster = [
+    article({ id: 'fund-tc', source_name: 'TechCrunch', ...fundingBase }),
+    article({ id: 'fund-vb', source_name: 'VentureBeat', ...fundingBase }),
+    article({ id: 'fund-decoder', source_name: 'The Decoder', ...fundingBase }),
+  ]
+  const freshTrivial = article({
+    id: 'trivial-fresh',
+    source_name: 'Habr AI',
+    original_title: 'Подборка полезных советов по настройке редактора',
+    ru_title: 'Подборка полезных советов по настройке редактора',
+    lead: 'Небольшая заметка с советами.',
+    primary_category: 'coding',
+    score: 5,
+    created_at: '2026-05-01T11:30:00.000Z',
+    pub_date: '2026-05-01T11:30:00.000Z',
+  })
+
+  const ranked = rankInterestingArticles([freshTrivial, ...fundingCluster], {
+    now: fixedNow,
+    limit: 4,
+  })
+
+  assert.equal(ranked[0].article.source_name !== 'Habr AI', true)
+  assert.ok(ranked[0].components.importance.multiSourceBonus >= 2)
+  assert.ok(ranked[0].components.importance.magnitudeBonus >= 3)
+})
+
+test('importance: model release of a known lab beats a same-age minor update', () => {
+  const release = article({
+    id: 'release',
+    source_name: 'The Verge',
+    original_title: 'OpenAI launches GPT-6 with new reasoning modes',
+    ru_title: 'OpenAI выпустила GPT-6 с новыми режимами рассуждений',
+    lead: 'OpenAI представила GPT-6.',
+    primary_category: 'ai-industry',
+    score: 5,
+    created_at: '2026-05-01T08:00:00.000Z',
+    pub_date: '2026-05-01T08:00:00.000Z',
+  })
+  const minorUpdate = article({
+    id: 'minor',
+    source_name: 'Habr AI',
+    original_title: 'Обновили внутреннюю панель мониторинга сервиса',
+    ru_title: 'Обновили внутреннюю панель мониторинга сервиса',
+    lead: 'Мелкое обновление панели.',
+    primary_category: 'ai-industry',
+    score: 5,
+    created_at: '2026-05-01T08:00:00.000Z',
+    pub_date: '2026-05-01T08:00:00.000Z',
+  })
+  const filler = [
+    article({ id: 'fill-a', source_name: 'TechCrunch', original_title: 'Заметка про индустрию', ru_title: 'Заметка про индустрию', primary_category: 'ai-industry', score: 3, created_at: '2026-05-01T07:00:00.000Z', pub_date: '2026-05-01T07:00:00.000Z' }),
+    article({ id: 'fill-b', source_name: 'VentureBeat', original_title: 'Ещё одна заметка', ru_title: 'Ещё одна заметка', primary_category: 'ai-industry', score: 3, created_at: '2026-05-01T07:00:00.000Z', pub_date: '2026-05-01T07:00:00.000Z' }),
+  ]
+
+  const ranked = rankInterestingArticles([minorUpdate, release, ...filler], {
+    now: fixedNow,
+    limit: 4,
+  })
+
+  assert.equal(ranked[0].article.id, 'release')
+  assert.ok(ranked[0].components.importance.eventTypeWeight >= 2)
+})
+
+test('importance: recommendations get a soft importance nudge within same relevance', () => {
+  const current = article({ id: 'current', primary_category: 'ai-startups', topics: [] })
+  const bigStory = article({
+    id: 'big-story',
+    source_name: 'TechCrunch',
+    original_title: 'Mistral raises $2B in fresh funding round',
+    ru_title: 'Mistral привлекла $2 млрд в новом раунде',
+    lead: 'Mistral закрыла раунд на $2 млрд.',
+    primary_category: 'ai-startups',
+    secondary_categories: [],
+    topics: [],
+    score: 5,
+    created_at: '2026-05-01T08:00:00.000Z',
+    pub_date: '2026-05-01T08:00:00.000Z',
+  })
+  const plainStory = article({
+    id: 'plain-story',
+    source_name: 'TechCrunch',
+    original_title: 'Небольшой апдейт продукта без деталей',
+    ru_title: 'Небольшой апдейт продукта без деталей',
+    lead: 'Краткая заметка.',
+    primary_category: 'ai-startups',
+    secondary_categories: [],
+    topics: [],
+    score: 5,
+    created_at: '2026-05-01T08:00:00.000Z',
+    pub_date: '2026-05-01T08:00:00.000Z',
+  })
+  const filler = [
+    article({ id: 'rec-fill-a', source_name: 'The Verge', primary_category: 'ai-startups', secondary_categories: [], topics: [], score: 1 }),
+    article({ id: 'rec-fill-b', source_name: 'Wired', primary_category: 'ai-startups', secondary_categories: [], topics: [], score: 1 }),
+  ]
+
+  const ranked = rankArticleRecommendations(current, [plainStory, bigStory, ...filler], {
+    now: fixedNow,
+    limit: 3,
+  })
+
+  assert.equal(ranked[0].article.id, 'big-story')
+  assert.ok(ranked[0].components.importanceScore > 0)
+})
+
 test('rankArticleRecommendations keeps same primary category first', () => {
   const current = article({
     id: 'current',

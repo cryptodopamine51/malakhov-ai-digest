@@ -1,5 +1,5 @@
 export default function TelegramCTA() {
-  const url = process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL ?? 'https://t.me/malakhovai'
+  const url = process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL ?? 'https://t.me/malakhovaidigest'
 
   return (
     <div className="my-8 flex flex-col sm:flex-row items-start sm:items-center gap-4 rounded border border-line bg-surface px-5 py-5">
