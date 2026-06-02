@@ -134,21 +134,104 @@ function truncatePlain(text: string, maxLength: number): string {
   return `${normalized.slice(0, maxLength - 1).trimEnd()}…`
 }
 
+type CaptionArticle = Pick<ChannelPostCandidate, 'ru_title' | 'original_title' | 'tg_teaser'> &
+  Partial<Pick<
+    ChannelPostCandidate,
+    'id' | 'source_name' | 'lead' | 'primary_category' | 'secondary_categories' | 'topics' | 'score' | 'pub_date'
+  >>
+
+const TOPIC_ANGLE_RULES: Array<{ re: RegExp; angle: string }> = [
+  {
+    re: /agent experience|agentic experience|\bax\b|ии-агент[а-я]*[^.]{0,80}сайт|агент[а-я]*[^.]{0,80}сайт/i,
+    angle: 'Если ИИ-агент не понимает ваш сайт, будущий клиент может даже не увидеть продукт.',
+  },
+  {
+    re: /робот[а-я]*|robot|embodied/i,
+    angle: 'Роботы выглядят как железная история, но для ИИ это ещё и способ собирать данные о физическом мире.',
+  },
+  {
+    re: /claude[^.]{0,120}(увол|некомпетент|заказчик)|делегирован[а-я]* мышлен/i,
+    angle: 'Это не анекдот про нейросеть, а пример того, как люди отдают модели право судить о компетентности.',
+  },
+  {
+    re: /(?:^|[^\p{L}])(?:вод[аы]|водн[а-я]* ресурс[а-я]*|water|охлажд[её]н[а-я]*|дата-центр[а-я]*|data\s*center)/iu,
+    angle: 'ИИ-инфраструктура упирается не только в GPU, но и в воду, энергию и площадки.',
+  },
+  {
+    re: /эрд[её]ш|единичн[а-я]* расстояни|discrete geometry|math problem|математ/i,
+    angle: 'Когда модель закрывает задачу 1946 года, спор становится шире: где теперь граница между инструментом и исследователем.',
+  },
+  {
+    re: /\bipo\b|проспект ipo|фактор[а-я]* риск/i,
+    angle: 'IPO-документы хорошо показывают, какие риски компании уже считают материальными.',
+  },
+]
+
+function captionStory(article: CaptionArticle) {
+  return deriveDigestStory({
+    id: article.id ?? 'caption-preview',
+    source_name: article.source_name ?? 'unknown',
+    original_title: article.original_title,
+    ru_title: article.ru_title ?? null,
+    lead: article.lead ?? null,
+    tg_teaser: article.tg_teaser ?? null,
+    primary_category: article.primary_category ?? 'ai-industry',
+    secondary_categories: article.secondary_categories ?? [],
+    topics: article.topics ?? [],
+    score: article.score ?? 0,
+    pub_date: article.pub_date ?? null,
+  })
+}
+
+function buildTelegramAngle(article: CaptionArticle): string {
+  const text = [article.ru_title, article.original_title, article.lead, article.tg_teaser]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join(' ')
+
+  for (const rule of TOPIC_ANGLE_RULES) {
+    if (rule.re.test(text)) return rule.angle
+  }
+
+  const story = captionStory(article)
+  if (story.eventType === 'funding') return 'Деньги показывают, где рынок ставит следующую крупную ставку.'
+  if (story.eventType === 'model_release') return 'Следим за релизом, который может быстро попасть в продукты и рабочие процессы.'
+  if (story.eventType === 'product_launch') return 'Не просто анонс: смотрим, какую задачу теперь закрывают ИИ-инструменты.'
+  if (story.eventType === 'benchmark') return 'Бенчмарки важны не сами по себе, а тем, как они меняют выбор моделей и инструментов.'
+  if (story.eventType === 'research') return 'Это не только научная новость: такие результаты задают направление для будущих продуктов.'
+  if (story.eventType === 'regulation') return 'Регулирование ИИ становится прикладным риском для бизнеса, а не юридическим фоном.'
+  if (story.eventType === 'security') return 'Важно для тех, кто уже внедряет ИИ: слабое место часто появляется не там, где его ждут.'
+  if (story.eventType === 'partnership' || story.eventType === 'acquisition') {
+    return 'Сделки показывают, где большие игроки собирают следующий слой ИИ-рынка.'
+  }
+  if (story.eventType === 'business_case') return 'Практический кейс: что получается, когда ИИ доходит до денег, клиентов и процессов.'
+
+  const topics = new Set([article.primary_category, ...(article.topics ?? [])].filter(Boolean))
+  if (topics.has('ai-russia')) return 'Российский контекст: что это меняет для бизнеса, разработчиков и пользователей здесь.'
+  if (topics.has('coding')) return 'Для разработчиков: где ИИ меняет рабочий процесс, а где создаёт новые риски.'
+  if (topics.has('ai-research')) return 'Смотрим не на хайп, а на то, что результат говорит о реальных возможностях моделей.'
+  return 'Главное не в факте новости, а в том, какой сдвиг она показывает.'
+}
+
 export function buildTelegramCaption(
-  article: Pick<ChannelPostCandidate, 'ru_title' | 'original_title' | 'tg_teaser'>,
+  article: CaptionArticle,
   maxLength = CAPTION_LIMIT,
 ): string {
   const title = truncatePlain(article.ru_title ?? article.original_title, 180)
-  const teaserRaw = article.tg_teaser ?? ''
+  const angle = buildTelegramAngle(article)
+  const teaserRaw = article.tg_teaser ?? article.lead ?? ''
 
-  for (let teaserLimit = 760; teaserLimit >= 80; teaserLimit -= 40) {
+  for (let teaserLimit = 640; teaserLimit >= 80; teaserLimit -= 40) {
     const teaser = truncatePlain(teaserRaw, teaserLimit)
-    const caption = `<b>${escapeHtml(title)}</b>${teaser ? `\n\n${escapeHtml(teaser)}` : ''}`
+    const caption = [
+      `<b>${escapeHtml(title)}</b>`,
+      escapeHtml(angle),
+      teaser ? `<b>Зачем открыть:</b> ${escapeHtml(teaser)}` : null,
+    ].filter(Boolean).join('\n\n')
     if (caption.length <= maxLength) return caption
   }
 
   const compactTitle = truncatePlain(title, 160)
-  const caption = `<b>${escapeHtml(compactTitle)}</b>`
+  const caption = `<b>${escapeHtml(compactTitle)}</b>\n\n${escapeHtml(angle)}`
   return caption.length <= maxLength ? caption : `<b>${escapeHtml(truncatePlain(compactTitle, 120))}</b>`
 }
 

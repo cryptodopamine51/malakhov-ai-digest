@@ -100,6 +100,35 @@ test('buildTelegramCaption keeps valid HTML under Telegram photo caption limit',
   assert.doesNotMatch(caption, /OpenAI <test> & partners/)
 })
 
+test('buildTelegramCaption adds an editorial angle and reading hook', () => {
+  const caption = buildTelegramCaption({
+    original_title: 'Water access is now a risk factor in SpaceX IPO',
+    ru_title: 'SpaceX включила доступ к воде в факторы риска для IPO',
+    lead: 'Вода нужна для охлаждения дата-центров xAI.',
+    tg_teaser: 'SpaceX добавила в IPO-проспект новый риск: без воды не охладить дата-центры для ИИ xAI.',
+    primary_category: 'ai-industry',
+    topics: ['ai-industry'],
+  })
+
+  assert.match(caption, /ИИ-инфраструктура упирается не только в GPU/)
+  assert.match(caption, /<b>Зачем открыть:<\/b>/)
+  assert.ok(caption.length <= 1024)
+})
+
+test('buildTelegramCaption does not confuse выводам with water access', () => {
+  const caption = buildTelegramCaption({
+    original_title: 'Как Claude убедил заказчиков, что я некомпетентен',
+    ru_title: 'Как Claude убедил заказчиков уволить разработчика',
+    lead: 'Заказчики проверили работу через Claude и поверили выводам модели больше, чем специалисту.',
+    tg_teaser: 'Фрилансер сделал бот, но заказчики уволили его по совету нейросети.',
+    primary_category: 'ai-russia',
+    topics: ['ai-russia', 'coding'],
+  })
+
+  assert.match(caption, /отдают модели право судить о компетентности/)
+  assert.doesNotMatch(caption, /ИИ-инфраструктура упирается/)
+})
+
 type Operation = {
   table: string
   kind: 'update'

@@ -221,9 +221,13 @@ re-enrich (`scripts/reenrich-all.ts`, `scripts/reenrich-topic-slices.ts`) пер
 в течение дня. Активное ядро: `bot/channel-post-core.ts`; CLI: `npm run tg-channel-post -- --slot=1`;
 cron-route: `app/api/cron/tg-channel-post/route.ts?slot=1..5`.
 
-Каждый пост отправляется через Telegram `sendPhoto`: `cover_image_url` как картинка, короткий
-caption из `ru_title` + `tg_teaser`, inline-кнопка `Читать на сайте` на canonical article URL
-с UTM `utm_source=tg&utm_medium=channel&utm_campaign=dayfeed_YYYYMMDD&utm_content=slot_N`.
+Каждый пост отправляется через Telegram `sendPhoto`: `cover_image_url` как картинка, caption до
+1024 символов и inline-кнопка `Читать на сайте` на canonical article URL с UTM
+`utm_source=tg&utm_medium=channel&utm_campaign=dayfeed_YYYYMMDD&utm_content=slot_N`. Caption строится
+без LLM/API: `<b>ru_title</b>` → короткий редакционный angle по topic/event эвристикам →
+`<b>Зачем открыть:</b> tg_teaser`. Если точного topic-rule нет, fallback берётся из
+`deriveDigestStory()` (`funding`, `model_release`, `product_launch`, `research`, `security`,
+`regulation`, etc.) и `primary_category`.
 
 Source pool сохраняет старую editorial-логику дайджеста: top-50 за предыдущий MSK-день среди
 `published=true + quality_ok=true + verified_live=true + publish_status='live' + tg_sent=false`

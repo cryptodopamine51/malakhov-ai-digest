@@ -216,6 +216,11 @@ slot не отправится дважды.
 заголовком `Authorization: Bearer <secret>`, секрет хранится в `vault.secrets` под именем
 `cron_bearer_token` и читается через `vault.decrypted_secrets`.
 
+Caption генерируется локально в `bot/channel-post-core.ts::buildTelegramCaption()` без LLM/API:
+bold title → короткий редакционный angle по topic/event эвристикам → `<b>Зачем открыть:</b>`
+с `tg_teaser`. Это не требует новых env и не добавляет latency/стоимость в cron. Лимит Telegram
+photo caption соблюдается консервативно: итоговая HTML-строка удерживается ≤ 1024 символов.
+
 Конфигурация — в `supabase/migrations/017_telegram_channel_posts.sql`. Эта миграция также
 unschedule-ит legacy `tg-digest-weekday` и `tg-digest-weekend`. Секрет в Vault создаётся
 **один раз** руками:
