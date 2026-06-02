@@ -5,7 +5,9 @@ import {
   _internals,
   evaluateOpsStatus,
   formatOpsSummaryForTelegram,
+  getMetrikaTrafficSummary,
   resolveOpsReportKind,
+  shouldShowFixPrompt,
   type OpsSummary,
 } from '../../lib/ops-summary'
 
@@ -122,6 +124,18 @@ function baseSummary(overrides: Partial<OpsSummary> = {}): OpsSummary {
       fetchErrors24h: 0,
       topProblemSources: [],
     },
+    traffic: {
+      status: 'ok',
+      date: '2026-05-10',
+      compareDate: '2026-05-09',
+      visits: 270,
+      users: 221,
+      pageviews: 343,
+      visitsChangePercent: 14,
+      usersChangePercent: 9,
+      pageviewsChangePercent: 12,
+      sampled: false,
+    },
   }
 
   return { ...summary, ...overrides }
@@ -130,6 +144,85 @@ function baseSummary(overrides: Partial<OpsSummary> = {}): OpsSummary {
 test('resolveOpsReportKind maps auto to morning before 14:00 MSK and evening after', () => {
   assert.equal(resolveOpsReportKind('auto', new Date('2026-05-11T06:45:00.000Z')), 'morning')
   assert.equal(resolveOpsReportKind('auto', new Date('2026-05-11T17:30:00.000Z')), 'evening')
+})
+
+test('getMetrikaTrafficSummary reads yesterday traffic and deltas', async () => {
+  let requestedUrl = ''
+  let requestedAuth = ''
+  const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit) => {
+    requestedUrl = String(input)
+    requestedAuth = String((init?.headers as Record<string, string>).Authorization)
+    return new Response(JSON.stringify({
+      sampled: false,
+      data: [
+        { dimensions: [{ name: '2026-05-31' }], metrics: [200, 180, 300] },
+        { dimensions: [{ name: '2026-06-01' }], metrics: [270, 221, 343] },
+      ],
+    }), { status: 200 })
+  }
+
+  const traffic = await getMetrikaTrafficSummary(
+    new Date('2026-06-02T18:00:00.000Z'),
+    { ...process.env, YANDEX_METRIKA_OAUTH_TOKEN: 'token', YANDEX_METRIKA_COUNTER_ID: '123' },
+    fetchImpl as typeof fetch,
+  )
+
+  assert.equal(traffic.status, 'ok')
+  assert.equal(traffic.date, '2026-06-01')
+  assert.equal(traffic.compareDate, '2026-05-31')
+  assert.equal(traffic.visits, 270)
+  assert.equal(traffic.users, 221)
+  assert.equal(traffic.pageviews, 343)
+  assert.equal(traffic.visitsChangePercent, 35)
+  assert.equal(traffic.usersChangePercent, 23)
+  assert.equal(traffic.pageviewsChangePercent, 14)
+  assert.match(requestedUrl, /ids=123/)
+  assert.match(requestedUrl, /date1=2026-05-31/)
+  assert.match(requestedUrl, /date2=2026-06-01/)
+  assert.equal(requestedAuth, 'OAuth token')
+})
+
+test('getMetrikaTrafficSummary handles missing token or counter', async () => {
+  const traffic = await getMetrikaTrafficSummary(
+    new Date('2026-06-02T18:00:00.000Z'),
+    { NODE_ENV: process.env.NODE_ENV },
+    (async () => {
+      throw new Error('should not fetch')
+    }) as typeof fetch,
+  )
+
+  assert.equal(traffic.status, 'not_configured')
+  assert.equal(traffic.date, '2026-06-01')
+  assert.equal(traffic.visits, null)
+})
+
+test('getMetrikaTrafficSummary handles API error', async () => {
+  const traffic = await getMetrikaTrafficSummary(
+    new Date('2026-06-02T18:00:00.000Z'),
+    { ...process.env, YANDEX_METRIKA_OAUTH_TOKEN: 'token', NEXT_PUBLIC_METRIKA_ID: '123' },
+    (async () => new Response(JSON.stringify({ message: 'bad counter' }), { status: 403 })) as typeof fetch,
+  )
+
+  assert.equal(traffic.status, 'error')
+  assert.match(traffic.errorMessage ?? '', /bad counter/)
+})
+
+test('getMetrikaTrafficSummary marks delta as null when previous day is zero', async () => {
+  const traffic = await getMetrikaTrafficSummary(
+    new Date('2026-06-02T18:00:00.000Z'),
+    { ...process.env, YANDEX_METRIKA_OAUTH_TOKEN: 'token', YANDEX_METRIKA_COUNTER_ID: '123' },
+    (async () => new Response(JSON.stringify({
+      data: [
+        { dimensions: [{ name: '2026-05-31' }], metrics: [0, 0, 0] },
+        { dimensions: [{ name: '2026-06-01' }], metrics: [5, 4, 8] },
+      ],
+    }), { status: 200 })) as typeof fetch,
+  )
+
+  assert.equal(traffic.status, 'ok')
+  assert.equal(traffic.visitsChangePercent, null)
+  assert.equal(traffic.usersChangePercent, null)
+  assert.equal(traffic.pageviewsChangePercent, null)
 })
 
 test('evaluateOpsStatus returns green when core pipeline is healthy', () => {
@@ -163,7 +256,7 @@ test('evaluateOpsStatus returns yellow for warning alerts without critical condi
       entity_key: 'batch-1',
       message: 'validation failed',
       occurrence_count: 1,
-      first_seen_at: '2026-05-11T12:00:00.000Z',
+      first_seen_at: '2026-05-11T16:00:00.000Z',
       last_seen_at: '2026-05-11T12:00:00.000Z',
     }],
     alertGroups: [{ key: 'claude_parse_failed', severity: 'warning', count: 1 }],
@@ -196,15 +289,17 @@ test('formatOpsSummaryForTelegram renders traffic-light header and escapes HTML'
   summary.status = evaluateOpsStatus(summary)
   const text = formatOpsSummaryForTelegram(summary)
 
-  assert.match(text, /^🟢 <b>Ops-сводка/)
-  assert.match(text, /<b>Итог:<\/b> всё ок/)
-  assert.match(text, /<b>Что отправилось \/ что нет<\/b>/)
-  assert.match(text, /<b>Публикации<\/b>/)
-  assert.match(text, /OpenAI &lt;test&gt; &amp; partners/)
-  assert.doesNotMatch(text, /OpenAI <test> & partners/)
+  assert.match(text, /^🟢 <b>Отчет за день · 11\.05<\/b>/)
+  assert.match(text, /Период: сегодня 00:00-21:00 МСК · трафик: вчера 10\.05/)
+  assert.match(text, /<b>Главное:<\/b> все ключевые контуры работают\./)
+  assert.match(text, /<b>✅ Что работает<\/b>/)
+  assert.match(text, /<b>📈 Трафик вчера<\/b>/)
+  assert.match(text, /Визиты: 270 \(\+14%\)/)
+  assert.doesNotMatch(text, /<blockquote expandable>/)
+  assert.doesNotMatch(text, /<pre>/)
 })
 
-test('formatOpsSummaryForTelegram explains yellow status in admin language', () => {
+test('formatOpsSummaryForTelegram keeps transient yellow status compact without prompt', () => {
   const summary = baseSummary({
     health: {
       ...baseSummary().health,
@@ -216,24 +311,47 @@ test('formatOpsSummaryForTelegram explains yellow status in admin language', () 
       entity_key: 'batch-1',
       message: 'validation failed',
       occurrence_count: 1,
-      first_seen_at: '2026-05-11T12:00:00.000Z',
-      last_seen_at: '2026-05-11T12:00:00.000Z',
+      first_seen_at: '2026-05-11T16:00:00.000Z',
+      last_seen_at: '2026-05-11T17:00:00.000Z',
     }],
     alertGroups: [{ key: 'claude_parse_failed', severity: 'warning', count: 1 }],
   })
   summary.status = evaluateOpsStatus(summary)
 
   const text = formatOpsSummaryForTelegram(summary)
-  assert.match(text, /Почему жёлтый/)
-  assert.match(text, /портал работает, но есть проблемы/)
+  assert.equal(shouldShowFixPrompt(summary), false)
+  assert.match(text, /день выполнен, но есть небольшой технический хвост/)
   assert.match(text, /Открытых пакетных задач обработки: 2/)
   assert.match(text, /Claude вернул невалидный результат/)
-  assert.match(text, /они не присылаются отдельными сообщениями/)
-  assert.match(text, /<b>Что нужно для зелёного<\/b>/)
-  assert.match(text, /дособрать или корректно завершить 2 пакетные задачи обработки/)
-  assert.match(text, /<b>Промпт для Codex<\/b>/)
-  assert.match(text, /<pre>Разбери ops-сигнал Malakhov AI Digest\./)
-  assert.match(text, /Репозиторий: \/Users\/malast\/malakhov-ai-digest/)
+  assert.match(text, /Действие: наблюдать, промпт не нужен/)
+  assert.doesNotMatch(text, /<blockquote expandable>/)
+  assert.ok(text.length < 4096)
+})
+
+test('formatOpsSummaryForTelegram adds expandable prompt for persistent yellow status', () => {
+  const summary = baseSummary({
+    openAlerts: [{
+      alert_type: 'claude_parse_failed',
+      severity: 'warning',
+      entity_key: 'batch-1',
+      message: 'validation failed <unsafe>',
+      occurrence_count: 3,
+      first_seen_at: '2026-05-11T10:00:00.000Z',
+      last_seen_at: '2026-05-11T17:00:00.000Z',
+    }],
+    alertGroups: [{ key: 'claude_parse_failed', severity: 'warning', count: 1 }],
+  })
+  summary.status = evaluateOpsStatus(summary)
+
+  const text = formatOpsSummaryForTelegram(summary)
+  assert.equal(shouldShowFixPrompt(summary), true)
+  assert.match(text, /есть проблема, которую стоит разобрать системно/)
+  assert.match(text, /🛠 <b>Есть готовый промпт для Codex<\/b>/)
+  assert.match(text, /<blockquote expandable>/)
+  assert.match(text, /Разбери и исправь production-проблему Malakhov AI Digest\./)
+  assert.match(text, /validation failed &lt;unsafe&gt;/)
+  assert.doesNotMatch(text, /<pre>/)
+  assert.doesNotMatch(text, /validation failed <unsafe>/)
   assert.ok(text.length < 4096)
 })
 
@@ -253,12 +371,13 @@ test('formatOpsSummaryForTelegram explains red critical failures', () => {
   summary.status = evaluateOpsStatus(summary)
 
   const text = formatOpsSummaryForTelegram(summary)
-  assert.match(text, /критическая проблема/)
-  assert.match(text, /Почему красный/)
+  assert.equal(shouldShowFixPrompt(summary), true)
+  assert.match(text, /есть критическая проблема/)
   assert.match(text, /критическая ошибка публикации/)
   assert.match(text, /article returned 500 &lt;bad&gt;/)
-  assert.match(text, /устранить 1 critical алёрт/)
-  assert.match(text, /<pre>Разбери ops-сигнал Malakhov AI Digest\./)
+  assert.match(text, /<blockquote expandable>/)
+  assert.match(text, /Фокус: Publication \/ live verification/)
+  assert.match(text, /Не трогай unrelated changes\./)
 })
 
 test('groupAlerts sorts by severity and count', () => {
