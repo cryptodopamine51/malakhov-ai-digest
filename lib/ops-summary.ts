@@ -4,6 +4,9 @@ import { getHealthSummary, type HealthSummary } from './health-summary'
 import { getMoscowDateKey, pluralize, truncate } from './utils'
 
 const MSK_OFFSET_MS = 3 * 60 * 60 * 1000
+const METRIKA_API_URL = 'https://api-metrika.yandex.net/stat/v1/data'
+const FIX_PROMPT_MIN_ALERT_AGE_HOURS = 6
+const FIX_PROMPT_MIN_OCCURRENCES = 3
 
 export type OpsReportKind = 'morning' | 'evening' | 'manual'
 export type OpsStatusLevel = 'green' | 'yellow' | 'red'
@@ -120,6 +123,20 @@ export interface OpsSourceSummary {
   topProblemSources: Array<{ key: string; count: number }>
 }
 
+export interface OpsTrafficSummary {
+  status: 'ok' | 'not_configured' | 'error'
+  date: string
+  compareDate: string
+  visits: number | null
+  users: number | null
+  pageviews: number | null
+  visitsChangePercent: number | null
+  usersChangePercent: number | null
+  pageviewsChangePercent: number | null
+  sampled: boolean
+  errorMessage?: string
+}
+
 export interface OpsSummary {
   generatedAt: string
   reportKind: OpsReportKind
@@ -137,6 +154,7 @@ export interface OpsSummary {
   alertGroups: Array<{ key: string; severity: OpsAlertRow['severity']; count: number }>
   costs: OpsCostSummary
   sources: OpsSourceSummary
+  traffic: OpsTrafficSummary
 }
 
 type ArticleFunnelRow = {
@@ -156,6 +174,23 @@ type SourceRunRow = {
   items_rejected_count: number | null
   fetch_errors_count: number | null
 }
+type MetrikaDataRow = {
+  dimensions?: Array<{ name?: string | null }>
+  metrics?: Array<number | string | null>
+}
+type MetrikaApiResponse = {
+  data?: MetrikaDataRow[]
+  sampled?: boolean
+  sample_share?: number
+  sampleShare?: number
+  message?: string
+  errors?: Array<{ message?: string }>
+}
+type TrafficDayMetrics = {
+  visits: number
+  users: number
+  pageviews: number
+}
 
 export interface GetOpsSummaryOptions {
   now?: Date
@@ -166,6 +201,74 @@ export function resolveOpsReportKind(raw: string | undefined, now = new Date()):
   if (raw === 'morning' || raw === 'evening' || raw === 'manual') return raw
   const mskHour = new Date(now.getTime() + MSK_OFFSET_MS).getUTCHours()
   return mskHour < 14 ? 'morning' : 'evening'
+}
+
+export async function getMetrikaTrafficSummary(
+  now = new Date(),
+  env: NodeJS.ProcessEnv = process.env,
+  fetchImpl: typeof fetch = fetch,
+): Promise<OpsTrafficSummary> {
+  const date = mskDateKeyDaysAgo(now, 1)
+  const compareDate = mskDateKeyDaysAgo(now, 2)
+  const token = env.YANDEX_METRIKA_OAUTH_TOKEN
+  const counterId = env.YANDEX_METRIKA_COUNTER_ID || env.NEXT_PUBLIC_METRIKA_ID
+
+  if (!token || !counterId) {
+    return emptyTrafficSummary('not_configured', date, compareDate)
+  }
+
+  const url = new URL(METRIKA_API_URL)
+  url.searchParams.set('ids', counterId)
+  url.searchParams.set('metrics', 'ym:s:visits,ym:s:users,ym:s:pageviews')
+  url.searchParams.set('dimensions', 'ym:s:date')
+  url.searchParams.set('date1', compareDate)
+  url.searchParams.set('date2', date)
+  url.searchParams.set('sort', 'ym:s:date')
+  url.searchParams.set('accuracy', 'full')
+  url.searchParams.set('limit', '10')
+
+  try {
+    const res = await fetchImpl(url, {
+      headers: { Authorization: `OAuth ${token}` },
+    })
+    const data = await res.json().catch(() => null) as MetrikaApiResponse | null
+    if (!res.ok) {
+      return emptyTrafficSummary('error', date, compareDate, metrikaErrorMessage(data) || `HTTP ${res.status}`)
+    }
+
+    const rows = new Map<string, TrafficDayMetrics>()
+    for (const row of data?.data ?? []) {
+      const key = row.dimensions?.[0]?.name
+      if (!key) continue
+      rows.set(key, {
+        visits: metricNumber(row.metrics?.[0]),
+        users: metricNumber(row.metrics?.[1]),
+        pageviews: metricNumber(row.metrics?.[2]),
+      })
+    }
+
+    const current = rows.get(date) ?? { visits: 0, users: 0, pageviews: 0 }
+    const previous = rows.get(compareDate) ?? { visits: 0, users: 0, pageviews: 0 }
+    return {
+      status: 'ok',
+      date,
+      compareDate,
+      visits: current.visits,
+      users: current.users,
+      pageviews: current.pageviews,
+      visitsChangePercent: percentChange(current.visits, previous.visits),
+      usersChangePercent: percentChange(current.users, previous.users),
+      pageviewsChangePercent: percentChange(current.pageviews, previous.pageviews),
+      sampled: Boolean(data?.sampled || Number(data?.sample_share ?? data?.sampleShare ?? 1) < 1),
+    }
+  } catch (error) {
+    return emptyTrafficSummary(
+      'error',
+      date,
+      compareDate,
+      error instanceof Error ? error.message : String(error),
+    )
+  }
 }
 
 export async function getOpsSummary(
@@ -190,6 +293,7 @@ export async function getOpsSummary(
     openAlertsRes,
     sourceRowsRes,
     costRowsRes,
+    traffic,
   ] = await Promise.all([
     getHealthSummary(supabase),
     supabase
@@ -246,6 +350,7 @@ export async function getOpsSummary(
       .select('provider, operation, estimated_cost_usd')
       .gte('created_at', mskDayStart)
       .limit(20_000),
+    getMetrikaTrafficSummary(now),
   ])
 
   const articleRows = rowsOrThrow<ArticleFunnelRow>(articleRowsRes, 'articles funnel')
@@ -295,6 +400,7 @@ export async function getOpsSummary(
     alertGroups,
     costs,
     sources,
+    traffic,
   }
 
   const status = evaluateOpsStatus(baseSummary)
@@ -317,6 +423,52 @@ function startOfMskDayUtcIso(now: Date): string {
   const msk = new Date(now.getTime() + MSK_OFFSET_MS)
   msk.setUTCHours(0, 0, 0, 0)
   return new Date(msk.getTime() - MSK_OFFSET_MS).toISOString()
+}
+
+function mskDateKeyDaysAgo(now: Date, daysAgo: number): string {
+  const msk = new Date(now.getTime() + MSK_OFFSET_MS)
+  msk.setUTCHours(0, 0, 0, 0)
+  msk.setUTCDate(msk.getUTCDate() - daysAgo)
+  return [
+    msk.getUTCFullYear(),
+    String(msk.getUTCMonth() + 1).padStart(2, '0'),
+    String(msk.getUTCDate()).padStart(2, '0'),
+  ].join('-')
+}
+
+function emptyTrafficSummary(
+  status: OpsTrafficSummary['status'],
+  date: string,
+  compareDate: string,
+  errorMessage?: string,
+): OpsTrafficSummary {
+  return {
+    status,
+    date,
+    compareDate,
+    visits: null,
+    users: null,
+    pageviews: null,
+    visitsChangePercent: null,
+    usersChangePercent: null,
+    pageviewsChangePercent: null,
+    sampled: false,
+    errorMessage,
+  }
+}
+
+function metricNumber(value: number | string | null | undefined): number {
+  const numeric = Number(value ?? 0)
+  return Number.isFinite(numeric) ? Math.round(numeric) : 0
+}
+
+function percentChange(current: number, previous: number): number | null {
+  if (previous === 0) return current === 0 ? 0 : null
+  return Math.round(((current - previous) / previous) * 100)
+}
+
+function metrikaErrorMessage(data: MetrikaApiResponse | null): string | null {
+  return data?.errors?.[0]?.message ?? data?.message ?? null
 }
 
 export function expectedTelegramSlots(now: Date): number {
@@ -560,74 +712,128 @@ export function evaluateOpsStatus(summary: Omit<OpsSummary, 'status'>): OpsStatu
 
 export function formatOpsSummaryForTelegram(summary: OpsSummary): string {
   const lines: string[] = []
-  const kind = summary.reportKind === 'morning' ? 'утро' : summary.reportKind === 'evening' ? 'вечер' : 'ручной запуск'
-  const criticalAlerts = summary.openAlerts.filter((alert) => alert.severity === 'critical')
+  const promptDecision = getFixPromptDecision(summary)
+  const title = reportTitle(summary)
 
-  lines.push(`${summary.status.emoji} <b>Ops-сводка · ${kind} · ${formatMskDateTime(summary.generatedAt)}</b>`)
-  lines.push(...formatAdminOverview(summary))
+  lines.push(`${summary.status.emoji} <b>${title} · ${formatDateKeyShort(summary.mskDateKey)}</b>`)
+  lines.push(`Период: сегодня 00:00-${formatMskTime(summary.generatedAt)} МСК · трафик: вчера ${formatDateKeyShort(summary.traffic.date)}`)
   lines.push('')
-  lines.push(...formatDeliveryOverview(summary))
+  lines.push(`<b>Главное:</b> ${escapeHtml(compactMainLine(summary, promptDecision.show))}`)
   lines.push('')
-  lines.push(...formatProblemOverview(summary))
-  if (summary.status.level !== 'green') {
+  lines.push('<b>✅ Что работает</b>')
+  for (const line of buildWhatWorksLines(summary)) lines.push(`• ${escapeHtml(line)}`)
+  lines.push('')
+  lines.push('<b>⚠️ Что не идеально</b>')
+  for (const line of buildCompactIssueLines(summary, promptDecision.show)) lines.push(`• ${escapeHtml(line)}`)
+  lines.push('')
+  lines.push('<b>📈 Трафик вчера</b>')
+  for (const line of formatTrafficLines(summary.traffic)) lines.push(`• ${escapeHtml(line)}`)
+  lines.push('')
+  lines.push('<b>📊 Минимум цифр</b>')
+  lines.push(`• За 24ч создано: ${summary.articles.created24h} ${pluralize(summary.articles.created24h, 'материал', 'материала', 'материалов')}`)
+  lines.push(`• За 6ч опубликовано: ${summary.health.live_window_6h_count}`)
+  lines.push(`• Расход ИИ сегодня: ${formatUsd(summary.costs.totalCostUsd)}`)
+  lines.push('')
+  lines.push('<b>🎯 Что делать</b>')
+  lines.push(escapeHtml(compactActionLine(summary, promptDecision.show)))
+  if (promptDecision.show) {
     lines.push('')
-    lines.push(...formatGreenPathOverview(summary))
-    lines.push('')
-    lines.push(...formatCodexPromptBlock(summary))
-  }
-  lines.push('')
-  lines.push('<b>Публикации</b>')
-  lines.push(`• сегодня опубликовано: <b>${summary.articles.publishedTodayCount}</b>; за 6ч: <b>${summary.health.live_window_6h_count}</b>`)
-  lines.push(`• за 24ч создано: <b>${summary.articles.created24h}</b>; опубликовано: ${count(summary.articles.byPublishStatus, 'live')}; в работе: ${count(summary.articles.byEnrichStatus, 'processing')}; с ошибкой: ${count(summary.articles.byEnrichStatus, 'failed')}; отклонено: ${count(summary.articles.byEnrichStatus, 'rejected')}`)
-  lines.push(`• Telegram-посты: ${formatTelegramDelivery(summary.telegramToday ?? summary.latestTelegram)}`)
-  const rejectReasons = Object.entries(summary.health.articles_rejected_today_by_reason)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 4)
-  if (rejectReasons.length) {
-    lines.push(`• причины отклонения: ${rejectReasons.map(([key, value]) => `${escapeHtml(humanRejectReason(key))}=${value}`).join(', ')}`)
-  }
-
-  if (summary.articles.recentPublished.length) {
-    lines.push('• последние live:')
-    for (const article of summary.articles.recentPublished.slice(0, 3)) {
-      const title = escapeHtml(truncate(article.ru_title ?? 'без заголовка', 82))
-      const source = escapeHtml(article.source_name ?? 'unknown')
-      lines.push(`  ${formatMskTime(article.published_at)} · ${source} · ${title}`)
-    }
-  }
-
-  lines.push('')
-  lines.push('<b>Пайплайн</b>')
-  lines.push(`• сбор источников: ${formatIngest(summary.latestIngest)}`)
-  lines.push(`• обработка статей: ${formatEnrich(summary.latestEnrich)}`)
-  lines.push(`• очередь: ждут ${count(summary.articles.currentQueue, 'pending')}, на повтор ${count(summary.articles.currentQueue, 'retry_wait')}, в работе ${count(summary.articles.currentQueue, 'processing')}; самая старая ${summary.health.oldest_pending_age_minutes ?? 0} мин`)
-  lines.push(`• источники 24ч: новых ${summary.sources.itemsInserted24h}, просмотрено ${summary.sources.itemsSeen24h}, отсеяно ${summary.sources.itemsRejected24h}, ошибок загрузки ${summary.sources.fetchErrors24h}`)
-
-  lines.push('')
-  lines.push('<b>Расход</b>')
-  lines.push(`• сегодня: <b>${formatUsd(summary.costs.totalCostUsd)}</b> · вызовов ${summary.costs.calls}`)
-  if (summary.costs.byProvider.length) {
-    lines.push(`• провайдеры: ${summary.costs.byProvider.map((row) => `${escapeHtml(row.key)} ${formatUsd(row.costUsd)}`).join(', ')}`)
-  }
-
-  lines.push('')
-  lines.push('<b>Алерты</b>')
-  if (!summary.openAlerts.length) {
-    lines.push('• открытых алёртов нет')
-  } else {
-    lines.push(`• открыто: ${summary.openAlerts.length}; критических: ${criticalAlerts.length}; предупреждений: ${summary.openAlerts.filter((alert) => alert.severity === 'warning').length}`)
-    lines.push(`• группы: ${summary.alertGroups.slice(0, 5).map((group) => `${escapeHtml(humanAlertType(group.key))}=${group.count}`).join(', ')}`)
-    if (criticalAlerts.length) {
-      lines.push('• критические:')
-      for (const alert of criticalAlerts.slice(0, 3)) {
-        lines.push(`  ${escapeHtml(humanAlertType(alert.alert_type))} · ${escapeHtml(truncate(alert.message, 130))}`)
-      }
-    } else {
-      lines.push('• критических нет; предупреждения собраны здесь и не присылаются отдельными сообщениями')
-    }
+    lines.push(...formatCodexPromptBlock(summary, promptDecision.reason))
   }
 
   return lines.join('\n')
+}
+
+export function shouldShowFixPrompt(summary: OpsSummary): boolean {
+  return getFixPromptDecision(summary).show
+}
+
+function getFixPromptDecision(summary: OpsSummary): { show: boolean; reason: string } {
+  const expectedSlots = expectedTelegramSlots(new Date(summary.generatedAt))
+  const telegram = summary.telegramToday ?? summary.latestTelegram
+
+  if (summary.status.level === 'red') return { show: true, reason: 'critical status' }
+  if (summary.latestIngest?.status === 'failed') return { show: true, reason: 'ingest failed' }
+  if (summary.latestEnrich?.status === 'failed') return { show: true, reason: 'enrich failed' }
+  if (telegram?.status === 'failed') return { show: true, reason: 'telegram failed' }
+  if (expectedSlots > 0 && !summary.telegramToday) return { show: true, reason: 'telegram slot missing' }
+  if (summary.telegramToday && summary.telegramToday.success_count < summary.telegramToday.expected_slots && summary.telegramToday.status !== 'skipped_low_articles') {
+    return { show: true, reason: 'telegram slots below plan' }
+  }
+
+  const persistentAlert = summary.openAlerts.find((alert) => isPersistentFixAlert(alert, summary.generatedAt))
+  if (persistentAlert) {
+    return { show: true, reason: `persistent alert: ${humanAlertType(persistentAlert.alert_type)}` }
+  }
+
+  return { show: false, reason: 'no actionable persistent incident' }
+}
+
+function isPersistentFixAlert(alert: OpsAlertRow, generatedAt: string): boolean {
+  if (alert.severity === 'critical') return true
+  if (alert.occurrence_count >= FIX_PROMPT_MIN_OCCURRENCES) return true
+  const ageMs = new Date(generatedAt).getTime() - new Date(alert.first_seen_at).getTime()
+  return ageMs >= FIX_PROMPT_MIN_ALERT_AGE_HOURS * 60 * 60 * 1000
+}
+
+function reportTitle(summary: OpsSummary): string {
+  if (summary.reportKind === 'morning') return 'Утренний отчет'
+  if (summary.reportKind === 'evening') return 'Отчет за день'
+  return 'Ручной отчет'
+}
+
+function compactMainLine(summary: OpsSummary, hasPrompt: boolean): string {
+  if (summary.status.level === 'green') return 'все ключевые контуры работают.'
+  if (summary.status.level === 'red') {
+    return `есть критическая проблема: ${summary.status.reasons[0] ?? 'требуется проверка'}.`
+  }
+  if (hasPrompt) return 'есть проблема, которую стоит разобрать системно.'
+  return 'день выполнен, но есть небольшой технический хвост.'
+}
+
+function buildWhatWorksLines(summary: OpsSummary): string[] {
+  const criticalCount = summary.openAlerts.filter((alert) => alert.severity === 'critical').length
+  const deliveryProblems = buildDeliveryProblems(summary)
+  const lines = [
+    `Telegram: ${formatTelegramDeliveryShort(summary.telegramToday ?? summary.latestTelegram)}`,
+    `Сайт: ${summary.articles.publishedTodayCount} ${pluralize(summary.articles.publishedTodayCount, 'публикация', 'публикации', 'публикаций')} сегодня`,
+    `Доставка: ${deliveryProblems.length ? 'есть вопросы, смотри ниже' : 'потерь не видно'}`,
+    `Критические алерты: ${criticalCount}`,
+  ]
+  return lines
+}
+
+function buildCompactIssueLines(summary: OpsSummary, hasPrompt: boolean): string[] {
+  const issues = buildAdminIssueLines(summary)
+    .map((line) => line.replace(/`/g, ''))
+    .slice(0, 3)
+
+  if (!issues.length) {
+    return ['Ничего существенного не вижу.']
+  }
+
+  const lines = issues.map((line) => truncate(line, 160))
+  lines.push(hasPrompt ? 'Действие: ниже есть промпт для Codex.' : 'Действие: наблюдать, промпт не нужен.')
+  return lines
+}
+
+function formatTrafficLines(traffic: OpsTrafficSummary): string[] {
+  if (traffic.status === 'not_configured') return ['Трафик: данные Метрики не получены.']
+  if (traffic.status === 'error') {
+    const suffix = traffic.errorMessage ? ` (${truncate(traffic.errorMessage, 100)})` : ''
+    return [`Трафик: данные Метрики не получены${suffix}.`]
+  }
+  return [
+    `Визиты: ${traffic.visits ?? 0} (${formatPercentDelta(traffic.visitsChangePercent)})`,
+    `Посетители: ${traffic.users ?? 0} (${formatPercentDelta(traffic.usersChangePercent)})`,
+    `Просмотры: ${traffic.pageviews ?? 0} (${formatPercentDelta(traffic.pageviewsChangePercent)})${traffic.sampled ? ' · выборка' : ''}`,
+  ]
+}
+
+function compactActionLine(summary: OpsSummary, hasPrompt: boolean): string {
+  if (hasPrompt) return 'Запустить Codex-промпт ниже: он уже содержит контекст, файлы и проверки.'
+  if (summary.status.level === 'green') return 'Ничего не делать.'
+  return 'Сейчас: наблюдать. Если сигнал повторится в следующем отчете или станет критичным, появится промпт для фикса.'
 }
 
 export function formatOpsAlertsForTelegram(summary: OpsSummary): string {
@@ -747,11 +953,10 @@ function formatGreenPathOverview(summary: OpsSummary): string[] {
   return lines
 }
 
-function formatCodexPromptBlock(summary: OpsSummary): string[] {
+function formatCodexPromptBlock(summary: OpsSummary, reason: string): string[] {
   return [
-    '<b>Промпт для Codex</b>',
-    'Нажми на блок ниже и скопируй:',
-    `<pre>${escapeHtml(buildCodexPrompt(summary))}</pre>`,
+    '🛠 <b>Есть готовый промпт для Codex</b>',
+    `<blockquote expandable>${escapeHtml(buildCodexPrompt(summary, reason))}</blockquote>`,
   ]
 }
 
@@ -794,25 +999,112 @@ function buildGreenPathActions(summary: OpsSummary): string[] {
   return actions
 }
 
-function buildCodexPrompt(summary: OpsSummary): string {
+function buildCodexPrompt(summary: OpsSummary, reason: string): string {
+  const focus = resolveFixPromptFocus(summary)
   const facts = [
     `Сигнал: ${summary.status.emoji} ${summary.status.label}`,
+    `Триггер промпта: ${reason}`,
     `Причины: ${summary.status.reasons.join('; ')}`,
     `Telegram: ${stripTags(formatTelegramDelivery(summary.telegramToday ?? summary.latestTelegram))}`,
     `Публикации: сегодня ${summary.articles.publishedTodayCount}, за 6ч ${summary.health.live_window_6h_count}`,
     `Очередь: pending ${count(summary.articles.currentQueue, 'pending')}, retry ${count(summary.articles.currentQueue, 'retry_wait')}, processing ${count(summary.articles.currentQueue, 'processing')}`,
     `Open batches: ${summary.health.batches_open}`,
     `Алерты: ${formatAlertGroups(summary.alertGroups)}`,
+    `Детали алертов: ${formatAlertDetailsForPrompt(summary.openAlerts)}`,
+    `Метрика вчера: ${trafficPromptFact(summary.traffic)}`,
   ].join('\n')
 
   return [
-    'Разбери ops-сигнал Malakhov AI Digest.',
+    'Разбери и исправь production-проблему Malakhov AI Digest.',
     'Репозиторий: /Users/malast/malakhov-ai-digest',
+    `Фокус: ${focus.title}`,
     facts,
-    'Задача: найти root cause, объяснить простым языком, что сломалось, и по возможности исправить до зелёного статуса.',
-    'Начни с dry-run: npm run ops:report -- --dry-run --kind=manual',
-    'Проверь pipeline_alerts, anthropic_batches, telegram_channel_posts, pg_cron и GitHub Actions. Не трогай unrelated changes.',
+    'Задача:',
+    '1. Найди root cause, а не просто закрой алерт.',
+    `2. Проверь: ${focus.checks.join(', ')}.`,
+    '3. Внеси системный фикс, добавь или обнови тесты.',
+    '4. Проверь dry-run: npm run ops:report -- --dry-run --kind=manual.',
+    '5. Обнови docs/OPERATIONS.md, если изменилось поведение.',
+    'Не трогай unrelated changes.',
   ].join('\n')
+}
+
+function resolveFixPromptFocus(summary: OpsSummary): { title: string; checks: string[] } {
+  const alertTypes = new Set(summary.openAlerts.map((alert) => alert.alert_type))
+  const expectedSlots = expectedTelegramSlots(new Date(summary.generatedAt))
+
+  if (
+    summary.telegramToday?.status === 'failed' ||
+    (expectedSlots > 0 && !summary.telegramToday) ||
+    (summary.telegramToday && summary.telegramToday.success_count < summary.telegramToday.expected_slots && summary.telegramToday.status !== 'skipped_low_articles')
+  ) {
+    return {
+      title: 'Telegram delivery',
+      checks: ['telegram_channel_posts', 'pg_cron', 'bot/channel-post-core.ts', 'app/api/cron/tg-channel-post/route.ts', 'GitHub Actions'],
+    }
+  }
+
+  if (summary.latestIngest?.status === 'failed' || alertTypes.has('source_down')) {
+    return {
+      title: 'RSS/source ingest',
+      checks: ['ingest_runs', 'source_runs', 'pipeline/ingest.ts', 'pipeline/rss-parser.ts', 'pipeline/source-health.ts'],
+    }
+  }
+
+  if (
+    summary.latestEnrich?.status === 'failed' ||
+    alertTypes.has('provider_invalid_request') ||
+    alertTypes.has('provider_rate_limit') ||
+    alertTypes.has('enrich_failed_spike') ||
+    alertTypes.has('batch_submit_failed') ||
+    alertTypes.has('batch_collect_failed') ||
+    alertTypes.has('batch_poll_stuck') ||
+    alertTypes.has('batch_apply_stuck') ||
+    alertTypes.has('claude_parse_failed')
+  ) {
+    return {
+      title: 'Article enrichment / batch processing',
+      checks: ['pipeline_alerts', 'anthropic_batches', 'anthropic_batch_items', 'enrich_runs', 'pipeline/enrich-submit-batch.ts', 'pipeline/enrich-collect-batch.ts', 'pipeline/recover-batch-stuck.ts'],
+    }
+  }
+
+  if (
+    summary.articles.publishedTodayCount === 0 ||
+    summary.health.live_window_6h_count === 0 ||
+    alertTypes.has('publish_verify_failed') ||
+    alertTypes.has('publish_verify_failed_warn') ||
+    alertTypes.has('published_low_window')
+  ) {
+    return {
+      title: 'Publication / live verification',
+      checks: ['articles', 'publish_status/verified_live', 'pipeline/publish-verify.ts', 'app/api/feed', 'live article URLs'],
+    }
+  }
+
+  if (alertTypes.has('claude_daily_budget_exceeded') || alertTypes.has('enrich_submit_blocked_budget')) {
+    return {
+      title: 'LLM budget guard',
+      checks: ['llm_usage_logs', 'pipeline/cost-guard.ts', 'pipeline/enrich-submit-batch.ts', 'CLAUDE_DAILY_BUDGET_USD'],
+    }
+  }
+
+  return {
+    title: 'General ops signal',
+    checks: ['pipeline_alerts', 'anthropic_batches', 'telegram_channel_posts', 'pg_cron', 'GitHub Actions'],
+  }
+}
+
+function trafficPromptFact(traffic: OpsTrafficSummary): string {
+  if (traffic.status !== 'ok') return 'нет данных'
+  return `${traffic.date}: visits=${traffic.visits ?? 0}, users=${traffic.users ?? 0}, pageviews=${traffic.pageviews ?? 0}`
+}
+
+function formatAlertDetailsForPrompt(alerts: OpsAlertRow[]): string {
+  if (!alerts.length) return 'нет открытых алертов'
+  return alerts
+    .slice(0, 3)
+    .map((alert) => `${humanAlertType(alert.alert_type)} / ${alert.severity} / count=${alert.occurrence_count}: ${truncate(alert.message, 180)}`)
+    .join(' | ')
 }
 
 function buildDeliveryProblems(summary: OpsSummary): string[] {
@@ -929,11 +1221,33 @@ function formatTelegramDelivery(row: OpsTelegramDelivery | null): string {
   return `ожидает отправки: ${countText}, статус ${escapeHtml(row.status)}`
 }
 
+function formatTelegramDeliveryShort(row: OpsTelegramDelivery | null): string {
+  if (!row) return 'нет данных'
+  const expected = row.expected_slots > 0 ? row.expected_slots : 5
+  if (row.status === 'success') return `${row.success_count}/${expected} постов отправлены`
+  if (row.status === 'partial_success') return `${row.success_count}/${expected} постов отправлены`
+  if (row.status === 'skipped_low_articles') return 'не отправлялись: мало подходящих статей'
+  if (row.status === 'failed') return 'есть ошибка отправки'
+  return `${row.success_count}/${expected} постов, статус ${row.status}`
+}
+
 function formatPublicationDelivery(summary: OpsSummary): string {
   const today = summary.articles.publishedTodayCount
   const window6h = summary.health.live_window_6h_count
   if (today === 0) return 'сегодня новых live-статей нет'
   return `сегодня опубликовано ${today} ${pluralize(today, 'статья', 'статьи', 'статей')}; за последние 6 часов ${window6h} ${pluralize(window6h, 'статья', 'статьи', 'статей')}`
+}
+
+function formatPercentDelta(value: number | null): string {
+  if (value === null) return 'нет базы'
+  if (value > 0) return `+${value}%`
+  return `${value}%`
+}
+
+function formatDateKeyShort(dateKey: string): string {
+  const [, month, day] = dateKey.split('-')
+  if (!month || !day) return dateKey
+  return `${day}.${month}`
 }
 
 function formatAlertGroups(groups: OpsSummary['alertGroups']): string {
@@ -1110,9 +1424,12 @@ export const _internals = {
   expectedTelegramSlots,
   formatDigest,
   formatTelegramDelivery,
+  getFixPromptDecision,
   groupAlerts,
+  mskDateKeyDaysAgo,
   resolveOpsReportKind,
   selectRepresentativeDigestRun,
+  shouldShowFixPrompt,
   summarizeTelegramDelivery,
   startOfMskDayUtcIso,
 }
