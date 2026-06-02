@@ -149,7 +149,7 @@
   },
   {
     "id": 7,
-    "status": "planned",
+    "status": "ready_for_codex",
     "cluster": "ИИ-агенты",
     "title": "ИИ-агенты для бизнеса: что это и где применять",
     "primaryKeyword": "ИИ агенты для бизнеса",
@@ -198,7 +198,7 @@
   },
   {
     "id": 9,
-    "status": "planned",
+    "status": "ready_for_codex",
     "cluster": "ИИ-агенты",
     "title": "ИИ-агенты в продажах",
     "primaryKeyword": "ИИ агенты в продажах",

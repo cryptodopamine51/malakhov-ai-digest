@@ -1,0 +1,25 @@
+{
+  "id": 7,
+  "status": "ready_for_codex",
+  "cluster": "ИИ-агенты",
+  "title": "ИИ-агенты для бизнеса: что это и где применять",
+  "primaryKeyword": "ИИ агенты для бизнеса",
+  "supportingKeywords": [
+    "AI агенты для бизнеса",
+    "что такое ИИ агент",
+    "где применять ИИ агентов",
+    "agentic AI для бизнеса"
+  ],
+  "intent": "informational",
+  "audience": [
+    "предприниматель",
+    "CEO",
+    "продакт",
+    "руководитель отдела",
+    "разработчик"
+  ],
+  "targetSlug": "ii-agenty-dlya-biznesa-chto-eto-i-gde-primenyat",
+  "priority": "high",
+  "cta": "agent_workflow_audit",
+  "notes": "Базовый хаб кластера ИИ-агентов: определения, сценарии, ограничения, human-in-the-loop."
+}

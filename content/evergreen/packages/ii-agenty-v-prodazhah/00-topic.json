@@ -1,0 +1,24 @@
+{
+  "id": 9,
+  "status": "planned",
+  "cluster": "ИИ-агенты",
+  "title": "ИИ-агенты в продажах",
+  "primaryKeyword": "ИИ агенты в продажах",
+  "supportingKeywords": [
+    "AI агент для продаж",
+    "ИИ для отдела продаж",
+    "автоматизация продаж с ИИ агентами",
+    "AI SDR агент"
+  ],
+  "intent": "practical",
+  "audience": [
+    "руководитель продаж",
+    "CEO",
+    "предприниматель",
+    "growth manager"
+  ],
+  "targetSlug": "ii-agenty-v-prodazhah",
+  "priority": "high",
+  "cta": "sales_ai_audit",
+  "notes": "Сценарии: квалификация лидов, follow-up, сводки звонков, CRM hygiene, ограничения и контроль."
+}
