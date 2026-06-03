@@ -14,8 +14,10 @@ config({ path: resolve(process.cwd(), '.env.local') })
 import { parseSlot, runChannelPost } from './channel-post-core'
 
 export {
+  applyGeneratedCaptionsToPlan,
   buildChannelPostPlan,
   buildTelegramCaption,
+  buildTelegramCaptionFromDeepSeekJson,
   deliverPlannedChannelPost,
   parseSlot,
   runChannelPost,

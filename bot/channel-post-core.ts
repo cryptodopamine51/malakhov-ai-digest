@@ -7,12 +7,15 @@
  */
 
 import { createHash } from 'crypto'
+import OpenAI from 'openai'
 
 import { getArticleUrl } from '../lib/article-slugs'
 import { readSiteUrlFromEnv } from '../lib/site'
 import { getServerClient } from '../lib/supabase'
 import type { Article } from '../lib/supabase'
 import { getMoscowDateKey } from '../lib/utils'
+import { writeLlmUsageLog, ZERO_USAGE_TOTALS, type UsageTotals } from '../pipeline/llm-usage'
+import { estimateTextCostUsd, type TextUsageForCost } from '../pipeline/model-pricing'
 import { assertServiceRoleKey, markArticlesSent } from './daily-digest-core'
 import {
   deriveDigestStory,
@@ -25,6 +28,9 @@ const SLOT_COUNT = 5
 const MIN_ARTICLES_TO_SEND = 3
 const RECENT_STORY_MEMORY_HOURS = 72
 const CAPTION_LIMIT = 1024
+const DEEPSEEK_CAPTION_OPERATION = 'deepseek_tg_channel_caption'
+const DEFAULT_DEEPSEEK_CAPTION_MODEL = 'deepseek-v4-flash'
+const DEFAULT_DEEPSEEK_CAPTION_DAILY_BUDGET_USD = 0.05
 
 export type ChannelPostStatus =
   | 'planned'
@@ -64,7 +70,9 @@ export type ChannelPostCandidate = Pick<
   | 'original_title'
   | 'ru_title'
   | 'lead'
+  | 'card_teaser'
   | 'tg_teaser'
+  | 'source_lang'
   | 'primary_category'
   | 'secondary_categories'
   | 'topics'
@@ -137,106 +145,420 @@ function truncatePlain(text: string, maxLength: number): string {
 type CaptionArticle = Pick<ChannelPostCandidate, 'ru_title' | 'original_title' | 'tg_teaser'> &
   Partial<Pick<
     ChannelPostCandidate,
-    'id' | 'source_name' | 'lead' | 'primary_category' | 'secondary_categories' | 'topics' | 'score' | 'pub_date'
+    | 'id'
+    | 'source_name'
+    | 'source_lang'
+    | 'lead'
+    | 'card_teaser'
+    | 'primary_category'
+    | 'secondary_categories'
+    | 'topics'
+    | 'score'
+    | 'pub_date'
   >>
 
-const TOPIC_ANGLE_RULES: Array<{ re: RegExp; angle: string }> = [
-  {
-    re: /agent experience|agentic experience|\bax\b|ии-агент[а-я]*[^.]{0,80}сайт|агент[а-я]*[^.]{0,80}сайт/i,
-    angle: 'Если ИИ-агент не понимает ваш сайт, будущий клиент может даже не увидеть продукт.',
-  },
-  {
-    re: /робот[а-я]*|robot|embodied/i,
-    angle: 'Роботы выглядят как железная история, но для ИИ это ещё и способ собирать данные о физическом мире.',
-  },
-  {
-    re: /claude[^.]{0,120}(увол|некомпетент|заказчик)|делегирован[а-я]* мышлен/i,
-    angle: 'Это не анекдот про нейросеть, а пример того, как люди отдают модели право судить о компетентности.',
-  },
-  {
-    re: /(?:^|[^\p{L}])(?:вод[аы]|водн[а-я]* ресурс[а-я]*|water|охлажд[её]н[а-я]*|дата-центр[а-я]*|data\s*center)/iu,
-    angle: 'ИИ-инфраструктура упирается не только в GPU, но и в воду, энергию и площадки.',
-  },
-  {
-    re: /эрд[её]ш|единичн[а-я]* расстояни|discrete geometry|math problem|математ/i,
-    angle: 'Когда модель закрывает задачу 1946 года, спор становится шире: где теперь граница между инструментом и исследователем.',
-  },
-  {
-    re: /\bipo\b|проспект ipo|фактор[а-я]* риск/i,
-    angle: 'IPO-документы хорошо показывают, какие риски компании уже считают материальными.',
-  },
+const TITLE_MAX_LENGTH = 140
+const BODY_MAX_LENGTH = 520
+const DANGLING_TITLE_WORDS = new Set([
+  'в', 'во', 'на', 'для', 'по', 'из', 'с', 'со', 'к', 'ко', 'о', 'об', 'обо',
+  'от', 'до', 'за', 'над', 'под', 'при', 'про', 'и', 'или',
+])
+const FORBIDDEN_CAPTION_PHRASES = [
+  'не просто',
+  'не только',
+  'главное не',
+  'смотрим не на хайп',
+  'это не',
+  'а значит',
+  'важны не сами по себе',
+  'не столько',
+  'дело не',
+  'не в факте новости',
+  'какой сдвиг она показывает',
 ]
 
-function captionStory(article: CaptionArticle) {
-  return deriveDigestStory({
-    id: article.id ?? 'caption-preview',
-    source_name: article.source_name ?? 'unknown',
-    original_title: article.original_title,
-    ru_title: article.ru_title ?? null,
-    lead: article.lead ?? null,
-    tg_teaser: article.tg_teaser ?? null,
-    primary_category: article.primary_category ?? 'ai-industry',
-    secondary_categories: article.secondary_categories ?? [],
-    topics: article.topics ?? [],
-    score: article.score ?? 0,
-    pub_date: article.pub_date ?? null,
-  })
+interface TelegramCaptionParts {
+  title: string
+  body: string
 }
 
-function buildTelegramAngle(article: CaptionArticle): string {
-  const text = [article.ru_title, article.original_title, article.lead, article.tg_teaser]
-    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-    .join(' ')
+function trimDanglingTitleWords(value: string): string {
+  const words = value.trim().split(/\s+/)
+  while (words.length > 1) {
+    const last = words[words.length - 1]!
+      .replace(/[.,:;!?»)"'`]+$/g, '')
+      .toLowerCase()
+    if (!DANGLING_TITLE_WORDS.has(last)) break
+    words.pop()
+  }
+  return words.join(' ').trim()
+}
 
-  for (const rule of TOPIC_ANGLE_RULES) {
-    if (rule.re.test(text)) return rule.angle
+function truncateAtWordBoundary(text: string, maxLength: number): string {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= maxLength) return trimDanglingTitleWords(normalized)
+
+  const cut = normalized.slice(0, maxLength + 1)
+  const lastSpace = cut.lastIndexOf(' ')
+  const candidate = lastSpace > 40 ? cut.slice(0, lastSpace) : normalized.slice(0, maxLength)
+  return `${trimDanglingTitleWords(candidate).replace(/[.,:;!?-]+$/g, '').trim()}…`
+}
+
+function cleanCaptionText(value: string): string {
+  return value
+    .replace(/\s+/g, ' ')
+    .replace(/^[—–-]\s*/, '')
+    .trim()
+}
+
+function hasForbiddenCaptionPhrase(value: string): boolean {
+  const normalized = value.toLowerCase().replace(/\s+/g, ' ')
+  return FORBIDDEN_CAPTION_PHRASES.some((phrase) => normalized.includes(phrase))
+}
+
+function validateCaptionParts(value: unknown): TelegramCaptionParts | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  const title = typeof record.title === 'string' ? cleanCaptionText(record.title) : ''
+  const body = typeof record.body === 'string' ? cleanCaptionText(record.body) : ''
+  if (!title || !body) return null
+  if (hasForbiddenCaptionPhrase(`${title} ${body}`)) return null
+  return {
+    title: truncateAtWordBoundary(title, 120),
+    body: truncatePlain(body, BODY_MAX_LENGTH),
+  }
+}
+
+function parseJsonObject(text: string): unknown {
+  try {
+    return JSON.parse(text)
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/)
+    if (!match) return null
+    try {
+      return JSON.parse(match[0])
+    } catch {
+      return null
+    }
+  }
+}
+
+function fallbackCaptionParts(article: CaptionArticle): TelegramCaptionParts {
+  const title = truncateAtWordBoundary(article.ru_title ?? article.original_title, TITLE_MAX_LENGTH)
+  const bodySource = article.tg_teaser ?? article.lead ?? article.card_teaser ?? article.original_title
+  return {
+    title,
+    body: truncatePlain(bodySource, BODY_MAX_LENGTH),
+  }
+}
+
+function formatTelegramCaption(parts: TelegramCaptionParts, maxLength = CAPTION_LIMIT): string {
+  for (let bodyLimit = BODY_MAX_LENGTH; bodyLimit >= 80; bodyLimit -= 40) {
+    const body = truncatePlain(parts.body, bodyLimit)
+    const caption = `<b>${escapeHtml(parts.title)}</b>${body ? `\n\n${escapeHtml(body)}` : ''}`
+    if (caption.length <= maxLength) return caption
   }
 
-  const story = captionStory(article)
-  if (story.eventType === 'funding') return 'Деньги показывают, где рынок ставит следующую крупную ставку.'
-  if (story.eventType === 'model_release') return 'Следим за релизом, который может быстро попасть в продукты и рабочие процессы.'
-  if (story.eventType === 'product_launch') return 'Не просто анонс: смотрим, какую задачу теперь закрывают ИИ-инструменты.'
-  if (story.eventType === 'benchmark') return 'Бенчмарки важны не сами по себе, а тем, как они меняют выбор моделей и инструментов.'
-  if (story.eventType === 'research') return 'Это не только научная новость: такие результаты задают направление для будущих продуктов.'
-  if (story.eventType === 'regulation') return 'Регулирование ИИ становится прикладным риском для бизнеса, а не юридическим фоном.'
-  if (story.eventType === 'security') return 'Важно для тех, кто уже внедряет ИИ: слабое место часто появляется не там, где его ждут.'
-  if (story.eventType === 'partnership' || story.eventType === 'acquisition') {
-    return 'Сделки показывают, где большие игроки собирают следующий слой ИИ-рынка.'
-  }
-  if (story.eventType === 'business_case') return 'Практический кейс: что получается, когда ИИ доходит до денег, клиентов и процессов.'
+  const title = truncateAtWordBoundary(parts.title, 120)
+  return `<b>${escapeHtml(title)}</b>`
+}
 
-  const topics = new Set([article.primary_category, ...(article.topics ?? [])].filter(Boolean))
-  if (topics.has('ai-russia')) return 'Российский контекст: что это меняет для бизнеса, разработчиков и пользователей здесь.'
-  if (topics.has('coding')) return 'Для разработчиков: где ИИ меняет рабочий процесс, а где создаёт новые риски.'
-  if (topics.has('ai-research')) return 'Смотрим не на хайп, а на то, что результат говорит о реальных возможностях моделей.'
-  return 'Главное не в факте новости, а в том, какой сдвиг она показывает.'
+export function buildTelegramCaptionFromDeepSeekJson(
+  article: CaptionArticle,
+  value: unknown,
+  maxLength = CAPTION_LIMIT,
+): string | null {
+  const parts = validateCaptionParts(value)
+  if (!parts) return null
+  const caption = formatTelegramCaption(parts, maxLength)
+  return caption.length <= maxLength ? caption : formatTelegramCaption(fallbackCaptionParts(article), maxLength)
 }
 
 export function buildTelegramCaption(
   article: CaptionArticle,
   maxLength = CAPTION_LIMIT,
 ): string {
-  const title = truncatePlain(article.ru_title ?? article.original_title, 180)
-  const angle = buildTelegramAngle(article)
-  const teaserRaw = article.tg_teaser ?? article.lead ?? ''
-
-  for (let teaserLimit = 640; teaserLimit >= 80; teaserLimit -= 40) {
-    const teaser = truncatePlain(teaserRaw, teaserLimit)
-    const caption = [
-      `<b>${escapeHtml(title)}</b>`,
-      escapeHtml(angle),
-      teaser ? `<b>Зачем открыть:</b> ${escapeHtml(teaser)}` : null,
-    ].filter(Boolean).join('\n\n')
-    if (caption.length <= maxLength) return caption
-  }
-
-  const compactTitle = truncatePlain(title, 160)
-  const caption = `<b>${escapeHtml(compactTitle)}</b>\n\n${escapeHtml(angle)}`
-  return caption.length <= maxLength ? caption : `<b>${escapeHtml(truncatePlain(compactTitle, 120))}</b>`
+  return formatTelegramCaption(fallbackCaptionParts(article), maxLength)
 }
 
 function captionHash(caption: string | null): string | null {
   return caption ? createHash('sha256').update(caption).digest('hex').slice(0, 32) : null
+}
+
+function numberEnv(name: string, fallback: number): number {
+  const value = Number(process.env[name])
+  return Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+function deepSeekClient(): OpenAI | null {
+  const apiKey = process.env.DEEPSEEK_API_KEY
+  if (!apiKey) return null
+  return new OpenAI({
+    apiKey,
+    baseURL: process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com',
+    timeout: numberEnv('DEEPSEEK_TELEGRAM_CAPTION_TIMEOUT_MS', 45_000),
+    maxRetries: numberEnv('DEEPSEEK_MAX_RETRIES', 1),
+  })
+}
+
+function deepSeekCaptionModel(): string {
+  return process.env.DEEPSEEK_TELEGRAM_CAPTION_MODEL
+    ?? process.env.DEEPSEEK_WRITER_MODEL
+    ?? DEFAULT_DEEPSEEK_CAPTION_MODEL
+}
+
+function deepSeekUsage(value: unknown): TextUsageForCost {
+  const raw = (value ?? {}) as Record<string, unknown>
+  const promptTokens = Number(raw.prompt_tokens ?? 0)
+  const completionTokens = Number(raw.completion_tokens ?? 0)
+  const cacheHit = Number(raw.prompt_cache_hit_tokens ?? 0)
+  const cacheMiss = Number(raw.prompt_cache_miss_tokens ?? Math.max(0, promptTokens - cacheHit))
+  return {
+    inputTokens: promptTokens,
+    outputTokens: completionTokens,
+    cacheHitInputTokens: cacheHit,
+    cacheMissInputTokens: cacheMiss,
+  }
+}
+
+function usageToTotals(model: string, usage: TextUsageForCost): UsageTotals {
+  return {
+    inputTokens: usage.inputTokens ?? 0,
+    outputTokens: usage.outputTokens ?? 0,
+    cacheReadTokens: usage.cacheHitInputTokens ?? 0,
+    cacheCreateTokens: 0,
+    estimatedCostUsd: estimateTextCostUsd({ provider: 'deepseek', model, usage }),
+  }
+}
+
+function moscowDayStartIso(dateKey = getMoscowDateKey()): string {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  return new Date(Date.UTC(year, (month ?? 1) - 1, day ?? 1, 0, 0, 0) - MSK_OFFSET_MS).toISOString()
+}
+
+async function getTodayTelegramCaptionSpend(supabase: ChannelPostSupabase): Promise<number> {
+  const { data, error } = await supabase
+    .from('llm_usage_logs')
+    .select('estimated_cost_usd')
+    .eq('provider', 'deepseek')
+    .eq('operation', DEEPSEEK_CAPTION_OPERATION)
+    .gte('created_at', moscowDayStartIso())
+    .limit(100)
+
+  if (error) throw new Error(`DeepSeek Telegram caption spend query failed: ${error.message}`)
+  return (data ?? []).reduce((sum, row) => sum + Number(row.estimated_cost_usd ?? 0), 0)
+}
+
+function buildDeepSeekCaptionPrompt(article: CaptionArticle): { system: string; user: string } {
+  const system = [
+    'Ты редактор русскоязычного AI-медиа Malakhov AI Digest.',
+    'Напиши короткую подпись для Telegram-поста простым, живым и понятным языком.',
+    'Структура ответа строго JSON: {"title":"...","body":"..."}.',
+    'title: до 120 символов, нормальный русский заголовок, не обрывай его на предлоге или союзе.',
+    'body: 180-360 символов, 2-3 предложения: что произошло, почему это важно, что читатель узнает.',
+    'Не используй bullets, эмодзи, служебные ярлыки, обращение на "ты", канцелярит и маркетинговые фразы.',
+    'Запрещены конструкции: "не просто", "не только", "главное не", "смотрим не на хайп", "это не", "а значит".',
+    'Не добавляй фактов, которых нет во входных данных.',
+    'Верни только JSON.',
+  ].join('\n')
+
+  const user = JSON.stringify({
+    ru_title: article.ru_title,
+    original_title: article.original_title,
+    lead: article.lead,
+    tg_teaser: article.tg_teaser,
+    card_teaser: article.card_teaser,
+    source_name: article.source_name,
+    primary_category: article.primary_category,
+  }, null, 2)
+
+  return { system, user: `Входные данные статьи:\n${user}` }
+}
+
+function estimateCaptionRequestCost(model: string, system: string, user: string): number {
+  const inputTokens = Math.ceil((system.length + user.length) / 4)
+  return estimateTextCostUsd({
+    provider: 'deepseek',
+    model,
+    usage: {
+      inputTokens,
+      outputTokens: 220,
+      cacheMissInputTokens: inputTokens,
+      cacheHitInputTokens: 0,
+    },
+  })
+}
+
+async function writeCaptionUsage(params: {
+  supabase: ChannelPostSupabase
+  model: string
+  article: CaptionArticle
+  slotNo: number
+  deliveryDate: string
+  attempt: number
+  status: 'ok' | 'failed'
+  usage: UsageTotals
+  error?: string | null
+}): Promise<void> {
+  await writeLlmUsageLog({
+    supabase: params.supabase,
+    provider: 'deepseek',
+    model: params.model,
+    operation: DEEPSEEK_CAPTION_OPERATION,
+    runKind: 'telegram_channel_post',
+    articleId: params.article.id ?? null,
+    sourceName: params.article.source_name ?? null,
+    sourceLang: params.article.source_lang ?? null,
+    originalTitle: params.article.original_title,
+    resultStatus: params.status,
+    metadata: {
+      delivery_date: params.deliveryDate,
+      slot_no: params.slotNo,
+      attempt: params.attempt,
+      error: params.error ?? null,
+    },
+    usage: params.usage,
+  })
+}
+
+async function generateDeepSeekTelegramCaption(params: {
+  supabase: ChannelPostSupabase
+  client: OpenAI
+  article: CaptionArticle
+  model: string
+  deliveryDate: string
+  slotNo: number
+}): Promise<{ caption: string | null; costUsd: number }> {
+  let totalCostUsd = 0
+  let lastError: string | null = null
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const prompt = buildDeepSeekCaptionPrompt(params.article)
+    const retryNote = attempt === 1 ? '' : '\nПредыдущий ответ нарушил правила. Перепиши без запрещённых конструкций и верни только JSON.'
+
+    try {
+      const response = await params.client.chat.completions.create({
+        model: params.model,
+        temperature: 0.55,
+        max_tokens: 320,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: prompt.system },
+          { role: 'user', content: `${prompt.user}${retryNote}` },
+        ],
+      } as any)
+
+      const usage = usageToTotals(params.model, deepSeekUsage(response.usage))
+      totalCostUsd += usage.estimatedCostUsd
+      const rawText = response.choices[0]?.message?.content ?? ''
+      const caption = buildTelegramCaptionFromDeepSeekJson(params.article, parseJsonObject(rawText))
+      await writeCaptionUsage({
+        supabase: params.supabase,
+        model: params.model,
+        article: params.article,
+        deliveryDate: params.deliveryDate,
+        slotNo: params.slotNo,
+        attempt,
+        status: caption ? 'ok' : 'failed',
+        usage,
+        error: caption ? null : 'invalid_or_forbidden_caption',
+      })
+
+      if (caption) return { caption, costUsd: totalCostUsd }
+      lastError = 'invalid_or_forbidden_caption'
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error)
+      await writeCaptionUsage({
+        supabase: params.supabase,
+        model: params.model,
+        article: params.article,
+        deliveryDate: params.deliveryDate,
+        slotNo: params.slotNo,
+        attempt,
+        status: 'failed',
+        usage: ZERO_USAGE_TOTALS,
+        error: lastError,
+      })
+    }
+  }
+
+  logError(`DeepSeek Telegram caption fallback for article ${params.article.id ?? params.article.original_title}`, lastError)
+  return { caption: null, costUsd: totalCostUsd }
+}
+
+function hasLegacyBadCaptionShape(caption: string | null): boolean {
+  if (!caption) return false
+  return caption.includes('<b>Зачем открыть:</b>') || hasForbiddenCaptionPhrase(caption)
+}
+
+type CaptionGenerator = (article: ChannelPostCandidate, slotNo: number) => Promise<string | null>
+
+async function createCaptionGenerator(
+  supabase: ChannelPostSupabase,
+  deliveryDate: string,
+): Promise<CaptionGenerator> {
+  const client = deepSeekClient()
+  if (!client) {
+    log('DEEPSEEK_API_KEY missing; Telegram captions use local fallback')
+    return async () => null
+  }
+
+  const model = deepSeekCaptionModel()
+  const budget = numberEnv('DEEPSEEK_TELEGRAM_CAPTION_DAILY_BUDGET_USD', DEFAULT_DEEPSEEK_CAPTION_DAILY_BUDGET_USD)
+  let spent = 0
+  try {
+    spent = await getTodayTelegramCaptionSpend(supabase)
+  } catch (error) {
+    logError('DeepSeek Telegram caption spend check failed; using local fallback', error)
+    return async () => null
+  }
+
+  return async (article, slotNo) => {
+    const prompt = buildDeepSeekCaptionPrompt(article)
+    const estimatedCost = estimateCaptionRequestCost(model, prompt.system, prompt.user)
+    if (budget > 0 && spent + estimatedCost > budget) {
+      log(`DeepSeek Telegram caption budget cap reached: spent=$${spent.toFixed(6)} cap=$${budget.toFixed(2)}`)
+      return null
+    }
+
+    const result = await generateDeepSeekTelegramCaption({
+      supabase,
+      client,
+      article,
+      model,
+      deliveryDate,
+      slotNo,
+    })
+    spent += result.costUsd
+    return result.caption
+  }
+}
+
+export async function applyGeneratedCaptionsToPlan(
+  rows: ChannelPostPlanItem[],
+  candidates: ChannelPostCandidate[],
+  generateCaption: CaptionGenerator,
+): Promise<ChannelPostPlanItem[]> {
+  const articleById = new Map(candidates.map((article) => [article.id, article]))
+  const updated: ChannelPostPlanItem[] = []
+
+  for (const row of rows) {
+    if (row.status !== 'planned' || !row.article_id) {
+      updated.push(row)
+      continue
+    }
+
+    const article = articleById.get(row.article_id)
+    const generated = article ? await generateCaption(article, row.slot_no) : null
+    const caption = generated ?? row.caption ?? (article ? buildTelegramCaption(article) : null)
+    updated.push({
+      ...row,
+      caption,
+      caption_hash: captionHash(caption),
+    })
+  }
+
+  return updated
 }
 
 function isPostableCandidate(article: ChannelPostCandidate): article is ChannelPostCandidate & {
@@ -462,6 +784,61 @@ async function insertPlanRows(
   return (data ?? []) as TelegramChannelPostRow[]
 }
 
+async function refreshExistingPlannedCaptions(
+  supabase: ChannelPostSupabase,
+  rows: TelegramChannelPostRow[],
+  deliveryDate: string,
+): Promise<TelegramChannelPostRow[]> {
+  const refreshable = rows.filter((row) => (
+    row.status === 'planned' &&
+    typeof row.article_id === 'string' &&
+    hasLegacyBadCaptionShape(row.caption)
+  ))
+  if (refreshable.length === 0) return rows
+
+  const ids = [...new Set(refreshable.map((row) => row.article_id).filter((id): id is string => Boolean(id)))]
+  const { data, error } = await supabase
+    .from('articles')
+    .select('*')
+    .in('id', ids)
+
+  if (error) {
+    logError('Could not load articles for Telegram planned caption refresh', error)
+    return rows
+  }
+
+  const articleById = new Map(((data ?? []) as Article[]).map((article) => [article.id, article as ChannelPostCandidate]))
+  const generateCaption = await createCaptionGenerator(supabase, deliveryDate)
+  const updatedById = new Map<string, TelegramChannelPostRow>()
+
+  for (const row of refreshable) {
+    const article = row.article_id ? articleById.get(row.article_id) : null
+    if (!article) continue
+
+    const generated = await generateCaption(article, row.slot_no)
+    const caption = generated ?? buildTelegramCaption(article)
+    const hash = captionHash(caption)
+    if (!caption || caption === row.caption) continue
+
+    const { data: updated, error: updateError } = await supabase
+      .from('telegram_channel_posts')
+      .update({ caption, caption_hash: hash })
+      .eq('id', row.id)
+      .eq('status', 'planned')
+      .select('*')
+
+    if (updateError) {
+      logError(`Could not refresh Telegram planned caption row=${row.id}`, updateError)
+      continue
+    }
+
+    const next = ((updated ?? []) as TelegramChannelPostRow[])[0]
+    if (next) updatedById.set(next.id, next)
+  }
+
+  return rows.map((row) => updatedById.get(row.id) ?? row)
+}
+
 async function ensureDailyPlan(
   supabase: ChannelPostSupabase,
   opts: {
@@ -474,7 +851,7 @@ async function ensureDailyPlan(
   },
 ): Promise<TelegramChannelPostRow[]> {
   const existing = await fetchExistingPlan(supabase, opts.deliveryDate, opts.channelId)
-  if (existing.length > 0) return existing
+  if (existing.length > 0) return refreshExistingPlannedCaptions(supabase, existing, opts.deliveryDate)
 
   const { data, error } = await supabase
     .from('articles')
@@ -504,12 +881,17 @@ async function ensureDailyPlan(
     logError('Recent Telegram story memory failed; planning with same-day dedup only', err)
   }
 
-  const rows = buildChannelPostPlan(candidates, recentSentArticles, {
+  let rows = buildChannelPostPlan(candidates, recentSentArticles, {
     deliveryDate: opts.deliveryDate,
     contentDate: opts.contentDate,
     channelId: opts.channelId,
     siteUrl: opts.siteUrl,
   })
+  rows = await applyGeneratedCaptionsToPlan(
+    rows,
+    candidates,
+    await createCaptionGenerator(supabase, opts.deliveryDate),
+  )
 
   const inserted = await insertPlanRows(supabase, rows)
   if (inserted.length > 0) {

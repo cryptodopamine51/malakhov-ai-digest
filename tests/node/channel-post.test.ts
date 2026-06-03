@@ -2,8 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  applyGeneratedCaptionsToPlan,
   buildChannelPostPlan,
   buildTelegramCaption,
+  buildTelegramCaptionFromDeepSeekJson,
   deliverPlannedChannelPost,
   type ChannelPostCandidate,
   type TelegramChannelPostRow,
@@ -13,9 +15,11 @@ function article(overrides: Partial<ChannelPostCandidate> & { id: string; origin
   return {
     id: overrides.id,
     source_name: overrides.source_name ?? 'The Decoder',
+    source_lang: overrides.source_lang ?? 'en',
     original_title: overrides.original_title,
     ru_title: overrides.ru_title ?? null,
     lead: overrides.lead ?? 'Lead',
+    card_teaser: overrides.card_teaser ?? 'Короткий teaser для карточки статьи.',
     tg_teaser: overrides.tg_teaser ?? 'Коротко объясняем, почему это важно и что будет в материале.',
     primary_category: overrides.primary_category ?? 'ai-industry',
     secondary_categories: overrides.secondary_categories ?? [],
@@ -100,7 +104,7 @@ test('buildTelegramCaption keeps valid HTML under Telegram photo caption limit',
   assert.doesNotMatch(caption, /OpenAI <test> & partners/)
 })
 
-test('buildTelegramCaption adds an editorial angle and reading hook', () => {
+test('buildTelegramCaption uses plain two-paragraph fallback without service labels', () => {
   const caption = buildTelegramCaption({
     original_title: 'Water access is now a risk factor in SpaceX IPO',
     ru_title: 'SpaceX включила доступ к воде в факторы риска для IPO',
@@ -110,23 +114,77 @@ test('buildTelegramCaption adds an editorial angle and reading hook', () => {
     topics: ['ai-industry'],
   })
 
-  assert.match(caption, /ИИ-инфраструктура упирается не только в GPU/)
-  assert.match(caption, /<b>Зачем открыть:<\/b>/)
+  assert.match(caption, /^<b>SpaceX включила доступ к воде в факторы риска для IPO<\/b>\n\nSpaceX/)
+  assert.doesNotMatch(caption, /Зачем открыть/)
+  assert.doesNotMatch(caption, /Главное не|не просто|не только/)
   assert.ok(caption.length <= 1024)
 })
 
-test('buildTelegramCaption does not confuse выводам with water access', () => {
+test('buildTelegramCaption trims dangling title prepositions', () => {
   const caption = buildTelegramCaption({
-    original_title: 'Как Claude убедил заказчиков, что я некомпетентен',
-    ru_title: 'Как Claude убедил заказчиков уволить разработчика',
-    lead: 'Заказчики проверили работу через Claude и поверили выводам модели больше, чем специалисту.',
-    tg_teaser: 'Фрилансер сделал бот, но заказчики уволили его по совету нейросети.',
-    primary_category: 'ai-russia',
-    topics: ['ai-russia', 'coding'],
+    original_title: 'Anthropic scales Project Glasswing to hunt critical software flaws',
+    ru_title: 'Anthropic расширяет Project Glasswing до 150 партнёров для поиска уязвимостей в',
+    lead: 'Claude Mythos нашёл более 10 000 уязвимостей.',
+    tg_teaser: 'Anthropic подключает 150 партнёров из 15 стран к поиску уязвимостей в критической инфраструктуре.',
   })
 
-  assert.match(caption, /отдают модели право судить о компетентности/)
-  assert.doesNotMatch(caption, /ИИ-инфраструктура упирается/)
+  assert.match(caption, /^<b>Anthropic расширяет Project Glasswing до 150 партнёров для поиска уязвимостей<\/b>/)
+  assert.doesNotMatch(caption, / в<\/b>/)
+})
+
+test('buildTelegramCaptionFromDeepSeekJson accepts valid JSON and escapes HTML', () => {
+  const caption = buildTelegramCaptionFromDeepSeekJson(
+    {
+      original_title: 'OpenAI <test> & partners',
+      ru_title: 'OpenAI <test> & партнёры',
+      tg_teaser: 'Fallback',
+    },
+    {
+      title: 'OpenAI <test> & партнёры',
+      body: 'Компания показала обновление для разработчиков. В тексте разбираем, что изменилось и где это может пригодиться.',
+    },
+  )
+
+  assert.equal(
+    caption,
+    '<b>OpenAI &lt;test&gt; &amp; партнёры</b>\n\nКомпания показала обновление для разработчиков. В тексте разбираем, что изменилось и где это может пригодиться.',
+  )
+})
+
+test('buildTelegramCaptionFromDeepSeekJson rejects forbidden template phrases', () => {
+  const caption = buildTelegramCaptionFromDeepSeekJson(
+    {
+      original_title: 'Google launches Gemini Spark',
+      ru_title: 'Google запустила Gemini Spark',
+      tg_teaser: 'Fallback',
+    },
+    {
+      title: 'Google запустила Gemini Spark',
+      body: 'Это не просто анонс: смотрим не на хайп, а на то, какой сдвиг показывает новость.',
+    },
+  )
+
+  assert.equal(caption, null)
+})
+
+test('applyGeneratedCaptionsToPlan updates planned rows and caption hashes', async () => {
+  const candidates = [
+    article({ id: 'a1', source_name: 'OpenAI News', original_title: 'OpenAI launches GPT-5.5 for developers' }),
+    article({ id: 'a2', source_name: 'Google Blog', original_title: 'Google releases Gemini 3 for Workspace' }),
+    article({ id: 'a3', source_name: 'Mistral News', original_title: 'Mistral introduces Le Chat enterprise tools' }),
+    article({ id: 'a4', source_name: 'Nvidia Blog', original_title: 'Nvidia announces new Blackwell accelerator' }),
+    article({ id: 'a5', source_name: 'Yandex Blog', original_title: 'Yandex presents YandexGPT update' }),
+  ]
+  const rows = plan(candidates)
+
+  const updated = await applyGeneratedCaptionsToPlan(
+    rows,
+    candidates,
+    async (candidate, slotNo) => `<b>${candidate.original_title}</b>\n\nGenerated caption ${slotNo}`,
+  )
+
+  assert.equal(updated[0]!.caption, '<b>OpenAI launches GPT-5.5 for developers</b>\n\nGenerated caption 1')
+  assert.notEqual(updated[0]!.caption_hash, rows[0]!.caption_hash)
 })
 
 type Operation = {

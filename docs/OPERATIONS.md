@@ -75,6 +75,9 @@ DEEPSEEK_API_KEY
 DEEPSEEK_BASE_URL
 DEEPSEEK_WRITER_MODEL
 DEEPSEEK_DAILY_BUDGET_USD
+DEEPSEEK_TELEGRAM_CAPTION_MODEL
+DEEPSEEK_TELEGRAM_CAPTION_DAILY_BUDGET_USD
+DEEPSEEK_TELEGRAM_CAPTION_TIMEOUT_MS
 OPENAI_API_KEY
 OPENAI_IMAGE_DAILY_BUDGET_USD
 TELEGRAM_BOT_TOKEN
@@ -136,6 +139,9 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
 - `EDITORIAL_WRITER_PROVIDER=deepseek|anthropic` — override writer provider для routing lab/будущего worker-а. Для production без явного cutover не задавать.
 - `EDITORIAL_REVIEW_POLICY=none|selective|always` — политика compact Claude reviewer. Default для `cheap` и `premium` — none; для `balanced` — selective.
 - `DEEPSEEK_DAILY_BUDGET_USD` — hard logical cap для `editorial:routing --apply`; default в workflow `$0.25`.
+- `DEEPSEEK_TELEGRAM_CAPTION_MODEL` — модель для Telegram channel captions; default `deepseek-v4-flash`.
+- `DEEPSEEK_TELEGRAM_CAPTION_DAILY_BUDGET_USD` — отдельный hard cap для Telegram captions; default `$0.05` в сутки.
+- `DEEPSEEK_TELEGRAM_CAPTION_TIMEOUT_MS` — timeout одного caption-call; default `45000`.
 - `OPENAI_IMAGE_DAILY_BUDGET_USD` — hard logical cap для AI cover workflow/ручного backfill; текущий workflow задаёт `$1`.
 - `TELEGRAM_IMMEDIATE_ALERT_MIN_SEVERITY=critical|warning|info|none` — порог мгновенных Telegram-пушей из `fireAlert`. Default `critical`: warning/info пишутся в `pipeline_alerts`, но не шумят в чат до утренне-вечерней ops-сводки.
 - `TELEGRAM_IMMEDIATE_ALERT_TYPES=alert_a,alert_b` — точечный allow-list типов, которые нужно отправлять мгновенно независимо от severity.
@@ -218,10 +224,15 @@ slot не отправится дважды.
 заголовком `Authorization: Bearer <secret>`, секрет хранится в `vault.secrets` под именем
 `cron_bearer_token` и читается через `vault.decrypted_secrets`.
 
-Caption генерируется локально в `bot/channel-post-core.ts::buildTelegramCaption()` без LLM/API:
-bold title → короткий редакционный angle по topic/event эвристикам → `<b>Зачем открыть:</b>`
-с `tg_teaser`. Это не требует новых env и не добавляет latency/стоимость в cron. Лимит Telegram
-photo caption соблюдается консервативно: итоговая HTML-строка удерживается ≤ 1024 символов.
+Caption генерируется в `bot/channel-post-core.ts` как два абзаца: жирный заголовок и короткий
+редакционный body. При создании нового daily plan runner сначала пытается DeepSeek через
+OpenAI-compatible API (`DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_TELEGRAM_CAPTION_MODEL`),
+валидирует JSON `{title, body}` и пишет usage/cost в `llm_usage_logs` с
+`operation='deepseek_tg_channel_caption'`. Запрещены старые шаблонные формулы (`не просто`,
+`не только`, `главное не`, `смотрим не на хайп`, `это не`, `а значит`) и сервисные ярлыки вроде
+`Зачем открыть`. Если ключа нет, budget cap достигнут или ответ невалиден, fallback безопасный:
+`<b>clean ru_title</b>` + `tg_teaser`, без локального angle-слоя. Лимит Telegram photo caption
+соблюдается консервативно: итоговая HTML-строка удерживается ≤ 1024 символов.
 
 Конфигурация — в `supabase/migrations/017_telegram_channel_posts.sql`. Эта миграция также
 unschedule-ит legacy `tg-digest-weekday` и `tg-digest-weekend`. Секрет в Vault создаётся
