@@ -236,11 +236,18 @@ cron-route: `app/api/cron/tg-channel-post/route.ts?slot=1..5`.
 
 Каждый пост отправляется через Telegram `sendPhoto`: `cover_image_url` как картинка, caption до
 1024 символов и inline-кнопка `Читать на сайте` на canonical article URL с UTM
-`utm_source=tg&utm_medium=channel&utm_campaign=dayfeed_YYYYMMDD&utm_content=slot_N`. Caption строится
-без LLM/API: `<b>ru_title</b>` → короткий редакционный angle по topic/event эвристикам →
-`<b>Зачем открыть:</b> tg_teaser`. Если точного topic-rule нет, fallback берётся из
-`deriveDigestStory()` (`funding`, `model_release`, `product_launch`, `research`, `security`,
-`regulation`, etc.) и `primary_category`.
+`utm_source=tg&utm_medium=channel&utm_campaign=dayfeed_YYYYMMDD&utm_content=slot_N`. Caption — два
+абзаца: жирный нормальный заголовок и короткий редакционный body на 2-3 предложения. При создании
+плана `bot/channel-post-core.ts` пытается переписать caption через DeepSeek
+(`operation='deepseek_tg_channel_caption'` в `llm_usage_logs`); ответ принимается только как JSON
+`{ "title": "...", "body": "..." }`, без запрещённых шаблонных фраз (`не просто`, `не только`,
+`главное не`, `смотрим не на хайп`, `это не`, `а значит`). Если DeepSeek недоступен, превышен
+caption-budget или ответ невалиден, fallback остаётся простым: `<b>clean ru_title</b>` + `tg_teaser`,
+без `Зачем открыть`, bullets и локальных angle-приписок.
+
+Перед вызовом Telegram API runner сам скачивает `cover_image_url` (`GET`, timeout 15s,
+max 10 MB, только `jpeg/png/webp`) и отправляет картинку как multipart upload. Это убирает
+зависимость от того, сможет ли Telegram скачать сторонний CDN URL со своих IP.
 
 Source pool сохраняет старую editorial-логику дайджеста: top-50 за предыдущий MSK-день среди
 `published=true + quality_ok=true + verified_live=true + publish_status='live' + tg_sent=false`
