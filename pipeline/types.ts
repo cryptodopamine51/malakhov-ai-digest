@@ -28,6 +28,7 @@ export type ErrorCode =
   | 'batch_apply_failed'
   | 'claude_parse_failed'
   | 'editorial_parse_failed'
+  | 'editorial_validation_failed'
   | 'quality_reject'
   | 'lease_expired'
   | 'unhandled_error'
@@ -49,6 +50,12 @@ export const RETRYABLE_ERRORS: ErrorCode[] = [
   'batch_canceled',
   'batch_apply_failed',
   'lease_expired',
+  // A fully-parsed editorial output that fails a soft content rule (e.g. lead
+  // anchor, length, banned phrase) is worth re-rolling: model output is
+  // stochastic, so a fresh attempt usually passes. Bounded by maxAttempts, so
+  // a genuinely unfixable article still ends terminal instead of being dropped
+  // on the first try. JSON-unparseable output stays in PERMANENT_ERRORS.
+  'editorial_validation_failed',
 ]
 
 export const PERMANENT_ERRORS: ErrorCode[] = [

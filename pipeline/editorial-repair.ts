@@ -1,5 +1,5 @@
 import type { EditorialOutput } from './claude'
-import { EDITORIAL_BANNED_PHRASES } from './claude'
+import { EDITORIAL_BANNED_PHRASES, getFirstSentence, sentenceHasAnchor, splitSentences } from './claude'
 
 export interface EditorialRepairResult {
   output: EditorialOutput
@@ -34,6 +34,20 @@ export function repairEditorialOutput(input: EditorialOutput): EditorialRepairRe
     if (shortened !== output.ru_title) {
       output.ru_title = shortened
       fixes.push('shorten_ru_title')
+    }
+  }
+
+  // Promote an anchored sentence to the front of the lead when the first
+  // sentence lacks a concrete anchor (number / date / product / proper name).
+  // The validator requires the anchor in the FIRST sentence; the model often
+  // puts it in the second. Reordering salvages the article deterministically
+  // instead of letting it fail terminally. Runs before shortenLead so the
+  // anchored sentence survives any length trim.
+  if (typeof output.lead === 'string') {
+    const reordered = reorderLeadForAnchor(output.lead)
+    if (reordered !== output.lead) {
+      output.lead = reordered
+      fixes.push('reorder_lead_anchor')
     }
   }
 
@@ -118,6 +132,24 @@ function shortenTitle(value: string): string {
     result = next
   }
   return result.length >= 20 ? result.replace(/[,:;.-]+$/, '') : normalized.slice(0, 87).trim()
+}
+
+function reorderLeadForAnchor(value: string): string {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  if (!normalized || sentenceHasAnchor(getFirstSentence(normalized))) return value
+
+  const sentences = splitSentences(normalized)
+  if (sentences.length < 2) return value
+
+  const anchorIndex = sentences.findIndex((sentence) => sentenceHasAnchor(sentence))
+  if (anchorIndex <= 0) return value
+
+  const reordered = [
+    sentences[anchorIndex],
+    ...sentences.slice(0, anchorIndex),
+    ...sentences.slice(anchorIndex + 1),
+  ]
+  return reordered.join(' ')
 }
 
 function shortenLead(value: string): string {

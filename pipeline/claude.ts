@@ -350,22 +350,54 @@ function hasRussianNumberWord(text: string): boolean {
   return /(^|[^\p{L}\p{N}_])(один|одна|одно|два|две|три|четыре|пять|шесть|семь|восемь|девять|десять|месяц|месяца|месяцев|год|года|лет)(?=$|[^\p{L}\p{N}_])/iu.test(text)
 }
 
-function getFirstSentence(text: string): string {
+// Detects a Cyrillic proper noun (Title-case word) that is NOT the first word of
+// the sentence. Sentence-initial capitalization is just grammar, but a Title-case
+// Cyrillic word mid-sentence is a strong proper-noun signal in Russian (Овчинников,
+// Диасофт, Яндекс). JS `\b` is ASCII-only, so the previous `\b[А-ЯЁ]…` regex never
+// matched Cyrillic — Russian names were silently ignored as anchors. All-caps
+// acronyms (ИИ, ИТ) are intentionally excluded by requiring a trailing lowercase.
+function hasCyrillicProperNoun(sentence: string): boolean {
+  const words = sentence.trim().split(/\s+/)
+  for (let index = 1; index < words.length; index++) {
+    const word = words[index].replace(/^[^\p{L}]+/u, '')
+    if (/^[А-ЯЁ][а-яё]/.test(word)) return true
+  }
+  return false
+}
+
+export function getFirstSentence(text: string): string {
   const normalized = text.trim()
   const match = normalized.match(/^[\s\S]*?[.!?](?=\s|$)/u)
   return match?.[0] ?? normalized
 }
 
-function hasLeadAnchor(lead: string): boolean {
-  const firstSentence = getFirstSentence(lead)
+// Splits prose into trimmed sentences, preserving terminal punctuation. Shared
+// with the editorial repair step so lead reordering uses the same boundaries.
+export function splitSentences(text: string): string[] {
+  return text
+    .replace(/\s+/g, ' ')
+    .trim()
+    .match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g)
+    ?.map((sentence) => sentence.trim())
+    .filter(Boolean) ?? []
+}
+
+// True if a single sentence carries a concrete anchor (number / date / product /
+// proper name). Exported so the repair step can find an anchored sentence to
+// promote to the front of the lead instead of discarding the whole article.
+export function sentenceHasAnchor(sentence: string): boolean {
   const latinProductName = /\b[a-z]+[A-Z][A-Za-z0-9.-]*\b|\b[A-Z][A-Za-z0-9.-]{2,}\b/
   return (
-    /\d/.test(firstSentence) ||
-    hasRussianNumberWord(firstSentence) ||
-    latinProductName.test(firstSentence) ||
-    /\b[A-ZА-ЯЁ][A-Za-zА-Яа-яЁё0-9.-]{2,}/.test(firstSentence) ||
-    /\b[A-Z][A-Za-z0-9.-]*(?:GPT|AI|LLM|API|ML|Cloud|Labs|Search|Studio|Claude|Gemini|Llama|DeepSeek|OpenAI)[A-Za-z0-9.-]*\b/i.test(firstSentence)
+    /\d/.test(sentence) ||
+    hasRussianNumberWord(sentence) ||
+    latinProductName.test(sentence) ||
+    hasCyrillicProperNoun(sentence) ||
+    /\b[A-Z][A-Za-z0-9.-]*(?:GPT|AI|LLM|API|ML|Cloud|Labs|Search|Studio|Claude|Gemini|Llama|DeepSeek|OpenAI)[A-Za-z0-9.-]*\b/i.test(sentence)
   )
+}
+
+function hasLeadAnchor(lead: string): boolean {
+  return sentenceHasAnchor(getFirstSentence(lead))
 }
 
 export function validateEditorialDetailed(out: EditorialOutput): EditorialValidationResult {

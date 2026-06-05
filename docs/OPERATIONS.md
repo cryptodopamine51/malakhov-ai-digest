@@ -223,6 +223,12 @@ bold title → короткий редакционный angle по topic/event 
 с `tg_teaser`. Это не требует новых env и не добавляет latency/стоимость в cron. Лимит Telegram
 photo caption соблюдается консервативно: итоговая HTML-строка удерживается ≤ 1024 символов.
 
+С 2026-06-05 runner не передаёт `cover_image_url` в Telegram как внешний URL. Перед `sendPhoto`
+он сам скачивает картинку (`GET`, timeout 15s, max 10 MB, только `jpeg/png/webp`) и отправляет её
+multipart upload. Это убирает класс отказов `Bad Request: failed to get HTTP URL content`, когда
+сторонний CDN доступен сайту/оператору, но Telegram не может скачать URL со своих IP. Если
+prefetch не проходит, слот остаётся `failed_send` с явной причиной `Telegram photo prefetch ...`.
+
 Конфигурация — в `supabase/migrations/017_telegram_channel_posts.sql`. Эта миграция также
 unschedule-ит legacy `tg-digest-weekday` и `tg-digest-weekend`. Секрет в Vault создаётся
 **один раз** руками:
@@ -331,8 +337,32 @@ npm run tg-channel-post -- --slot=1
 `TELEGRAM_IMMEDIATE_ALERT_TYPES`.
 
 - `claude_parse_failed` — warning, cooldown 4 часа, dedupe по `batch_id`. Срабатывает
-  в `enrich-collect-batch`, когда Claude batch result не содержит `output_text`, JSON не
-  парсится или editorial validation отвергает структуру ответа.
+  в `enrich-collect-batch`, когда Claude batch result не содержит `output_text` или JSON не
+  парсится. Это терминальные ошибки (`PERMANENT_ERRORS`): структуру ответа починить
+  ретраем нельзя.
+  - **Editorial validation отдельно от parse (фикс 2026-06-04).** Раньше любой провал
+    `validateEditorialDetailed` (включая мягкие правила «lead без конкретного якоря в первом
+    предложении», длины, banned-фразы) тоже маппился в `claude_parse_failed` →
+    `apply_failed_terminal`, и полностью сгенерированная статья **навсегда** уходила в
+    `enrich_status=failed` без ретрая. За 14 дней так терялось 17 статей и пересыхал поток
+    live-публикаций. Теперь: если JSON распарсился и `quality_ok=true`, провал валидации —
+    это `editorial_validation_failed` (∈ `RETRYABLE_ERRORS`): статья уходит в `retry_wait` и
+    переотправляется новым батчем (до `maxAttempts=3`), потому что output модели
+    стохастичен и свежий прогон обычно проходит. Алёрт `claude_parse_failed` (severity
+    `info`) теперь поднимается только когда статья действительно терминальна (исчерпала
+    ретраи) — self-healing re-roll не шумит. Если `quality_ok=false` (Claude сам признал
+    источник непубликуемым, напр. оффтоп), статья закрывается терминально как
+    `quality_reject` без бесполезных ретраев.
+  - **Lead anchor: Cyrillic-фикс (2026-06-04).** Доминирующая причина провалов —
+    `lead без конкретного якоря в первом предложении`. Детектор якоря в `pipeline/claude.ts`
+    (`sentenceHasAnchor`) проверял кириллические имена через `\b[А-ЯЁ]…`, но JS `\b`
+    работает только по ASCII, поэтому русские имена собственные (Овчинников, Диасофт,
+    Яндекс) **молча** не считались якорем — хорошие лиды отбраковывались. Добавлен
+    `hasCyrillicProperNoun` (Title-case кириллическое слово не в начале предложения; all-caps
+    `ИИ`/`ИТ` исключены). Плюс `repairEditorialOutput` теперь делает `reorder_lead_anchor`:
+    если якорь есть, но не в первом предложении, предложение с якорем поднимается вперёд
+    (без потери контента, до `shortenLead`). На исторической выборке это детерминированно
+    (без re-roll) спасает ~59% провалившихся лидов; остаток уходит в retryable re-roll.
 - `lease_expired_spike` — warning, cooldown 2 часа. `recover-stuck` поднимает его,
   если за один запуск восстановлено больше 3 pre-submit статей с истёкшей lease.
 - `llm_usage_log_write_failed` — warning, cooldown 4 часа. `writeLlmUsageLog`
@@ -1105,9 +1135,9 @@ ENV: `PUBLISHED_LOW_WINDOW_HOURS`, `PUBLISHED_LOW_WINDOW_QUIET_START_MSK`, `PUBL
 | Код | Когда |
 |---|---|
 | `planned` | слот выбран и ждёт своего cron-времени |
-| `sending` | runner забрал слот и отправляет `sendPhoto` |
+| `sending` | runner забрал слот, prefetch-ит обложку и отправляет `sendPhoto` multipart upload |
 | `success` | Telegram вернул `message_id`, строка содержит `sent_at` |
-| `failed_send` | ошибка Telegram API или runtime-ошибка отправки |
+| `failed_send` | ошибка prefetch обложки, Telegram API или runtime-ошибка отправки |
 | `skipped_low_articles` | в дневном pool меньше 3 подходящих статей, весь день пропущен |
 | `skipped_no_article` | для конкретного слота не хватило выбранных материалов |
 

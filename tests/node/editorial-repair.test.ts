@@ -71,6 +71,45 @@ test('repairEditorialOutput preserves dot-ai handles while repairing standalone 
   assert.match(repaired.output.lead, /Meta ИИ/)
 })
 
+test('repairEditorialOutput promotes anchored sentence to front of lead', () => {
+  const draft = output()
+  // First sentence has no concrete anchor; the anchor lives in the second one.
+  draft.lead =
+    'Разработчики поделились опытом автономной разработки и описали ключевые ограничения подхода. ' +
+    'За два месяца Claude Code сгенерировал около 70% кода в их репозиториях, но потребовал постоянного контроля.'
+
+  const repaired = repairEditorialOutput(draft)
+
+  assert.ok(repaired.fixes.includes('reorder_lead_anchor'))
+  assert.match(repaired.output.lead.split(/(?<=[.!?])\s/)[0], /Claude Code|70%/)
+  // No content is lost — both sentences survive the reorder.
+  assert.match(repaired.output.lead, /Разработчики поделились опытом/)
+  assert.ok(repaired.output.lead.length >= 100 && repaired.output.lead.length <= 400)
+})
+
+test('repairEditorialOutput does not reorder when first sentence already anchored', () => {
+  const draft = output()
+  // First sentence already carries the "2 месяца" anchor, so the reorder must
+  // not fire (other repairs like AI→ИИ may still touch the lead text).
+  const repaired = repairEditorialOutput(draft)
+
+  assert.equal(repaired.fixes.includes('reorder_lead_anchor'), false)
+  assert.match(repaired.output.lead.split(/(?<=[.!?])\s/)[0], /2 месяца/)
+})
+
+test('repairEditorialOutput does not invent an anchor when none exists in the lead', () => {
+  const draft = output()
+  draft.lead =
+    'Авторы рассказали о подходе к автономной разработке и поделились наблюдениями. ' +
+    'Они подчеркнули, что итоговый результат всё ещё требует внимательной проверки человеком.'
+  const before = draft.lead
+
+  const repaired = repairEditorialOutput(draft)
+
+  assert.equal(repaired.fixes.includes('reorder_lead_anchor'), false)
+  assert.equal(repaired.output.lead, before)
+})
+
 test('repairEditorialOutput restores paragraphs for long single-paragraph body', () => {
   const draft = output()
   draft.editorial_body = Array.from({ length: 12 }, (_, index) =>

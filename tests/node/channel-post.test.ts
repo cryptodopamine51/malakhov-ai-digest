@@ -5,6 +5,7 @@ import {
   buildChannelPostPlan,
   buildTelegramCaption,
   deliverPlannedChannelPost,
+  sendTelegramPhoto,
   type ChannelPostCandidate,
   type TelegramChannelPostRow,
 } from '../../bot/channel-post'
@@ -256,4 +257,90 @@ test('deliverPlannedChannelPost failure does not mark article tg_sent', async ()
   assert.equal(result.status, 'failed')
   assert.equal(supabase.operations.some((op) => op.table === 'telegram_channel_posts' && op.payload.status === 'failed_send'), true)
   assert.equal(supabase.operations.some((op) => op.table === 'articles'), false)
+})
+
+test('sendTelegramPhoto uploads prefetched cover bytes instead of passing remote URL to Telegram', async () => {
+  const previousFetch = globalThis.fetch
+  const calls: Array<{ input: string; init?: RequestInit }> = []
+  const imageBytes = new Uint8Array([1, 2, 3, 4])
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({ input: String(input), init })
+
+    if (calls.length === 1) {
+      assert.equal(String(input), 'https://cdn.example.com/cover.webp')
+      return new Response(imageBytes, {
+        status: 200,
+        headers: {
+          'content-type': 'image/webp',
+          'content-length': String(imageBytes.byteLength),
+        },
+      })
+    }
+
+    assert.equal(String(input), 'https://api.telegram.org/botbot-token/sendPhoto')
+    assert.equal(init?.method, 'POST')
+    assert.ok(init?.body instanceof FormData)
+    const body = init.body
+    assert.equal(body.get('chat_id'), '@channel')
+    assert.equal(body.get('caption'), '<b>Title</b>')
+    assert.equal(body.get('parse_mode'), 'HTML')
+    assert.deepEqual(JSON.parse(String(body.get('reply_markup'))), {
+      inline_keyboard: [[{ text: 'Читать на сайте', url: 'https://news.example.com/article' }]],
+    })
+
+    const photo = body.get('photo')
+    assert.ok(photo instanceof Blob)
+    assert.equal(photo.type, 'image/webp')
+    assert.equal(photo.size, imageBytes.byteLength)
+
+    return new Response(JSON.stringify({ ok: true, result: { message_id: 789 } }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })
+  }) as typeof fetch
+
+  try {
+    const result = await sendTelegramPhoto(
+      'bot-token',
+      '@channel',
+      'https://cdn.example.com/cover.webp',
+      '<b>Title</b>',
+      'https://news.example.com/article',
+    )
+
+    assert.equal(result.result.message_id, 789)
+    assert.equal(calls.length, 2)
+  } finally {
+    globalThis.fetch = previousFetch
+  }
+})
+
+test('sendTelegramPhoto fails before Telegram API when cover response is not an image', async () => {
+  const previousFetch = globalThis.fetch
+  let calls = 0
+
+  globalThis.fetch = (async () => {
+    calls += 1
+    return new Response('<html>not found</html>', {
+      status: 200,
+      headers: { 'content-type': 'text/html' },
+    })
+  }) as typeof fetch
+
+  try {
+    await assert.rejects(
+      () => sendTelegramPhoto(
+        'bot-token',
+        '@channel',
+        'https://cdn.example.com/cover.webp',
+        '<b>Title</b>',
+        'https://news.example.com/article',
+      ),
+      /unsupported content-type: text\/html/,
+    )
+    assert.equal(calls, 1)
+  } finally {
+    globalThis.fetch = previousFetch
+  }
 })

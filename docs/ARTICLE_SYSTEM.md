@@ -102,9 +102,16 @@ Batch-specific lifecycle не хранится в `articles.enrich_status`.
   `anthropic_batch_items` и `request_payload.article_context`. Collector матчится по
   `anthropic_batch_items.request_custom_id`; legacy `article:<article_id>:attempt:<n>:item:<item_id>`
   остаётся parseable для старых результатов.
-- Claude output parse failures (`missing output_text`, invalid JSON, failed editorial validation)
-  переводят item/article через `error_code='claude_parse_failed'` и поднимают warning
-  alert `claude_parse_failed` с cooldown 4 часа и dedupe по `batch_id`.
+- Claude output parse failures (`missing output_text`, invalid JSON) терминальны:
+  `error_code='claude_parse_failed'` (∈ `PERMANENT_ERRORS`) + warning alert `claude_parse_failed`
+  с cooldown 4 часа и dedupe по `batch_id`. Починить ретраем нельзя.
+- Failed editorial validation при распарсенном JSON обрабатывается отдельно (фикс 2026-06-04):
+  если `quality_ok=true`, статья получает `error_code='editorial_validation_failed'`
+  (∈ `RETRYABLE_ERRORS`) → `retry_wait` → переотправка новым батчем до `maxAttempts=3`
+  (стохастичный output обычно проходит на повторе); алёрт поднимается только когда статья
+  терминальна (исчерпала ретраи). Если `quality_ok=false` — это `quality_reject` (терминально,
+  без ретрая: Claude сам признал источник непубликуемым). Раньше любой провал валидации был
+  `claude_parse_failed` и навсегда ронял полностью сгенерированную статью в `failed`.
 - Ошибка записи `llm_usage_logs` больше не роняет collect/apply path: `writeLlmUsageLog`
   логирует проблему и поднимает warning alert `llm_usage_log_write_failed`.
 
@@ -122,8 +129,14 @@ Validator дополнительно проверяет:
 - standalone `AI` в русском тексте, кроме известных product/institution names;
 - basic body/teaser/summary shape.
 
-Lead anchor check считает конкретным якорем цифры, русские числительные, имена собственные,
-латинские product/model names и camelCase identifiers вроде `openLight`. `card_teaser` 50-59
+Lead anchor check (`sentenceHasAnchor`, первое предложение лида) считает конкретным якорем
+цифры, русские числительные, латинские product/model names и camelCase identifiers вроде
+`openLight`, а также **кириллические имена собственные** (`hasCyrillicProperNoun`: Title-case
+кириллическое слово не в начале предложения — Овчинников, Диасофт, Яндекс; all-caps `ИИ`/`ИТ`
+исключены). До фикса 2026-06-04 кириллические имена не детектировались из-за ASCII-only `\b`,
+и насыщенные именами русские лиды ложно отбраковывались. `repairEditorialOutput` дополнительно
+делает `reorder_lead_anchor`: если якорь есть, но не в первом предложении, предложение с якорем
+поднимается в начало лида (до `shortenLead`, без потери контента). `card_teaser` 50-59
 символов считается warning (`card_teaser короткий`), а не hard reject; ниже 50 остаётся ошибкой.
 
 `pipeline/editorial-routing.ts` и `pipeline/editorial-apply.ts` задают fallback-first routing surface

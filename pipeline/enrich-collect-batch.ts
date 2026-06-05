@@ -374,6 +374,19 @@ async function applyReadyResults(
     }
 
     if (!parsedEditorial.validation.ok) {
+      // The model returned valid JSON but the editorial output failed a soft
+      // content rule. Two cases:
+      //  - quality_ok === false: Claude already decided this isn't publishable
+      //    (e.g. off-topic source). Editorial rules like the lead anchor are
+      //    moot, so reject terminally (quality_reject) — re-rolling just burns
+      //    batch calls on an article that will be rejected again.
+      //  - quality_ok === true: a publishable article tripped a soft rule.
+      //    Model output is stochastic, so this is retryable
+      //    (editorial_validation_failed): finalizeBatchFailure routes it back to
+      //    retry_wait until attempts are exhausted, instead of dropping it on the
+      //    first roll. We only alert once it is genuinely terminal, so a
+      //    self-healing re-roll doesn't generate noise.
+      const intendedReject = parsedEditorial.output?.quality_ok === false
       const parseFailureReason = `editorial validation failed: ${parsedEditorial.validation.errors.join('; ')}`
       const outcome = await finalizeBatchFailure(
         supabase,
@@ -381,19 +394,23 @@ async function applyReadyResults(
         article,
         runId,
         {
-          errorCode: 'claude_parse_failed',
+          errorCode: intendedReject ? 'quality_reject' : 'editorial_validation_failed',
           errorMessage: parseFailureReason,
-          itemStatus: 'apply_failed_terminal',
         },
       )
-      if (outcome === 'retryable') metrics.retryable++
-      else metrics.failed++
-      await fireClaudeParseFailedAlert(supabase, {
-        runId,
-        batchId: item.batch_id,
-        itemId: item.id,
-        reason: parseFailureReason,
-      })
+      if (outcome === 'retryable') {
+        metrics.retryable++
+      } else {
+        metrics.failed++
+        if (!intendedReject) {
+          await fireClaudeParseFailedAlert(supabase, {
+            runId,
+            batchId: item.batch_id,
+            itemId: item.id,
+            reason: parseFailureReason,
+          })
+        }
+      }
       continue
     }
 

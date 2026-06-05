@@ -26,6 +26,22 @@ const SLOT_COUNT = 5
 const MIN_ARTICLES_TO_SEND = 3
 const RECENT_STORY_MEMORY_HOURS = 72
 const CAPTION_LIMIT = 1024
+const TELEGRAM_PHOTO_FETCH_TIMEOUT_MS = 15_000
+const TELEGRAM_PHOTO_MAX_BYTES = 10 * 1024 * 1024
+
+const TELEGRAM_PHOTO_CONTENT_TYPES: Record<string, string> = {
+  'image/jpeg': 'image/jpeg',
+  'image/jpg': 'image/jpeg',
+  'image/pjpeg': 'image/jpeg',
+  'image/png': 'image/png',
+  'image/webp': 'image/webp',
+}
+
+const TELEGRAM_PHOTO_EXTENSIONS: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+}
 
 export type ChannelPostStatus =
   | 'planned'
@@ -238,6 +254,83 @@ export function buildTelegramCaption(
 
 function captionHash(caption: string | null): string | null {
   return caption ? createHash('sha256').update(caption).digest('hex').slice(0, 32) : null
+}
+
+function inferTelegramPhotoContentType(photoUrl: string, rawContentType: string | null): string {
+  const headerType = rawContentType?.split(';')[0]?.trim().toLowerCase() ?? ''
+  if (headerType && TELEGRAM_PHOTO_CONTENT_TYPES[headerType]) {
+    return TELEGRAM_PHOTO_CONTENT_TYPES[headerType]
+  }
+
+  if (headerType && !['application/octet-stream', 'binary/octet-stream'].includes(headerType)) {
+    throw new Error(`Telegram photo prefetch returned unsupported content-type: ${rawContentType}`)
+  }
+
+  try {
+    const pathname = new URL(photoUrl).pathname.toLowerCase()
+    if (/\.(jpe?g)$/.test(pathname)) return 'image/jpeg'
+    if (/\.png$/.test(pathname)) return 'image/png'
+    if (/\.webp$/.test(pathname)) return 'image/webp'
+  } catch {
+    // The fetch above already accepted the URL; keep the error focused on media type.
+  }
+
+  throw new Error(`Telegram photo prefetch returned unsupported content-type: ${rawContentType ?? 'missing'}`)
+}
+
+function telegramPhotoFilename(photoUrl: string, contentType: string): string {
+  const fallback = `telegram-cover.${TELEGRAM_PHOTO_EXTENSIONS[contentType] ?? 'jpg'}`
+
+  try {
+    const rawName = new URL(photoUrl).pathname.split('/').filter(Boolean).pop()
+    if (!rawName) return fallback
+
+    const filename = decodeURIComponent(rawName)
+      .replace(/[^\w.-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 120)
+
+    if (!filename) return fallback
+    if (/\.(?:jpe?g|png|webp)$/i.test(filename)) return filename
+    return `${filename}.${TELEGRAM_PHOTO_EXTENSIONS[contentType] ?? 'jpg'}`
+  } catch {
+    return fallback
+  }
+}
+
+async function fetchTelegramPhotoUpload(photoUrl: string): Promise<{ blob: Blob; filename: string }> {
+  let res: Response
+  try {
+    res = await fetch(photoUrl, {
+      signal: AbortSignal.timeout(TELEGRAM_PHOTO_FETCH_TIMEOUT_MS),
+    })
+  } catch (err) {
+    throw new Error(`Telegram photo prefetch failed: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
+  if (!res.ok) {
+    throw new Error(`Telegram photo prefetch failed: HTTP ${res.status}`)
+  }
+
+  const contentType = inferTelegramPhotoContentType(photoUrl, res.headers.get('content-type'))
+  const lengthHeader = res.headers.get('content-length')
+  const contentLength = lengthHeader ? Number(lengthHeader) : null
+  if (contentLength && contentLength > TELEGRAM_PHOTO_MAX_BYTES) {
+    throw new Error(`Telegram photo prefetch failed: image is too large (${contentLength} bytes)`)
+  }
+
+  const bytes = await res.arrayBuffer()
+  if (bytes.byteLength === 0) {
+    throw new Error('Telegram photo prefetch failed: image is empty')
+  }
+  if (bytes.byteLength > TELEGRAM_PHOTO_MAX_BYTES) {
+    throw new Error(`Telegram photo prefetch failed: image is too large (${bytes.byteLength} bytes)`)
+  }
+
+  return {
+    blob: new Blob([bytes], { type: contentType }),
+    filename: telegramPhotoFilename(photoUrl, contentType),
+  }
 }
 
 function isPostableCandidate(article: ChannelPostCandidate): article is ChannelPostCandidate & {
@@ -582,18 +675,19 @@ export async function sendTelegramPhoto(
   caption: string,
   articleUrlValue: string,
 ): Promise<{ result: { message_id: number } }> {
+  const photo = await fetchTelegramPhotoUpload(photoUrl)
+  const body = new FormData()
+  body.append('chat_id', chatId)
+  body.append('photo', photo.blob, photo.filename)
+  body.append('caption', caption)
+  body.append('parse_mode', 'HTML')
+  body.append('reply_markup', JSON.stringify({
+    inline_keyboard: [[{ text: 'Читать на сайте', url: articleUrlValue }]],
+  }))
+
   const res = await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: chatId,
-      photo: photoUrl,
-      caption,
-      parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [[{ text: 'Читать на сайте', url: articleUrlValue }]],
-      },
-    }),
+    body,
   })
 
   const data = (await res.json()) as TelegramPhotoResponse
@@ -693,4 +787,6 @@ export const _internals = {
   truncatePlain,
   captionHash,
   articleUrl,
+  inferTelegramPhotoContentType,
+  telegramPhotoFilename,
 }
