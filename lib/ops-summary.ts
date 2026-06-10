@@ -730,10 +730,11 @@ export function formatOpsSummaryForTelegram(summary: OpsSummary): string {
   lines.push('<b>📈 Трафик вчера</b>')
   for (const line of formatTrafficLines(summary.traffic)) lines.push(`• ${escapeHtml(line)}`)
   lines.push('')
-  lines.push('<b>📊 Минимум цифр</b>')
-  lines.push(`• За 24ч создано: ${summary.articles.created24h} ${pluralize(summary.articles.created24h, 'материал', 'материала', 'материалов')}`)
-  lines.push(`• За 6ч опубликовано: ${summary.health.live_window_6h_count}`)
-  lines.push(`• Расход ИИ сегодня: ${formatUsd(summary.costs.totalCostUsd)}`)
+  lines.push('<b>📊 Контент</b>')
+  for (const line of buildContentMetricLines(summary)) lines.push(`• ${escapeHtml(line)}`)
+  lines.push('')
+  lines.push('<b>💸 Расходы</b>')
+  lines.push(`• ИИ сегодня: ${formatUsd(summary.costs.totalCostUsd)}`)
   lines.push('')
   lines.push('<b>🎯 Что делать</b>')
   lines.push(escapeHtml(compactActionLine(promptDecision.show, displayStatus)))
@@ -808,12 +809,24 @@ function buildWhatWorksLines(summary: OpsSummary): string[] {
   const criticalCount = summary.openAlerts.filter((alert) => alert.severity === 'critical').length
   const deliveryProblems = buildDeliveryProblems(summary)
   const lines = [
-    `Telegram: ${formatTelegramDeliveryShort(summary.telegramToday ?? summary.latestTelegram)}`,
-    `Сайт: ${summary.articles.publishedTodayCount} ${pluralize(summary.articles.publishedTodayCount, 'публикация', 'публикации', 'публикаций')} сегодня`,
+    `Telegram: ${formatTelegramDeliveryForWorks(summary)}`,
+    `Сайт: ${formatSiteFreshnessShort(summary)}`,
     `Доставка: ${deliveryProblems.length ? 'есть вопросы, смотри ниже' : 'потерь не видно'}`,
     `Критические алерты: ${criticalCount}`,
   ]
   return lines
+}
+
+function buildContentMetricLines(summary: OpsSummary): string[] {
+  const today = summary.articles.publishedTodayCount
+  const window6h = summary.health.live_window_6h_count
+  const created24h = summary.articles.created24h
+
+  return [
+    `Сегодня с 00:00 МСК: ${today} live-${pluralize(today, 'публикация', 'публикации', 'публикаций')}`,
+    `Последние 6ч: ${window6h} live-${pluralize(window6h, 'публикация', 'публикации', 'публикаций')}`,
+    `Последние 24ч: ${created24h} ${pluralize(created24h, 'материал создан', 'материала создано', 'материалов создано')}`,
+  ]
 }
 
 function buildCompactIssueLines(summary: OpsSummary, hasPrompt: boolean, displayStatus: OpsStatus): string[] {
@@ -1244,6 +1257,25 @@ function formatTelegramDeliveryShort(row: OpsTelegramDelivery | null): string {
   if (row.status === 'skipped_low_articles') return 'не отправлялись: мало подходящих статей'
   if (row.status === 'failed') return 'есть ошибка отправки'
   return `${row.success_count}/${expected} постов, статус ${row.status}`
+}
+
+function formatTelegramDeliveryForWorks(summary: OpsSummary): string {
+  if (summary.telegramToday) return formatTelegramDeliveryShort(summary.telegramToday)
+
+  const expectedToday = expectedTelegramSlots(new Date(summary.generatedAt))
+  if (expectedToday === 0) {
+    return 'сегодня слотов ещё не было'
+  }
+
+  return 'сегодня нет данных'
+}
+
+function formatSiteFreshnessShort(summary: OpsSummary): string {
+  const today = summary.articles.publishedTodayCount
+  const window6h = summary.health.live_window_6h_count
+  if (window6h > 0) return `свежие live-публикации есть: ${window6h} за 6ч`
+  if (today > 0) return `сегодня опубликовано ${today}, но за 6ч новых нет`
+  return 'сегодня и за 6ч новых live-публикаций нет'
 }
 
 function formatPublicationDelivery(summary: OpsSummary): string {

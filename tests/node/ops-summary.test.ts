@@ -293,10 +293,65 @@ test('formatOpsSummaryForTelegram renders traffic-light header and escapes HTML'
   assert.match(text, /Период: сегодня 00:00-21:00 МСК · трафик: вчера 10\.05/)
   assert.match(text, /<b>Главное:<\/b> все ключевые контуры работают\./)
   assert.match(text, /<b>✅ Что работает<\/b>/)
+  assert.match(text, /Сайт: свежие live-публикации есть: 2 за 6ч/)
   assert.match(text, /<b>📈 Трафик вчера<\/b>/)
   assert.match(text, /Визиты: 270 \(\+14%\)/)
+  assert.match(text, /<b>📊 Контент<\/b>/)
+  assert.match(text, /Сегодня с 00:00 МСК: 5 live-публикаций/)
+  assert.match(text, /Последние 6ч: 2 live-публикации/)
+  assert.match(text, /Последние 24ч: 12 материалов создано/)
+  assert.match(text, /<b>💸 Расходы<\/b>/)
   assert.doesNotMatch(text, /<blockquote expandable>/)
   assert.doesNotMatch(text, /<pre>/)
+})
+
+test('formatOpsSummaryForTelegram separates calendar day and rolling publication windows', () => {
+  const summary = baseSummary({
+    generatedAt: '2026-06-10T21:32:00.000Z',
+    reportKind: 'morning',
+    mskDateKey: '2026-06-11',
+    health: {
+      ...baseSummary().health,
+      articles_published_today: 0,
+      live_window_6h_count: 16,
+    },
+    articles: {
+      ...baseSummary().articles,
+      created24h: 97,
+      publishedTodayCount: 0,
+    },
+    telegramToday: null,
+    latestTelegram: {
+      delivery_date: '2026-06-10',
+      expected_slots: 5,
+      success_count: 1,
+      failed_count: 0,
+      skipped_count: 0,
+      planned_count: 0,
+      status: 'partial_success',
+      latest_sent_at: '2026-06-10T18:15:00.000Z',
+      latest_error: null,
+    },
+    traffic: {
+      ...baseSummary().traffic,
+      date: '2026-06-10',
+      compareDate: '2026-06-09',
+    },
+  })
+  summary.status = evaluateOpsStatus(summary)
+
+  const text = formatOpsSummaryForTelegram(summary)
+
+  assert.match(text, /^🟢 <b>Утренний отчет · 11\.06<\/b>/)
+  assert.match(text, /Период: сегодня 00:00-00:32 МСК · трафик: вчера 10\.06/)
+  assert.match(text, /Telegram: сегодня слотов ещё не было/)
+  assert.doesNotMatch(text, /последний день 10\.06: 1\/5 постов отправлены/)
+  assert.match(text, /Сайт: свежие live-публикации есть: 16 за 6ч/)
+  assert.match(text, /Сегодня с 00:00 МСК: 0 live-публикаций/)
+  assert.match(text, /Последние 6ч: 16 live-публикаций/)
+  assert.match(text, /Последние 24ч: 97 материалов создано/)
+  assert.doesNotMatch(text, /Сайт: 0 публикаций сегодня/)
+  assert.doesNotMatch(text, /За 6ч опубликовано: 16/)
 })
 
 test('formatOpsSummaryForTelegram keeps transient yellow status compact without prompt', () => {
