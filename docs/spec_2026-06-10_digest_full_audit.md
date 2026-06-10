@@ -147,6 +147,36 @@ schema-воронка Волны 1 на новостях (AuthorCard, «Разо
 6. 🟡 Подача в Google Publisher Center / Яндекс-агрегаторы (из spec 2026-06-01).
 7. 🟢 Решение по веткам (Волна B п.7) и по Supabase Free/Pro после инцидента №2.
 
+## 6.1. Волна реализации — DONE (2026-06-10, вечер; одобрена владельцем «делай по максимуму»)
+
+Закрыто из роадмапа §5 всё, что не требует владельца:
+
+- **Волна A п.1 (производительность)** — решено архитектурно «правильным» путём проекта вместо
+  включения Vercel-оптимизатора (лимит Hobby): внешние hotlink-обложки зеркалятся в R2 с
+  вариантами. Новый `pipeline/cover-mirror.ts` (вызов из `prepareEditorialApplication`, мягкий
+  fallback), backfill `scripts/mirror-covers-to-r2.ts` — **913/919 live-обложек зеркалировано**
+  (пример: TechCrunch JPEG 958 KB → 107 KB base + 5,9 KB вариант 400w). R2-env добавлен в
+  `enrich.yml`/`enrich-collect-batch.yml`/`retry-failed.yml` (+ продублировано в `main` —
+  носитель workflow). `remotePatterns` сужен `'**'` → R2 + own domain; `unoptimized=true`
+  остаётся намеренно (см. комментарий в next.config.mjs). Тех-долг №3/№4 закрыт.
+- **Волна A п.3** — per-source daily cap в `pipeline/claims.ts::claimBatch`
+  (`SOURCE_DAILY_PUBLISH_CAP`, default 10/MSK-день; кандидаты сверх квоты остаются pending).
+  Тесты `tests/node/source-daily-cap.test.ts` 5/5.
+- **Волна B п.4** — `scripts/audit-digest-selection.ts` починен (узкий select вместо `select('*')`,
+  который ронял fetch на full-text полях). `--days=3` зелёный.
+- **Волна B п.5** — год-санитайзер `hasStaleYearHallucination` в caption-валидации
+  (прошедший год без подтверждения в тексте статьи → reject → retry/fallback).
+- **Волна B п.6** — `rankDigestCandidates` (score+importance) подключён к
+  `buildChannelPostPlan`; раньше работал только в legacy-дайджесте. Тест в channel-post.test.ts.
+- **Волна B п.7** — остатки `legacy/` (258 файлов, из git удалены ещё 2026-05-29) и
+  `local_dev.db` удалены с диска; схема веток/деплоя зафиксирована в OPERATIONS.md → Deploy.
+- **Волна B п.8** — `pipeline/tg-channel-monitor.ts` в `pipeline-health.yml`: critical-алёрт
+  `tg_channel_posts_missing`, если к ~13:00 МСК ноль success-доставок (различает «pg_cron мёртв»
+  и «ломается отправка»). Тесты 6/6.
+
+Остаётся за владельцем: §6 чеклист (кредиты, pg_cron, обложки id 7/9, цели Метрики,
+R2 custom domain, агрегаторы) + Волна A п.2 (DNS) + Волна C (контент-поток).
+
 ## 7. Что сделано агентом в этой сессии (2026-06-10)
 
 - Полная верификация тех-долга senior review (таблица §2), live-диагностика обоих инцидентов

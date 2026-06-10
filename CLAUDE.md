@@ -12,11 +12,26 @@
 2. **Telegram channel posts молчат с 2026-06-09** (0 строк за 9–10 июня; route жив — 401 без auth,
    live-перехват Vercel-логов показал, что pg_net-запрос не приходит) → диагностика pg_cron в
    Supabase SQL Editor (SQL — в `docs/OPERATIONS.md`); проверить, не менялся ли план Supabase.
-Сделано агентом: верификация тех-долга senior review (CI ✅, npm test ✅; `images.unoptimized` ❌ —
-LCP главной 9,3 с / сырой JPEG 958 KB; R2 dev-домен ❌; legacy/ ❌); off-topic волна 2 — снято
-**37** consumer-статей (`scripts/withdraw-off-topic.ts`); Lighthouse-замеры; закоммичена обложка
-гайда id 4. Открытые рычаги: возврат image-оптимизатора, per-source cap (Habr = 39% потока),
-noindex гайдов id 7/9, цели Метрики, importance-вес в отбор постов канала.
+Сделано агентом (фаза 1, аудит): верификация тех-долга senior review (CI ✅, npm test ✅);
+off-topic волна 2 — снято **37** consumer-статей; Lighthouse-замеры (LCP главной 9,3 с);
+закоммичена обложка гайда id 4.
+Сделано агентом (фаза 2, волна реализации 2026-06-10):
+- **Cover mirroring**: внешние hotlink-обложки зеркалятся в R2 (WebP 1200w + варианты -400/-800) —
+  `pipeline/cover-mirror.ts` в `prepareEditorialApplication` + backfill
+  `scripts/mirror-covers-to-r2.ts` (**913/919 live зеркалировано**; 958 KB JPEG → 107 KB base /
+  5,9 KB mobile-вариант). R2-env добавлен в enrich/collect/retry workflows. `remotePatterns`
+  сужен до R2 + own domain; оптимизатор Vercel остаётся выключенным намеренно (лимит Hobby).
+- **Per-source daily cap** (`SOURCE_DAILY_PUBLISH_CAP`=10, MSK-день) в `claimBatch` — против
+  перекоса Habr (39% потока). Тесты source-daily-cap 5/5.
+- **Importance в отбор channel posts**: `rankDigestCandidates` подключён в `buildChannelPostPlan`
+  (раньше только в legacy-дайджесте).
+- **Монитор молчания канала**: `pipeline/tg-channel-monitor.ts` в pipeline-health (critical
+  `tg_channel_posts_missing`, если к 13:00 МСК ноль success). Тесты 6/6.
+- **Год-санитайзер captions** (`hasStaleYearHallucination`) — ловит «WWDC 2025»-галлюцинации.
+- Починен `scripts/audit-digest-selection.ts` (узкий select вместо `*`); удалены остатки
+  `legacy/` и `local_dev.db` с диска; схема веток задокументирована в OPERATIONS.md → Deploy.
+Открытые рычаги за владельцем: Anthropic credits (инцидент №1), pg_cron диагностика (инцидент №2),
+noindex гайдов id 7/9, цели Метрики, R2 custom domain, агрегаторы.
 
 Предыдущая инициатива (closed 2026-05-30): **Telegram digest story dedup + selection guard**. Триггер от владельца: в двух последних Telegram-дайджестах один инфоповод про раунд Anthropic попал три раза (Crunchbase/TechCrunch/The Decoder). Корень: `dedup_hash` различает article rows по title+URL, `applyDiversityCap` ограничивал только `source_name`, а `tg_sent` защищал только конкретную строку, не событие и не соседний MSK-день.
 - Новый `bot/digest-selection.ts`: deterministic `deriveDigestStory()` строит `storyKey = primaryEntity:eventType:signature` (пример `anthropic:funding:65b`), различает `Anthropic funding` и `Claude Opus 4.8 model_release`, нормализует money anchors `$65B`/`65 млрд`/`$650M`.

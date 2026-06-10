@@ -90,7 +90,7 @@ async function loadCandidates(
 ): Promise<Article[]> {
   const { data, error } = await supabase
     .from('articles')
-    .select('*')
+    .select('id, source_name, original_title, ru_title, lead, tg_teaser, primary_category, secondary_categories, topics, score, pub_date, slug')
     .eq('published', true)
     .eq('quality_ok', true)
     .eq('verified_live', true)
@@ -132,7 +132,7 @@ async function loadRecentArticles(
   ]
   if (ids.length === 0) return []
 
-  const { data, error } = await supabase.from('articles').select('*').in('id', ids)
+  const { data, error } = await supabase.from('articles').select('id, source_name, original_title, ru_title, lead, tg_teaser, primary_category, secondary_categories, topics, score, pub_date, slug').in('id', ids)
   if (error) throw new Error(`recent articles query failed: ${error.message}`)
   return (data ?? []) as Article[]
 }

@@ -104,8 +104,14 @@ NEXT_PUBLIC_R2_PUBLIC_BASE_URL
 **Cloudflare R2** (`R2_*`) — хранилище обложек/инлайн-картинок (с 2026-05-26 вместо Supabase
 Storage; egress R2 бесплатен, что устраняет инцидент `exceed_egress_quota`). Нужны только тем,
 кто **загружает** изображения: cron `ai-covers.yml` (оба шага — `covers:ai-low` и
-`covers:template`) и локальные скрипты (`scripts/generate-ai-covers.ts`,
-`scripts/backfill-*.ts`, `scripts/migrate-covers-to-r2.ts`). Публичному сайту (Vercel) ключи
+`covers:template`), с 2026-06-10 также enrich-cron'ы (`enrich.yml`, `enrich-collect-batch.yml`,
+`retry-failed.yml`) — для зеркалирования внешних cover'ов (`pipeline/cover-mirror.ts`) — и
+локальные скрипты (`scripts/generate-ai-covers.ts`, `scripts/backfill-*.ts`,
+`scripts/migrate-covers-to-r2.ts`, `scripts/mirror-covers-to-r2.ts`).
+
+`SOURCE_DAILY_PUBLISH_CAP` (опционально, default 10) — дневной MSK-кэп live-публикаций с одного
+`source_name`; применяется в `pipeline/claims.ts::claimBatch` (см. `docs/ARTICLE_SYSTEM.md`
+«Score и publish gate»). Публичному сайту (Vercel) ключи
 не нужны — он только читает обложки по публичному URL, сохранённому в `articles.cover_image_url`.
 `R2_PUBLIC_BASE_URL` сейчас `https://pub-*.r2.dev` (rate-limited dev-URL); для прод-нагрузки
 рекомендуется подключить custom domain через Cloudflare. Доступы лежат в GitHub Actions secrets
@@ -864,6 +870,21 @@ Cтратегия рендеринга по типам страниц:
 
 ## Deploy
 
+### Ветки и источник прод-кода (зафиксировано 2026-06-10)
+
+Текущая схема (исторически сложилась, признана каноном до отдельного решения владельца):
+
+- **Прод-код живёт в ветке `codex/evergreen-quality-standard-2026-05-21`** — в неё пушатся
+  все production-изменения. CI (`ci.yml`) гоняется на ней наравне с `main` и PR.
+- **`main` — носитель workflow-определений.** Scheduled GitHub Actions исполняют YML с
+  default-ветки (`main`), но чекаутят код прод-ветки через ref-pin в шаге Checkout.
+  ⚠️ Любое изменение env/шагов cron-workflow надо вносить В ОБЕ ветки: в прод-ветку
+  (для консистентности кода) и в `main` (иначе scheduled-запуски его не увидят).
+- **Деплой на Vercel — ручной**: `vercel deploy --prod` из чистого рабочего дерева прод-ветки
+  (git-автодеплой с этой ветки не подключён). Перед деплоем: CI зелёный + `npm run build` локально.
+- Один раз когда-нибудь: влить прод-ветку в `main`, перевести ref-pin'ы и Vercel на `main` —
+  решение владельца, см. `docs/spec_2026-06-10_digest_full_audit.md` Волна B.
+
 - Runtime сайта: Vercel.
 - Production domain: `https://news.malakhovai.ru`.
 - News-домен должен быть отдельным property в Яндекс.Вебмастере и Google Search Console.
@@ -1145,6 +1166,21 @@ Long-polling bot `npm run bot` также поддерживает admin-only к
 - при появлении хотя бы одной live в окне — `resolveAlert('published_low_window')`.
 
 ENV: `PUBLISHED_LOW_WINDOW_HOURS`, `PUBLISHED_LOW_WINDOW_QUIET_START_MSK`, `PUBLISHED_LOW_WINDOW_QUIET_END_MSK` (все опциональны, см. `docs/file_map_observability_publication_2026-05-01.md` § 11).
+
+## Telegram channel posts monitor (2026-06-10)
+
+`pipeline/tg-channel-monitor.ts` запускается из `pipeline-health.yml` каждые 2 часа. Триггер
+создания: инцидент 2026-06-09..10 — pg_cron→pg_net молча перестал дёргать
+`/api/cron/tg-channel-post`, канал молчал двое суток. Логика (по МСК):
+
+- слот «должен был выйти» через 30 минут после планового времени (09:30/12:30/15:30/18:30/21:00);
+- если due-слотов ≥ 2 (≈ с 13:00 МСК), а success-доставок за день ноль —
+  `fireAlert('tg_channel_posts_missing', critical, cooldown 4ч)`; в payload различаются
+  `no_rows` (pg_cron мёртв) и `no_success` (план есть, ломается отправка);
+- появился хотя бы один success — `resolveAlert`;
+- раньше 13:00 МСК — noop.
+
+Тесты: `tests/node/tg-channel-monitor.test.ts`.
 
 ## telegram_channel_posts status enum (миграция 017)
 

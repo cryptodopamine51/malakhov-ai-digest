@@ -10,17 +10,25 @@ const nextConfig = {
     // 2026-05-22 hotfix: Vercel image optimization endpoint начал возвращать HTTP 402
     // `OPTIMIZED_IMAGE_REQUEST_PAYMENT_REQUIRED` для всех cover-URL — исчерпан месячный
     // лимит трансформаций на Hobby tier (~5k/month). Каждая ArticleCard эмитит 10
-    // размеров в srcSet, и при росте трафика лимит улетает за пару дней. Обходим оптимизатор:
-    // браузер грузит исходник напрямую (Supabase Storage / theverge.com / zdnet.com / ...).
-    // Cost: нет автоматического AVIF/WebP и нет per-device-resize, но обложки видимы сразу.
-    // Альтернатива оптимизатору — адаптивные R2-варианты + нативный <img srcset> за флагом
-    // NEXT_PUBLIC_R2_IMAGE_VARIANTS (см. docs/ARTICLE_SYSTEM.md → Responsive cover variants).
-    // Возврат к Vercel-оптимизатору — только после апгрейда на Pro.
+    // размеров в srcSet, и при росте трафика лимит улетает за пару дней. Обходим оптимизатор.
+    // 2026-06-10: канонический путь раздачи — R2 WebP + варианты -400/-800 через нативный
+    // <img srcset> (NEXT_PUBLIC_R2_IMAGE_VARIANTS=on), внешние hotlink-обложки зеркалятся в R2
+    // (pipeline/cover-mirror.ts + scripts/mirror-covers-to-r2.ts). Оптимизатор остаётся
+    // выключенным намеренно: на Hobby он не нужен и опасен лимитом.
     unoptimized: true,
+    // Узкий whitelist на случай включения оптимизатора в будущем: при unoptimized=true
+    // hostname-валидация не применяется, но wildcard '**' оставлял бы /_next/image открытым
+    // прокси (SSRF) сразу после флипа флага. R2-домен + локальные ассеты покрывают всё
+    // после cover-mirror; статьи с незазеркаленным внешним cover рендерятся через
+    // unoptimized-путь и от whitelist не зависят.
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: '**',
+        hostname: '**.r2.dev',
+      },
+      {
+        protocol: 'https',
+        hostname: 'news.malakhovai.ru',
       },
     ],
   },

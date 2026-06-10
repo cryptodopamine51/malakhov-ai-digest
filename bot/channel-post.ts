@@ -19,6 +19,7 @@ export {
   buildTelegramCaption,
   buildTelegramCaptionFromDeepSeekJson,
   deliverPlannedChannelPost,
+  hasStaleYearHallucination,
   parseSlot,
   runChannelPost,
   sendTelegramPhoto,

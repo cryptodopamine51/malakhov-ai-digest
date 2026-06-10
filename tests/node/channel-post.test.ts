@@ -184,7 +184,10 @@ test('applyGeneratedCaptionsToPlan updates planned rows and caption hashes', asy
     async (candidate, slotNo) => `<b>${candidate.original_title}</b>\n\nGenerated caption ${slotNo}`,
   )
 
-  assert.equal(updated[0]!.caption, '<b>OpenAI launches GPT-5.5 for developers</b>\n\nGenerated caption 1')
+  // План ранжируется по score+importance (rankDigestCandidates), поэтому ожидаемый
+  // caption выводим из фактического article_id слота 1, а не из фиксированного порядка.
+  const slot1 = candidates.find((c) => c.id === updated[0]!.article_id)!
+  assert.equal(updated[0]!.caption, `<b>${slot1.original_title}</b>\n\nGenerated caption 1`)
   assert.notEqual(updated[0]!.caption_hash, rows[0]!.caption_hash)
 })
 
@@ -401,4 +404,62 @@ test('sendTelegramPhoto fails before Telegram API when cover response is not an 
   } finally {
     globalThis.fetch = previousFetch
   }
+})
+
+test('buildChannelPostPlan lifts an important multi-source story above higher-raw-score filler', () => {
+  // Anthropic $65B funding из трёх источников против проходных заметок со score выше.
+  const fundingStory = (id: string, source: string) =>
+    article({
+      id,
+      original_title: 'Anthropic raises $65B funding round',
+      ru_title: 'Anthropic привлекла $65 млрд',
+      source_name: source,
+      score: 4,
+    })
+  const filler = (id: string) =>
+    article({
+      id,
+      original_title: `Generic ai productivity tips ${id}`,
+      ru_title: `Подборка советов ${id}`,
+      score: 6,
+    })
+
+  const rows = plan([
+    filler('f1'),
+    filler('f2'),
+    filler('f3'),
+    filler('f4'),
+    filler('f5'),
+    fundingStory('a1', 'TechCrunch AI'),
+    fundingStory('a2', 'The Decoder'),
+    fundingStory('a3', 'Crunchbase News'),
+  ])
+
+  assert.equal(rows[0]?.slot_no, 1)
+  // Какая именно строка истории возьмёт слот — тай-брейк ранкера; важно, что слот 1
+  // достался funding-истории, а не filler'у с более высоким raw score.
+  assert.ok(['a1', 'a2', 'a3'].includes(rows[0]?.article_id ?? ''), `slot1=${rows[0]?.article_id}`)
+})
+
+test('год-санитайзер: бракует caption с прошлым годом, которого нет в источнике', async () => {
+  const { hasStaleYearHallucination, buildTelegramCaptionFromDeepSeekJson } = await import('../../bot/channel-post')
+  const now = new Date('2026-06-10T12:00:00.000Z')
+  const a = article({ id: 'y1', original_title: 'Apple prepares new Siri with Gemini for WWDC' })
+
+  assert.equal(hasStaleYearHallucination(a, 'Apple покажет Siri на WWDC 2025', now), true)
+  // Текущий и будущий год — легитимны.
+  assert.equal(hasStaleYearHallucination(a, 'Apple покажет Siri на WWDC 2026', now), false)
+  assert.equal(hasStaleYearHallucination(a, 'Релиз перенесён на 2027 год', now), false)
+  // Прошлый год, который есть в самом источнике, — легитимная ретроспектива.
+  const withYear = article({ id: 'y2', original_title: 'After the 2024 launch, OpenAI updates GPT-4o' })
+  assert.equal(hasStaleYearHallucination(withYear, 'После запуска 2024 года вышло обновление', now), false)
+
+  // Интеграция: невалидный год -> caption бракуется (null), сработает retry/fallback.
+  const rejected = buildTelegramCaptionFromDeepSeekJson(
+    a,
+    { title: 'Apple готовит Siri на WWDC 2025', body: 'Подробности интеграции с Gemini.' },
+    1024,
+    now,
+  )
+  assert.equal(rejected, null)
 })

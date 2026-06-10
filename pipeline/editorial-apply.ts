@@ -10,6 +10,7 @@ import { releaseClaim } from './claims'
 import { repairEditorialOutput } from './editorial-repair'
 import { writeEnrichAttempt, writeMediaSanitizeAttempt } from './enrich-runtime'
 import { sanitizeArticleMedia, type ArticleImageCandidate } from './media-sanitizer'
+import { mirrorCoverToR2, shouldMirrorCover } from './cover-mirror'
 import { articleHasCategory } from './scorer.config'
 import { assertAsciiSlug, ensureUniqueSlug } from './slug'
 
@@ -173,13 +174,21 @@ export async function prepareEditorialApplication(params: {
     ? output.article_tables
     : null
 
+  // Внешние cover-URL зеркалим в R2 (WebP 1200w + варианты) — см. pipeline/cover-mirror.ts.
+  // Любой сбой (нет R2-env, timeout, не картинка) — остаёмся на исходном внешнем URL.
+  let coverImageUrl = sanitizedMedia.coverImageUrl
+  if (shouldMirrorCover(coverImageUrl)) {
+    const mirrored = await mirrorCoverToR2(params.article.id, coverImageUrl, (msg) => console.log(`[${params.runId}] ${msg}`))
+    if (mirrored) coverImageUrl = mirrored
+  }
+
   return {
     output,
     validation: params.validation,
     repairs: params.repairs,
     slug,
     sanitizedMedia: {
-      coverImageUrl: sanitizedMedia.coverImageUrl,
+      coverImageUrl,
       articleImages: sanitizedMedia.articleImages,
     },
     articleTables: generatedTables ?? params.sourceContext.articleTables ?? null,

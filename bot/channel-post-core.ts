@@ -19,6 +19,7 @@ import { estimateTextCostUsd, type TextUsageForCost } from '../pipeline/model-pr
 import { assertServiceRoleKey, markArticlesSent } from './daily-digest-core'
 import {
   deriveDigestStory,
+  rankDigestCandidates,
   selectDigestArticles,
   type DigestSelectionArticle,
 } from './digest-selection'
@@ -279,13 +280,39 @@ function formatTelegramCaption(parts: TelegramCaptionParts, maxLength = CAPTION_
   return `<b>${escapeHtml(title)}</b>`
 }
 
+/**
+ * Год-санитайзер против галлюцинаций модели («WWDC 2025» в июне 2026):
+ * прошедший год в caption допустим, только если он встречается в текстах самой
+ * статьи (заголовки/тизер/лид) — иначе caption бракуется и идёт retry/fallback.
+ * Будущие и текущий год не трогаем (анонсы вперёд легитимны).
+ */
+export function hasStaleYearHallucination(
+  article: CaptionArticle,
+  captionText: string,
+  now: Date = new Date(),
+): boolean {
+  const currentYear = now.getUTCFullYear()
+  const years = captionText.match(/\b20\d{2}\b/g)
+  if (!years) return false
+  const sourceText = [
+    article.ru_title,
+    article.original_title,
+    article.tg_teaser,
+    article.lead,
+    article.card_teaser,
+  ].filter(Boolean).join(' ')
+  return years.some((year) => Number(year) < currentYear && !sourceText.includes(year))
+}
+
 export function buildTelegramCaptionFromDeepSeekJson(
   article: CaptionArticle,
   value: unknown,
   maxLength = CAPTION_LIMIT,
+  now: Date = new Date(),
 ): string | null {
   const parts = validateCaptionParts(value)
   if (!parts) return null
+  if (hasStaleYearHallucination(article, `${parts.title} ${parts.body}`, now)) return null
   const caption = formatTelegramCaption(parts, maxLength)
   return caption.length <= maxLength ? caption : formatTelegramCaption(fallbackCaptionParts(article), maxLength)
 }
@@ -706,7 +733,9 @@ export function buildChannelPostPlan(
   },
 ): ChannelPostPlanItem[] {
   const plannedAt = options.plannedAt ?? new Date().toISOString()
-  const postableCandidates = candidates.filter(isPostableCandidate)
+  // score + importance (масштаб события, известность игрока, мульти-источниковое
+  // подтверждение) — тот же композит, что в legacy-дайджесте; см. rankDigestCandidates.
+  const postableCandidates = rankDigestCandidates(candidates.filter(isPostableCandidate))
   const selection = selectDigestArticles(postableCandidates, recentSentArticles, {
     perSourceCap: 2,
     perPrimaryEntityCap: 2,

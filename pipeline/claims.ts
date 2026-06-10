@@ -8,6 +8,81 @@ export const WORKER_ID = process.env.GITHUB_RUN_ID
   : `local-${process.pid}`
 
 /**
+ * Дневной (MSK) кэп live-публикаций на один source_name.
+ *
+ * Зачем: без кэпа объёмный источник заливает ленту (2026-06-08/09: Habr AI = 51 из
+ * 132 публикаций, 39%), что бьёт по читабельности и тематическому авторитету сайта.
+ * Diversity-кэп Telegram-отбора сайт не защищает — этот защищает.
+ *
+ * Механика: кандидаты сверх квоты НЕ клеймятся и остаются pending — они будут
+ * подобраны в день с меньшим потоком. 30-дневный средний темп Habr (~10/день)
+ * примерно равен кэпу, поэтому бэклог не накапливается, а сглаживаются пики.
+ */
+export const SOURCE_DAILY_PUBLISH_CAP = Math.max(
+  1,
+  Number(process.env.SOURCE_DAILY_PUBLISH_CAP ?? '10') || 10,
+)
+
+const MSK_OFFSET_MS = 3 * 60 * 60 * 1000
+
+function startOfMskDayUtcIso(now: Date = new Date()): string {
+  const msk = new Date(now.getTime() + MSK_OFFSET_MS)
+  msk.setUTCHours(0, 0, 0, 0)
+  return new Date(msk.getTime() - MSK_OFFSET_MS).toISOString()
+}
+
+/**
+ * Pure-фильтр: пропускает кандидатов, пока (уже опубликовано сегодня + уже
+ * пропущено в этом батче) по их source_name не упирается в cap. Возвращает
+ * кандидатов в исходном порядке.
+ */
+export function applySourceDailyCap<T extends { source_name: string | null }>(
+  candidates: T[],
+  publishedTodayBySource: Map<string, number>,
+  cap: number = SOURCE_DAILY_PUBLISH_CAP,
+): { allowed: T[]; skippedBySource: Map<string, number> } {
+  const running = new Map<string, number>(publishedTodayBySource)
+  const allowed: T[] = []
+  const skippedBySource = new Map<string, number>()
+  for (const candidate of candidates) {
+    const source = candidate.source_name ?? ''
+    if (!source) {
+      allowed.push(candidate)
+      continue
+    }
+    const used = running.get(source) ?? 0
+    if (used >= cap) {
+      skippedBySource.set(source, (skippedBySource.get(source) ?? 0) + 1)
+      continue
+    }
+    running.set(source, used + 1)
+    allowed.push(candidate)
+  }
+  return { allowed, skippedBySource }
+}
+
+async function loadPublishedTodayBySource(supabase: SupabaseClient): Promise<Map<string, number>> {
+  const counts = new Map<string, number>()
+  const { data, error } = await supabase
+    .from('articles')
+    .select('source_name')
+    .eq('publish_status', 'live')
+    .gte('published_at', startOfMskDayUtcIso())
+    .limit(2000)
+  if (error) {
+    // Деградация мягкая: без счётчиков кэп не применяем (лучше перелив, чем простой).
+    console.warn(`[claims] source cap counts query failed: ${error.message}`)
+    return counts
+  }
+  for (const row of (data ?? []) as Array<{ source_name: string | null }>) {
+    const source = row.source_name ?? ''
+    if (!source) continue
+    counts.set(source, (counts.get(source) ?? 0) + 1)
+  }
+  return counts
+}
+
+/**
  * Atomically claims up to `limit` articles ready for enrichment.
  *
  * Uses optimistic locking via UPDATE … WHERE claim_token IS NULL … RETURNING.
@@ -27,7 +102,7 @@ export async function claimBatch(
   const overfetch = limit * 3
   const { data: candidates, error: selectError } = await supabase
     .from('articles')
-    .select('id')
+    .select('id, source_name')
     .in('enrich_status', ['pending', 'retry_wait'])
     .or(`next_retry_at.is.null,next_retry_at.lte.${now}`)
     .is('claim_token', null)
@@ -36,9 +111,21 @@ export async function claimBatch(
 
   if (selectError || !candidates?.length) return []
 
+  // Дневной per-source кэп: кандидаты сверх квоты остаются pending до спокойного дня.
+  const publishedToday = await loadPublishedTodayBySource(supabase)
+  const { allowed, skippedBySource } = applySourceDailyCap(
+    candidates as Array<{ id: string; source_name: string | null }>,
+    publishedToday,
+  )
+  for (const [source, skipped] of skippedBySource) {
+    console.log(
+      `[claims] source daily cap (${SOURCE_DAILY_PUBLISH_CAP}): skipped ${skipped} candidate(s) from "${source}"`,
+    )
+  }
+
   const claimed: Article[] = []
 
-  for (const candidate of candidates) {
+  for (const candidate of allowed) {
     if (claimed.length >= limit) break
 
     // Atomic update: WHERE clause guarantees only one worker wins per article.

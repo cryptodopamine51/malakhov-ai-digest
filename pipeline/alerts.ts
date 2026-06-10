@@ -27,6 +27,7 @@ const COOLDOWN_HOURS: Record<string, number> = {
   published_low_window: 2,
   digest_low_articles: 12,
   site_feed_empty: 1,
+  tg_channel_posts_missing: 4,
 }
 
 export interface AlertPayload {
