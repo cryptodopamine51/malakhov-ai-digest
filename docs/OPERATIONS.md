@@ -494,11 +494,18 @@ npx tsx scripts/withdraw-off-topic.ts --apply              # снять DEFINITE
 npx tsx scripts/withdraw-off-topic.ts --include-borderline --apply
 ```
 
-Запуск 2026-06-01: сняты 8 статей (все — старые ZDNet consumer-reviews, просочившиеся до
+Запуск 2026-06-01 (волна 1): сняты 8 статей (все — старые ZDNet consumer-reviews, просочившиеся до
 включения `needsKeywordFilter` у ZDNet): NAS-гайд, 2× Sony-наушники, 2× NordVPN, RS-232,
 Android-файл-менеджер, Fitbit/Whoop. Borderline оставлены live (`falcongaze` — DLP с AI-фильтрацией,
 `flutter-3.44` — Agentic Hot Reload), у них есть реальная AI-грань. Скрипт не вызывает
 Claude/OpenAI/fetcher.
+
+Запуск 2026-06-10 (волна 2, по сплошному sweep'у live-статей в рамках
+`docs/spec_2026-06-10_digest_full_audit.md`): сняты ещё **37** статей того же класса —
+VPN-подборки ×7, наушники/аудио/ТВ ×10, пылесосы/гаджеты/распродажи ×11, Windows/Linux без
+AI-грани ×9. Новые borderline (оставлены live): `meta-...-rasprodazhu-ray-ban-s-ii` (AI-очки),
+`google-vypustila-desktopnoe-prilozhenie-dlya-windows` (Gemini-приложение). 404 проверен live;
+sitemap очищается по ISR.
 
 ### Audit Telegram digest selection
 

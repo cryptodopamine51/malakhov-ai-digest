@@ -2,9 +2,23 @@
 
 > Главный управляющий файл проекта.
 > Он не подгружается автоматически “из памяти” между сессиями: в начале каждой новой работы его нужно открыть явно или запустить `npm run context`.
-> Последнее обновление: 2026-05-30
+> Последнее обновление: 2026-06-10
 
-Последняя инициатива (closed 2026-05-30): **Telegram digest story dedup + selection guard**. Триггер от владельца: в двух последних Telegram-дайджестах один инфоповод про раунд Anthropic попал три раза (Crunchbase/TechCrunch/The Decoder). Корень: `dedup_hash` различает article rows по title+URL, `applyDiversityCap` ограничивал только `source_name`, а `tg_sent` защищал только конкретную строку, не событие и не соседний MSK-день.
+Текущая инициатива (open 2026-06-10): **Полный аудит дайджеста: техника + SEO + развитие** —
+`docs/spec_2026-06-10_digest_full_audit.md` (метрики: `docs/baseline_2026-06-10.md`).
+Найдены **два активных P0-инцидента, оба ждут владельца**:
+1. **Anthropic API без кредитов** (с 2026-06-09 22:03 МСК) → выпуск статей упал с 60–70/день до 7;
+   `retry-failed.yml` красный, критические алёрты открыты. Фикс: пополнить billing.
+2. **Telegram channel posts молчат с 2026-06-09** (0 строк за 9–10 июня; route жив — 401 без auth,
+   live-перехват Vercel-логов показал, что pg_net-запрос не приходит) → диагностика pg_cron в
+   Supabase SQL Editor (SQL — в `docs/OPERATIONS.md`); проверить, не менялся ли план Supabase.
+Сделано агентом: верификация тех-долга senior review (CI ✅, npm test ✅; `images.unoptimized` ❌ —
+LCP главной 9,3 с / сырой JPEG 958 KB; R2 dev-домен ❌; legacy/ ❌); off-topic волна 2 — снято
+**37** consumer-статей (`scripts/withdraw-off-topic.ts`); Lighthouse-замеры; закоммичена обложка
+гайда id 4. Открытые рычаги: возврат image-оптимизатора, per-source cap (Habr = 39% потока),
+noindex гайдов id 7/9, цели Метрики, importance-вес в отбор постов канала.
+
+Предыдущая инициатива (closed 2026-05-30): **Telegram digest story dedup + selection guard**. Триггер от владельца: в двух последних Telegram-дайджестах один инфоповод про раунд Anthropic попал три раза (Crunchbase/TechCrunch/The Decoder). Корень: `dedup_hash` различает article rows по title+URL, `applyDiversityCap` ограничивал только `source_name`, а `tg_sent` защищал только конкретную строку, не событие и не соседний MSK-день.
 - Новый `bot/digest-selection.ts`: deterministic `deriveDigestStory()` строит `storyKey = primaryEntity:eventType:signature` (пример `anthropic:funding:65b`), различает `Anthropic funding` и `Claude Opus 4.8 model_release`, нормализует money anchors `$65B`/`65 млрд`/`$650M`.
 - `runDailyDigest()` теперь берёт top-50, после live-check вызывает `selectDigestArticles()` с `perSourceCap=2`, `perPrimaryEntityCap=2`, `target=5`, загружает recent memory последних successful `digest_runs.article_ids` за 72 часа и пропускает strong `storyKey`, уже отправленный недавно. `validateDigestComposition()` логирует duplicate story keys/source/entity distribution/skipped reasons перед отправкой.
 - Добавлен read-only audit: `npm run digest:audit-selection -- --date=2026-05-30` / `--days=14`. На incident-датах: 2026-05-29 второй Anthropic funding skip=`duplicate_story`; 2026-05-30 The Decoder funding skip=`recent_story_duplicate`, Claude Opus остаётся.

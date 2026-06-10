@@ -3,8 +3,11 @@
  *
  * Снимает с публикации (publish_status = 'withdrawn') живые статьи, которые
  * ранжируются в поиске по не-AI запросам (consumer-tech / IT-продукты без AI).
- * Список собран по экспорту топ-запросов Яндекс.Вебмастера за 2026-04-30..05-30
- * (см. docs/spec_2026-06-01_organic_growth_implementation.md, T5).
+ * Волна 1 (2026-06-01): список по экспорту топ-запросов Яндекс.Вебмастера за
+ * 2026-04-30..05-30 (см. docs/spec_2026-06-01_organic_growth_implementation.md, T5).
+ * Волна 2 (2026-06-10): сплошной sweep live-статей по consumer-паттернам
+ * (VPN/наушники/телевизоры/пылесосы/Windows/Linux/распродажи) — утечка ZDNet AI
+ * до включения needsKeywordFilter (см. docs/spec_2026-06-10_digest_full_audit.md).
  *
  * Механизм обратимый: статья уходит из ленты / sitemap / индекса (страница 404),
  * но строка остаётся в БД — вернуть можно установив publish_status='live' обратно.
@@ -36,12 +39,56 @@ const DEFINITE_SLUGS: string[] = [
   'nordvpn-priznan-samym-bystrym-vpn-dlya-puteshestviy-po-rezul',
   'ispolzovanie-rs-232-porta-televizora-dlya-avtomatizatsii-dom',
   'fitbit-air-protiv-whoop-google-vykhodit-na-rynok-fitnes-bras',
+  // — Волна 2 (2026-06-10): наушники/аудио/ТВ —
+  'airpods-pro-3-s-datchikom-pulsa-protiv-airpods-max-2',
+  'samsung-vypustila-micro-rgb-televizor-r95h',
+  'android-umeet-translirovat-zvuk-srazu-na-dve-pary-naushnikov',
+  'pochemu-sony-proigrala-apple-v-gonke-prostranstvennogo-zvuka',
+  'memorial-dey-luchshie-predlozheniya-na-naushniki',
+  '60-120-ili-165-gts',
+  'mini-led-protiv-oled',
+  'lg-b5-oled-77-dyuymovyy-televizor-so-skidkoy',
+  'roku-i-tcl-sudyat-za-obnovleniya',
+  'monitory-s-chastotoy-1000-gts',
+  // — Волна 2: VPN-подборки —
+  'luchshie-vpn-dlya-puteshestviy-2026',
+  'vpn-servisy-v-2026-godu-nordvpn-i-expressvpn',
+  'luchshie-vpn-dlya-malogo-biznesa',
+  'besplatnye-vpn-v-2026-godu',
+  'luchshie-vpn-rasshireniya-dlya-chrome',
+  'vpn-dlya-iphone-v-2026-godu',
+  'surfshark-vypustil-sobstvennyy-vpn-protokol-dausos',
+  // — Волна 2: гаджеты/распродажи —
+  'google-gotovit-fitnes-braslet-fitbit-air',
+  'amazon-prime-so-skidkoy-50',
+  'amazon-prime-day-2026-pereezzhaet',
+  'ecovacs-x8-pro-omni',
+  'luchshie-roboty-pylesosy-2026-goda',
+  'roborock-protiv-ecovacs',
+  'remarkable-paper-pure-protiv-kindle-scribe',
+  'remarkable-paper-pure-planshet-za-399',
+  'bez-noutbuka-xr-garnitury-planshety',
+  'macbook-neo-za-599-vynudil-windows',
+  'tuxedo-infinitybook-max-15-linux-noutbuk',
+  // — Волна 2: Windows/Linux без AI-грани —
+  'ubuntu-26-04-protiv-fedora-44',
+  'cachyos-distributiv-arch-linux',
+  'obnaruzhena-tretya-za-dve-nedeli-kriticheskaya-uyazvimost',
+  'chetvyortaya-uyazvimost-yadra-linux',
+  'zero-day-eksployt-yellowkey-obkhodit-bitlocker',
+  'microsoft-nauchila-windows-update-avtomaticheski-otkatyvat',
+  'microsoft-vypustila-svoyu-pervuyu-distributiv-linux',
+  'microsoft-menyaet-windows-update',
+  'kak-besplatno-obnovit-windows-10-do-windows-11',
 ]
 
 // IT/dev-материалы с возможной AI/agentic-гранью — по умолчанию НЕ трогаем.
 const BORDERLINE_SLUGS: string[] = [
   'falcongaze-securetower-xenon',
   'flutter-3-44-agentnaya-goryachaya-perezagruzka-swift-package',
+  // Волна 2 (2026-06-10): есть AI-грань (AI-продукт/функция) — по умолчанию не трогаем.
+  'meta-vpervye-ustroila-rasprodazhu-ray-ban-s-ii',
+  'google-vypustila-desktopnoe-prilozhenie-dlya-windows',
 ]
 
 interface Args {
