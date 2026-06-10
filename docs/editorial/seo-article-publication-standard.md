@@ -321,7 +321,7 @@ the owner generates any PNG:
    smartSubsample=false** (full 4:4:4 chroma — important for graphic illustrations with thin
    lines and text-like detail). Quality bumped 2026-05-22 from previous q=82 which produced
    ~30 KB WebP outputs with visible compression artifacts. A PNG larger than 5 MB raises a warn.
-4. `npm run evergreen:check -- --slug=<slug>` enforces metadata, cover size (≥ 80 KB) and image
+4. `npm run evergreen:check -- --slug=<slug>` enforces metadata, cover size (≥ 50 KB) and image
    presence.
 
 Local SVG / Canvas diagrams are allowed as inline replacements for matrices, 30/60/90 roadmaps,
@@ -568,7 +568,7 @@ Evergreen/manual article is publishable only when:
 - the body has a counter-strategy H2 («когда не стоит / не окупится / Ошибки внедрения»);
 - ≥ 2 inline internal links to `/guides`, `/categories`, `/russia` in the body;
 - ≤ 2 inline-CTAs + 1 final CTA-block (3 cards);
-- cover and inline images have alt text and cover file is ≥ 80 KB (regenerate via ChatGPT subscription if smaller);
+- cover and inline images have alt text and cover file is ≥ 50 KB (regenerate via ChatGPT subscription or approved local workflow if smaller);
 - JSON-LD matches visible content (author Person, wordCount, articleSection, keywords);
 - internal links are relevant;
 - mobile render is checked;

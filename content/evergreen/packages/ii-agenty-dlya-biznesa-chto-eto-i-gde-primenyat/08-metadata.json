@@ -1,7 +1,7 @@
 {
   "slug": "ii-agenty-dlya-biznesa-chto-eto-i-gde-primenyat",
   "path": "/guides/ii-agenty-dlya-biznesa-chto-eto-i-gde-primenyat",
-  "noindex": true,
+  "noindex": false,
   "title": "ИИ-агенты для бизнеса: что это и где применять",
   "seoTitle": "ИИ-агенты для бизнеса: что это и где применять",
   "description": "Что такое ИИ-агент, чем отличается от чат-бота, из чего состоит, уровни автономности, 10 сценариев применения, кейс и расчёт окупаемости.",
@@ -15,7 +15,7 @@
     "ИИ внедрение"
   ],
   "publishedAt": "2026-06-01T00:00:00+03:00",
-  "updatedAt": "2026-06-01T00:00:00+03:00",
+  "updatedAt": "2026-06-10T00:00:00+03:00",
   "verifiedAt": "2026-06-01",
   "caseSourcing": "editorial",
   "readingMinutes": 14,
@@ -89,7 +89,7 @@
   ],
   "ctaCards": [
     {
-      "title": "AI-новости в Telegram",
+      "title": "ИИ-новости в Telegram",
       "text": "Ежедневный короткий дайджест: релизы, инструменты, кейсы внедрения ИИ в бизнес.",
       "action": "Подписаться на дайджест",
       "href": "telegram-digest",

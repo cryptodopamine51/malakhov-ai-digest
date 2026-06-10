@@ -5,7 +5,7 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import { getArticleBySlug, getArticleRecommendations, resolveAnchorLinks } from '../../../../lib/articles'
 import { getArticlePath, toPublicArticleSlug } from '../../../../lib/article-slugs'
-import { getGuideBridge } from '../../../../lib/guide-bridge'
+import { getGuideBridgeForArticle } from '../../../../lib/guide-bridge'
 import { getCategoryMeta } from '../../../../lib/category-meta'
 import { isKnownCategory, DEFAULT_CATEGORY } from '../../../../lib/categories'
 import { selectInlineImageSlots } from '../../../../lib/article-media-placement'
@@ -484,7 +484,7 @@ export default async function CategoryArticlePage({
 
   const categoryMeta = getCategoryMeta(article.primary_category)
   const categoryLabel = categoryMeta?.shortLabel ?? article.primary_category
-  const guideBridge = getGuideBridge(article.primary_category)
+  const guideBridge = getGuideBridgeForArticle(article)
 
   const editorialBodyText = (article.editorial_body ?? article.ru_text ?? '').trim()
   const wordCount = editorialBodyText

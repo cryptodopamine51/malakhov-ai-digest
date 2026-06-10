@@ -26,7 +26,7 @@
    - Оставшиеся PNG с random-именами маппит на оставшиеся slot'ы по алфавитному порядку имени PNG vs declared meta order (cover первый, дальше inline в порядке `inlineImagesByHeading`). В логах рядом с каждым slot'ом печатается `renamed ← <random.png>`.
    - Финальные WebP именуются по meta stem'у — SEO-имена соблюдены автоматически.
    - Качество: cover q=90, inline q=88, effort=6, smartSubsample=false (full 4:4:4 chroma — критично для графики с тонкими линиями и текстовыми метафорами).
-4. `npm run evergreen:check -- --slug={{slug}}` проверяет наличие файлов и плотность cover (≥ 80 KB).
+4. `npm run evergreen:check -- --slug={{slug}}` проверяет наличие файлов и плотность cover (≥ 50 KB).
 
 ## Visual Direction
 

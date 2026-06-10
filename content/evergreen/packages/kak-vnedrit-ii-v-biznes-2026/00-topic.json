@@ -1,0 +1,25 @@
+{
+  "id": 1,
+  "status": "published",
+  "cluster": "ИИ для бизнеса",
+  "title": "Как внедрить ИИ в бизнес в 2026 году",
+  "primaryKeyword": "как внедрить ИИ в бизнес",
+  "supportingKeywords": [
+    "внедрение ИИ в бизнес",
+    "ИИ для бизнеса 2026",
+    "AI implementation для бизнеса",
+    "как выбрать первый AI проект"
+  ],
+  "intent": "practical",
+  "audience": [
+    "предприниматель",
+    "собственник",
+    "CEO",
+    "COO",
+    "руководитель отдела"
+  ],
+  "targetSlug": "kak-vnedrit-ii-v-biznes-2026",
+  "priority": "high",
+  "cta": "architectural_ai_audit",
+  "notes": "Существующий опубликованный guide. Для этого интента готовить update package, а не новую страницу."
+}

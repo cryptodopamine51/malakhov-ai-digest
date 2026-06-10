@@ -870,9 +870,28 @@ export async function getArticlesForNewsSitemap(
   }))
 }
 
-export async function getAllArticlesForSitemap(): Promise<
-  { slug: string; primaryCategory: string; updated_at: string }[]
-> {
+export type SitemapArticleEntry = {
+  slug: string
+  primaryCategory: string
+  updated_at: string
+}
+
+type SitemapArticleRow = {
+  slug: string | null
+  primary_category: string | null
+  updated_at: string
+}
+
+type SitemapArticlePage = {
+  data: SitemapArticleRow[] | null
+  error: { message: string } | null
+}
+
+type SitemapArticlePageFetcher = (from: number, to: number) => Promise<SitemapArticlePage>
+
+export const SITEMAP_ARTICLES_PAGE_SIZE = 1000
+
+async function fetchSitemapArticlePage(from: number, to: number): Promise<SitemapArticlePage> {
   const { data, error } = await client()
     .from('articles')
     .select('slug, primary_category, updated_at')
@@ -882,23 +901,49 @@ export async function getAllArticlesForSitemap(): Promise<
     .eq('publish_status', 'live')
     .not('slug', 'is', null)
     .order('updated_at', { ascending: false })
+    .order('id', { ascending: false })
+    .range(from, to)
 
-  if (error) {
-    console.error('getAllArticlesForSitemap error:', error.message)
-    return []
+  return {
+    data: (data ?? []) as SitemapArticleRow[],
+    error,
   }
+}
 
+export async function getAllArticlesForSitemap(
+  options: {
+    pageSize?: number
+    fetchPage?: SitemapArticlePageFetcher
+  } = {},
+): Promise<SitemapArticleEntry[]> {
+  const pageSize = Math.max(1, Math.floor(options.pageSize ?? SITEMAP_ARTICLES_PAGE_SIZE))
+  const fetchPage = options.fetchPage ?? fetchSitemapArticlePage
   const unique = new Map<string, { primaryCategory: string; updated_at: string }>()
+  let from = 0
 
-  for (const row of data ?? []) {
-    if (!row.slug) continue
-    const publicSlug = toPublicArticleSlug(row.slug)
-    if (!unique.has(publicSlug)) {
-      unique.set(publicSlug, {
-        primaryCategory: (row.primary_category as string | null) ?? '',
-        updated_at: row.updated_at as string,
-      })
+  while (true) {
+    const to = from + pageSize - 1
+    const { data, error } = await fetchPage(from, to)
+
+    if (error) {
+      console.error('getAllArticlesForSitemap error:', error.message)
+      return []
     }
+
+    const rows = data ?? []
+    for (const row of rows) {
+      if (!row.slug) continue
+      const publicSlug = toPublicArticleSlug(row.slug)
+      if (!unique.has(publicSlug)) {
+        unique.set(publicSlug, {
+          primaryCategory: row.primary_category ?? '',
+          updated_at: row.updated_at,
+        })
+      }
+    }
+
+    if (rows.length < pageSize) break
+    from += pageSize
   }
 
   return Array.from(unique.entries()).map(([slug, info]) => ({

@@ -599,7 +599,7 @@ Broad RSS feeds допускаются только с keyword filters:
 - evergreen-гайды хранят Markdown в `content/guides/`, metadata registry в
   `content/guides/meta/<slug>.json`, картинки в `public/images/guides/<slug>/`;
   `lib/guides.ts` читает registry и добавляет гайды в sitemap как статичные monthly URL;
-- `app/sitemap.ts` использует ISR (`export const revalidate = 1800`), чтобы пересобираться каждые 30 минут из live-выборки и не зависать на состоянии последнего деплоя — без этого свежие статьи невидимы для Яндекс/Google до следующего билда. Статичные маршруты включают коммерческую surface `/services` (monthly, priority 0.8) — индексируемая страница услуг, см. `docs/PROJECT.md`;
+- `app/sitemap.ts` использует ISR (`export const revalidate = 1800`), чтобы пересобираться каждые 30 минут из live-выборки и не зависать на состоянии последнего деплоя — без этого свежие статьи невидимы для Яндекс/Google до следующего билда. `lib/articles.ts::getAllArticlesForSitemap()` читает live/verified article URLs пагинацией Supabase REST через `.range()` по 1000 строк с сортировкой `updated_at desc, id desc`, затем дедуплицирует legacy slug через `toPublicArticleSlug()`. Поэтому основной sitemap не должен обрезаться стандартным REST cap в 1000 строк; sitemap index понадобится только после приближения к 50 000 URL или 50 MB. Статичные маршруты включают коммерческую surface `/services` (monthly, priority 0.8) — индексируемая страница услуг, см. `docs/PROJECT.md`;
 - `pipeline/publish-verify.ts` после успешного перехода статьи в `live` вызывает `pingIndexNow()` (`lib/indexnow.ts`) на `https://api.indexnow.org/indexnow`, чтобы Yandex / Bing узнали о новом URL за минуты, а не за дни. Ключ — env `INDEXNOW_KEY`, проверочный файл — `app/indexnow.txt/route.ts`. Без env-переменной ping молча no-op'ится, publish-path не ломается. Google не участвует в IndexNow и продолжает индексировать через sitemap;
 - публичные листинги (`/archive/[date]`, `/sources`, `/sources/[source]`, `/categories/[category]`, `/russia`) задают canonical / `og:url` на news-домен через `lib/site.ts::absoluteUrl`;
 - новые slug создаются без случайных hex/uuid-хвостов; при коллизии используются понятные суффиксы `-2`, `-3`, ...;
@@ -621,11 +621,7 @@ Broad RSS feeds допускаются только с keyword filters:
 - JSON-LD, включая `VideoObject` при наличии видео.
 
 Зона перелинковки и воронки в конце статьи (после тела):
-- мост «Разобраться глубже» — карточка-ссылка на тематический evergreen-гайд. Маппинг
-  `primary_category` → guide slug в `lib/guide-bridge.ts::getGuideBridge`; возвращает только
-  индексируемый (`noindex !== true`) гайд, иначе блок пропускается (напр. `coding` — пока нет
-  AI-coding-гайда). Все текущие гайды — кластер «ИИ для бизнеса», поэтому дефолт — pillar
-  `kak-vnedrit-ii-v-biznes-2026`;
+- мост «Разобраться глубже» — карточка-ссылка на тематический evergreen-гайд. `lib/guide-bridge.ts::getGuideBridgeForArticle` сначала смотрит на заголовок/lead/card teaser: новости про ИИ-агентов ведут на `/guides/ii-agenty-dlya-biznesa-chto-eto-i-gde-primenyat`, а агентные новости про продажи/CRM/leads — на `/guides/ii-agenty-v-prodazhah`. Если явного агентного интента нет, используется fallback `primary_category` → guide slug; возвращается только индексируемый (`noindex !== true`) гайд, иначе блок пропускается (напр. `coding` — пока нет AI-coding-гайда). Дефолт для бизнес-категорий — pillar `kak-vnedrit-ii-v-biznes-2026`;
 - акцентный CTA на консультацию → `/services` (с UTM `utm_medium=article_cta`);
 - `TelegramCTA` (канал-дайджест) и `AuthorCard` (личный TG + автор), см. `docs/PROJECT.md`;
 - блок related-рекомендаций (`getArticleRecommendations`) под заголовком «Читать дальше» —
@@ -659,12 +655,13 @@ Broad RSS feeds допускаются только с keyword filters:
   генерирует PNG через подписку ChatGPT (Plus/Pro/Codex) — image API не используется — и кладёт
   файлы в `content/evergreen/packages/<slug>/raw-images/<filename>.png`; `npm run images:prep --
   --slug=<slug>` (`scripts/images-prep.ts`) ресайзит и конвертирует в WebP (cover 1200×675,
-  inline rect 1200×800, square 1200×1200, quality 82) и кладёт в
+  inline rect 1200×800, square 1200×1200; cover q=90, inline q=88, effort=6,
+  smartSubsample=false) и кладёт в
   `public/images/guides/<slug>/<filename>.webp`. `npm run evergreen:check -- --slug=<slug>`
   проверяет meta-схему (`verifiedAt`, `caseSourcing`, CTA cap), lead anchor, counter-strategy
   H2, case block, ≥ 2 inline `/guides|/categories|/russia` ссылок, редакционные запреты
   (`не X, а Y`, `proof of concept`, `production`, `no-code`, `AI-сигналы` и т.п.) в финальном
-  markdown/metadata, cover ≥ 80 KB и `noindex` старше 14 дней.
+  markdown/metadata, cover ≥ 50 KB и `noindex` старше 14 дней.
 - Archive и source pages используют те же article records.
 - Article pages (`app/categories/[category]/[slug]/page.tsx`) SSG/ISR-ятся с `revalidate=3600`.
   Related/recommendation cards намеренно пропускаются во время `npm run build`

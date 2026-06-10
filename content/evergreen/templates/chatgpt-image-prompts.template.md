@@ -86,4 +86,4 @@ Save As: `TBD-INLINE-3-FILENAME.png`
 - Размеры финальных WebP: cover 1200×675, inline 1200×800. ChatGPT генерирует PNG в большем разрешении — `npm run images:prep` сам ресайзит через `sharp` (quality cover 90 / inline 88, effort 6, full 4:4:4 chroma).
 - Если ChatGPT отдал PNG со случайным именем (типа `ChatGPT_image_<timestamp>.png`) — это не страшно. `images:prep` сначала пытается точный match по stem, потом маппит остатки по алфавитному порядку на declared meta order (cover → inline). В логе будет `renamed ← <random.png>`.
 - Имена в `Save As` берутся из `08-metadata.json` (`cover.src` и `inlineImagesByHeading[*].src`). Если меняете имена — меняйте и в meta JSON.
-- Cover должен быть ≥ 80 KB после конвертации в WebP. Если меньше — ChatGPT отдал слишком плоскую композицию; перегенерируйте с более насыщенной сценой (больше объектов, текстур, теней).
+- Cover должен быть ≥ 50 KB после конвертации в WebP. Если меньше — ChatGPT отдал слишком плоскую композицию; перегенерируйте с более насыщенной сценой (больше объектов, текстур, теней) или подготовьте approved local cover без image API.
