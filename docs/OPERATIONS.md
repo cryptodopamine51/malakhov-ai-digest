@@ -1032,19 +1032,9 @@ Env: `YANDEX_METRIKA_OAUTH_TOKEN`, `YANDEX_METRIKA_COUNTER_ID`.
 - `544856191` — отправка формы
 - `544856192/193` — контактные данные
 
-Цели для создания вручную через Management API (задача B3, 2026-06-11):
-«Визит /services» и «Визит /contacts» — type `url`, condition `contain`.
-**Блокер**: текущий OAuth-токен имеет только `metrika:read`; для создания целей нужен токен
-с областью `metrika:write`. Владельцу: перегенерировать токен с правами на запись на
-[oauth.yandex.ru](https://oauth.yandex.ru), обновить `YANDEX_METRIKA_OAUTH_TOKEN` в env,
-затем выполнить:
-```bash
-curl -X POST "https://api-metrika.yandex.net/management/v1/counter/${YANDEX_METRIKA_COUNTER_ID}/goals" \
-  -H "Authorization: OAuth ${YANDEX_METRIKA_OAUTH_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{"goal":{"name":"Визит /services","type":"url","conditions":[{"type":"contain","url":"/services"}]}}'
-# повторить для /contacts
-```
+Созданные вручную цели (задача B3, 2026-06-11):
+- `567855006` — Визит /services (type `url`, condition `contain`)
+- `567855105` — Визит /contacts (type `url`, condition `contain`)
 
 ## Recovery и monitoring
 

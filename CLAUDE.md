@@ -4,12 +4,15 @@
 > Он не подгружается автоматически “из памяти” между сессиями: в начале каждой новой работы его нужно открыть явно или запустить `npm run context`.
 > Последнее обновление: 2026-06-11
 
-Текущая инициатива (open 2026-06-11): **Монетизация: Admitad + Метрика + money-контент** —
-`docs/spec_2026-06-11_monetization_execution.md`. Выполнено 2026-06-11: B1 (Admitad meta-тег
-`verify-admitad: c970c0609c` в `app/layout.tsx`), B4 (Cursor-статья — title/lead/body обновлены
-под запрос «оплатить cursor», FAQ добавлен). B3 заблокирован: OAuth-токен `YANDEX_METRIKA_OAUTH_TOKEN`
-имеет только `metrika:read`; curl-команды и инструкция для владельца — `docs/OPERATIONS.md`.
-Ждёт: A2 (owner: кнопка верификации Admitad после деплоя), B3-разблокировка (токен с write-правами).
+Предыдущая инициатива (closed 2026-06-11): **Монетизация волна 1: Admitad + Метрика + Cursor SEO** —
+`docs/spec_2026-06-11_monetization_execution.md`. Закрыты B1/B3/B4:
+- **B1**: `<meta name="verify-admitad" content="c970c0609c">` в `app/layout.tsx`, задеплоено;
+  владелец нажал «Проверить» (A2 — площадка верифицирована).
+- **B3**: цели Метрики созданы через Management API: `567855006` (Визит /services),
+  `567855105` (Визит /contacts); автоцель `519704545` покрывает t.me-клики.
+- **B4**: Cursor-статья обновлена (title/lead/body для «оплатить cursor» + FAQ 4 вопроса).
+  Slug не тронут. Реф-ссылки добавятся после Admitad/GetPayAll.
+Открыто: B6 (money-гайды кластера A по шорт-листу Вордстата), B5→A4 (письмо GetPayAll, отправляет владелец).
 
 Предыдущая инициатива (open 2026-06-10): **Полный аудит дайджеста: техника + SEO + развитие** —
 `docs/spec_2026-06-10_digest_full_audit.md` (метрики: `docs/baseline_2026-06-10.md`).
@@ -135,7 +138,7 @@ Sources с Google Blog и `vc.ru` в `CONTEXTUAL_IMAGE_SOURCE_RE`), `CLAUDE.md` 
 Все четыре package'а полные (12 файлов), `evergreen:check` проходит с единственным cover-warn (12 KB placeholder, ждёт ChatGPT-генерации владельцем). `npm run build` exit 0. `topics.json`: id 3–6 переведены в `ready_for_codex`. Cover-генерация и снятие `noindex` — owner step.
 
 Предыдущая инициатива (closed 2026-05-22, morning): **Evergreen open-questions closure** — `docs/spec_2026-05-21_evergreen-quality-standard.md` §9, §10, §13. Ответы владельца:
-- **CTA**: чеклист-lead-magnet выпилен; разрешённые поверхности — `telegram-digest` (`@malakhovaidigest`), `contacts` (`malakhovai.ru/contacts`), `telegram-personal` (`@malakhovai`). `DEFAULT_FINAL_CTA_CARDS` в `app/guides/[slug]/page.tsx` и meta `kak-vnedrit-ii-v-biznes-2026.json` перешиты на эти три слота. CTA нельзя обещать артефакты, которых нет.
+- **CTA**: чеклист-lead-magnet выпилен; разрешённые поверхности — `telegram-digest` (`@malakhovaidigest`), `contacts` (`malakhovai.ru/contacts`), `telegram-personal` (`@iddopamine`). `DEFAULT_FINAL_CTA_CARDS` в `app/guides/[slug]/page.tsx` и meta `kak-vnedrit-ii-v-biznes-2026.json` перешиты на эти три слота. CTA нельзя обещать артефакты, которых нет.
 - **Indexation**: `noindex: true` — транзиентное состояние «нет cover», снимается сразу после готовности cover + `npm run images:prep` + `evergreen:check` green. Никакого 3–7-дневного review-окна.
 - **Worked example**: только статический Markdown, без React Client Components / интерактивных калькуляторов.
 - **Russian white-list (внутренний, не публиковать)**: Tier 1 — Яков и Партнёры, НИУ ВШЭ ИСИЭЗ, TAdviser, CNews Analytics. Tier 2 — Sber/SberAI blog, Yandex Research. Tier 3 — Forbes Russia, Ведомости.Технологии. С пометкой «фактчекать»: Habr, vc.ru. Исключены: РБК Тренды, Коммерсант. Полный список с обоснованиями — в `docs/editorial/seo-article-publication-standard.md` §12.
