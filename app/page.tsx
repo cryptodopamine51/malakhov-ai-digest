@@ -36,6 +36,7 @@ export const metadata: Metadata = {
   },
   other: {
     'twitter:url': absoluteUrl('/'),
+    'verify-admitad': 'c970c0609c',
   },
 }
 
