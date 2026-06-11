@@ -107,10 +107,16 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
 | `pipeline-health.yml` | каждые 2 часа, на 45 минуте | source health, backlog, provider guard, cost guard |
 | `ops-report.yml` | утром после дайджеста + вечером | Telegram ops-сводка в admin chat |
 | `ai-covers.yml` | каждые 2 часа, на 10 минуте | дешёвые OpenAI Images low cover для live-статей без обложки |
+| `quality-feedback.yml` | ежедневно 08:15 UTC / 11:15 МСК | LLM-judge выборки статей + one-tap feedback-пост владельцу в admin chat |
 | `docs-guard.yml` | push/pull request | проверка doc-impact |
 
 DeepSeek editorial routing runs from `enrich.yml` in `cheap` mode. Anthropic Batch remains the
-fallback path and is still collected by `enrich-collect-batch.yml`.
+fallback path and is still collected by `enrich-collect-batch.yml`. С 2026-06-11 collect-шаг
+получает `DEEPSEEK_*` env: при провале валидации batch-результата сначала идёт дешёвый
+DeepSeek repair-pass и только потом дорогой retry (spec 2026-06-11 W1.5). Provider-guard шаг
+`pipeline-health.yml` получает `ANTHROPIC_API_KEY` для probe авто-восстановления
+degraded-режима (W2). Канонические детали — в OPERATIONS.md прод-ветки
+`codex/evergreen-quality-standard-2026-05-21`.
 `enrich.yml` and `ai-covers.yml` use GitHub Actions concurrency groups so scheduled runs do not
 overlap when provider latency is high.
 
