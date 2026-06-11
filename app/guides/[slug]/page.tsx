@@ -14,12 +14,15 @@ import {
 import { getGuideRelatedArticles } from '../../../lib/articles'
 import {
   absoluteUrl,
+  CONTACTS_URL,
   EDITOR_IMAGE_PATH,
   EDITOR_NAME,
   EDITOR_PATH,
+  PERSONAL_TELEGRAM_URL,
   SITE_LOGO_URL,
   SITE_NAME,
   SITE_URL,
+  TELEGRAM_CHANNEL_URL as DIGEST_TELEGRAM_URL,
 } from '../../../lib/site'
 import AuthorCard from '../../../src/components/AuthorCard'
 import ArticleRecommendations from '../../../src/components/ArticleRecommendations'
@@ -37,9 +40,6 @@ type TableBlock = { type: 'table'; headers: string[]; rows: string[][] }
 type HrBlock = { type: 'hr' }
 type MarkdownBlock = HeadingBlock | ParagraphBlock | QuoteBlock | ListBlock | TableBlock | HrBlock
 
-const DIGEST_TELEGRAM_URL = process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL ?? 'https://t.me/malakhovaidigest'
-const PERSONAL_TELEGRAM_URL = process.env.NEXT_PUBLIC_PERSONAL_TELEGRAM_URL ?? 'https://t.me/malakhovai'
-const CONTACTS_URL = 'https://malakhovai.ru/contacts'
 const METRIKA_ID = process.env.NEXT_PUBLIC_METRIKA_ID
 
 export function generateStaticParams() {
@@ -806,12 +806,13 @@ function renderLink(href: string, label: string, key: string): ReactNode {
     )
   }
 
+  const isAffiliate = /syntx\.ai\/welcome\/|ad\.admitad\.com\/g\//.test(href)
   return (
     <a
       key={key}
       href={href}
       target="_blank"
-      rel="noopener noreferrer"
+      rel={isAffiliate ? 'noopener noreferrer sponsored' : 'noopener noreferrer'}
       className="text-accent underline decoration-accent/35 hover:decoration-accent"
     >
       {label}

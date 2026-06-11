@@ -452,19 +452,19 @@ Evergreen guide:
   - **«Архитектурный разбор ИИ»** / **«Оставить заявку»** → `malakhovai.ru/contacts`
     (consultation form, real). Topic-specific phrasing is welcome
     (`«Калькулятор проекта по ИИ» → contacts`, `«Проверьте бюджет до разработки» → contacts`).
-  - **«Личный разговор» / «Написать в Telegram»** → `t.me/malakhovai` (personal Telegram).
+  - **«Личный разговор» / «Написать в Telegram»** → `t.me/iddopamine` (personal Telegram).
   Default `ctaCards` for guides that do not override are defined in
   `app/guides/[slug]/page.tsx::DEFAULT_FINAL_CTA_CARDS` and use exactly these three slots.
 - **Author card (`AuthorCard`).** `src/components/AuthorCard.tsx` is the shared author/funnel
   surface (owner decision 2026-06-01). It is not a lead-magnet — it links only to real assets:
-  personal Telegram (`PERSONAL_TELEGRAM_URL` → `t.me/malakhovai`) and a consultation link.
+  personal Telegram (`PERSONAL_TELEGRAM_URL` → `t.me/iddopamine`) and a consultation link.
   - Guides: visible byline (photo + name + «проверено <date>») in the header, plus `AuthorCard`
     at the end. Personal authorship is shown because guides are expert content.
   - News: a «Подготовлено редакцией Malakhov AI» line under the H1 (never sign pipeline-generated
     news as Ivan Malakhov personally) plus `AuthorCard` next to `TelegramCTA`.
   - The consultation button points to `/services` from guides/news, and straight to
     `malakhovai.ru/contacts` on `/services` itself (`consultationHref="contacts"`).
-  - Channel digest (`@malakhovaidigest`) and personal Telegram (`@malakhovai`) are distinct
+  - Channel digest (`@malakhovaidigest`) and personal Telegram (`@iddopamine`) are distinct
     buttons — keep them separate. Source of truth: `lib/site.ts`.
 - **Consultation CTA on news** (owner decision 2026-06-01). News pages carry an accent block
   «Внедряю ИИ в бизнес — обсудим задачу» → `/services` (internal, with `utm_medium=article_cta`),
@@ -623,6 +623,50 @@ Already implemented:
 - publish readiness statuses and `publish-verify`;
 - IndexNow ping for newly verified live articles + post-deploy batch (`scripts/indexnow-batch.ts`);
 - related articles, category links and Telegram CTA.
+
+## 21. Affiliate links and partner content (effective 2026-06-11)
+
+### When to add affiliate links
+
+- **Only evergreen guides** — never in auto-generated news articles.
+- Only where the service is mentioned editorially (adds genuine value to the reader).
+- Only after the partner programme is approved: Admitad (GGSel) requires platform
+  verification; direct referral links (Syntx.ai via `SYNTX_REF_URL`) are ready once
+  the env variable is set; GetPayAll pending.
+
+### Required markup
+
+1. **`rel="sponsored"`** — `renderLink` in `app/guides/[slug]/page.tsx` auto-detects
+   affiliate URL patterns (`syntx.ai/welcome/`, `ad.admitad.com/g/`) and adds
+   `sponsored` to the rel attribute. No extra action needed when those URL patterns are used.
+2. **Visible label** — append `(партнёрская ссылка)` in parentheses after the link in the
+   article body. Example:
+   ```
+   [Syntx.ai](https://syntx.ai/welcome/DVdFJv9T) (виртуальные карты; партнёрская ссылка)
+   ```
+3. **Disclaimer** — every guide section containing affiliate links must include a paragraph:
+   ```
+   Дисклеймер: часть ссылок в этом разделе — партнёрские; мы получаем вознаграждение
+   при оформлении подписки через них. Это не влияет на редакционную оценку сервисов.
+   ```
+4. **38-ФЗ note (до согласования с владельцем)** — прямые реф-ссылки (Syntx, GetPayAll)
+   пока не подпадают под рекламный закон как информационное упоминание партнёра;
+   Admitad-ссылки покрываются их erid-разметкой. Перед масштабированием на 10+ ссылок
+   уточнить с юристом.
+
+### Active partners (as of 2026-06-11)
+
+| Partner | URL pattern | Status |
+|---|---|---|
+| Syntx.ai | `syntx.ai/welcome/DVdFJv9T` | ✅ active; env `SYNTX_REF_URL` |
+| GGSel via Admitad | `ad.admitad.com/g/…` | 🟡 Admitad approved; deep link needed |
+| GetPayAll | — | ⬜ pending response (B5) |
+
+### In which guides
+
+Currently placed: `claude-v-rossii-kak-polzovatsya-ustanovit-i-oplatit` (Syntx.ai only).
+Pending: Cursor article (`kak-oplatit-cursor-pro-iz-rossii-posredniki-virtualnye-karty`)
+— add once GGSel / GetPayAll deep links are available.
 
 ## 20. What is planned for later
 
