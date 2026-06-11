@@ -1,0 +1,25 @@
+{
+  "id": 32,
+  "status": "planned",
+  "cluster": "Доступ к ИИ из России",
+  "title": "ChatGPT в России 2026: установка, подписка Plus, оплата",
+  "primaryKeyword": "chatgpt в России",
+  "supportingKeywords": [
+    "как пользоваться chatgpt в России",
+    "chatgpt plus купить в России",
+    "как оплатить chatgpt",
+    "chatgpt без VPN",
+    "chatgpt подписка из России"
+  ],
+  "intent": "practical",
+  "audience": [
+    "разработчик",
+    "предприниматель",
+    "продакт",
+    "маркетолог"
+  ],
+  "targetSlug": "chatgpt-v-rossii-ustanovka-podpiska-plus-oplata",
+  "priority": "high",
+  "cta": "telegram_digest",
+  "notes": "Кластер 6 888 + 1 750 показов/мес. Покрыть: регистрация, Plus и Pro, оплата через посредников, Android/iOS, ограничения. Реф-ссылки добавить после одобрения партнёрок."
+}
