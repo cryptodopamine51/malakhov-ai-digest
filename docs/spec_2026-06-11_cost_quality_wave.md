@@ -26,6 +26,20 @@ premium source cap, stale-year validator, DeepSeek repair prompt, degraded-mode 
 helpers, Haiku pricing, article quality judge parsing/prompt, Telegram feedback callback/auth,
 ops-report quality block.
 
+Operational closure 2026-06-11 (вечерняя проверка хвостов):
+- `quality-feedback.yml` зарегистрирован на `main` (scheduled workflows исполняются только
+  с default-ветки; до этого judge ни разу не запускался). Туда же добавлены
+  `ANTHROPIC_API_KEY` в provider-guard шаг `pipeline-health.yml` (probe W2) и `DEEPSEEK_*`
+  в `enrich-collect-batch.yml` (repair-pass W1.5 тихо скипался без ключа).
+- Первый прогон judge выполнен вручную: 6 статей, баллы 4–5,
+  `llm_usage_logs.operation='article_quality_judge'` ~$0.004/статья.
+- Замер risk-флагов после фикса 1.2 (`npm run risk:audit -- --limit=500`):
+  money 33.4%, research 23.2%, legal_regulation 5.2%, medical 4.0%, geopolitics 3.6%,
+  high_score 0.2%. Замер «до» не записан (audit-скрипт появился вместе с фиксом);
+  негативные кейсы покрыты тестами `tests/node/editorial-routing.test.ts`.
+- Owner one-tap feedback проверен live: webhook на `news.malakhovai.ru/api/tg-feedback`,
+  5 оценок владельца записаны в `article_feedback` (2026-06-11 13:53–13:54 МСК).
+
 ---
 
 ## Wave 1 — Quick wins без риска для качества (делается первым)

@@ -28,6 +28,11 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # DeepSeek — для дешёвого repair-pass перед дорогим ретраем валидации
+          # (pipeline/editorial-repair.ts::repairEditorialWithDeepSeek, spec 2026-06-11 W1.5).
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_BASE_URL: https://api.deepseek.com
+          DEEPSEEK_WRITER_MODEL: deepseek-v4-flash
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
           # R2 — для зеркалирования внешних cover'ов при apply (pipeline/cover-mirror.ts).
