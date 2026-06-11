@@ -18,7 +18,7 @@
   "verifiedAt": "2026-06-11",
   "caseSourcing": "editorial",
   "readingMinutes": 11,
-  "noindex": true,
+  "noindex": false,
   "heroLead": "OpenAI блокирует доступ из России, но пользоваться ChatGPT можно: VPN для оригинального сервиса или российские агрегаторы без VPN, оплата Plus — в рублях через СБП. Пошаговая инструкция.",
   "cover": {
     "src": "/images/guides/chatgpt-v-rossii-ustanovka-podpiska-plus-oplata/chatgpt-russia-cover.webp",

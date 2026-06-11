@@ -149,7 +149,7 @@
   },
   {
     "id": 7,
-    "status": "ready_for_codex",
+    "status": "published",
     "cluster": "ИИ-агенты",
     "title": "ИИ-агенты для бизнеса: что это и где применять",
     "primaryKeyword": "ИИ агенты для бизнеса",
@@ -198,7 +198,7 @@
   },
   {
     "id": 9,
-    "status": "ready_for_codex",
+    "status": "published",
     "cluster": "ИИ-агенты",
     "title": "ИИ-агенты в продажах",
     "primaryKeyword": "ИИ агенты в продажах",
@@ -758,7 +758,7 @@
   },
   {
     "id": 32,
-    "status": "ready_for_codex",
+    "status": "published",
     "cluster": "Доступ к ИИ из России",
     "title": "ChatGPT в России 2026: установка, подписка Plus, оплата",
     "primaryKeyword": "chatgpt в России",
