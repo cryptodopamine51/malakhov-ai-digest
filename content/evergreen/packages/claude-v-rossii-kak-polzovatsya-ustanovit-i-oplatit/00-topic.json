@@ -1,0 +1,25 @@
+{
+  "id": 31,
+  "status": "planned",
+  "cluster": "Доступ к ИИ из России",
+  "title": "Claude в России 2026: как пользоваться, установить и оплатить",
+  "primaryKeyword": "claude в России",
+  "supportingKeywords": [
+    "как пользоваться claude в России",
+    "claude code в России",
+    "как оплатить claude",
+    "claude pro из России",
+    "как оплатить claude code"
+  ],
+  "intent": "practical",
+  "audience": [
+    "разработчик",
+    "предприниматель",
+    "продакт",
+    "маркетолог"
+  ],
+  "targetSlug": "claude-v-rossii-kak-polzovatsya-ustanovit-i-oplatit",
+  "priority": "high",
+  "cta": "telegram_digest",
+  "notes": "Кластер 8 639 + 2 584 показов/мес. Покрыть: доступ без VPN, регистрация, Claude Code 1 319, оплата через посредников (Syntx, GetPayAll). Реф-ссылки добавить после одобрения партнёрок."
+}

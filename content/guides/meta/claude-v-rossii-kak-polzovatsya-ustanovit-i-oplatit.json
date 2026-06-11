@@ -1,0 +1,120 @@
+{
+  "slug": "claude-v-rossii-kak-polzovatsya-ustanovit-i-oplatit",
+  "path": "/guides/claude-v-rossii-kak-polzovatsya-ustanovit-i-oplatit",
+  "title": "Claude в России 2026: как пользоваться, установить и оплатить",
+  "seoTitle": "Claude в России 2026: как пользоваться, установить и оплатить",
+  "description": "Как зарегистрироваться в Claude из России, выбрать тариф, оплатить Pro через посредников и настроить Claude Code. Проверено в июне 2026.",
+  "ogDescription": "Claude доступен в России без VPN. Гайд: регистрация, тарифы Pro/Max, оплата через посредников, Claude Code для разработчиков.",
+  "category": "coding",
+  "tags": [
+    "claude в России",
+    "claude code",
+    "как оплатить claude",
+    "ИИ-инструменты",
+    "доступ к ИИ из России"
+  ],
+  "publishedAt": "2026-06-11T00:00:00+03:00",
+  "updatedAt": "2026-06-11T00:00:00+03:00",
+  "verifiedAt": "2026-06-11",
+  "readingMinutes": 12,
+  "heroLead": "Claude доступен в России без блокировок — зарегистрироваться можно с российским телефоном, а оплатить Pro и API через сервисы-посредники. Здесь — пошаговая инструкция.",
+  "cover": {
+    "src": "/images/guides/claude-v-rossii-kak-polzovatsya-ustanovit-i-oplatit/claude-russia-cover.webp",
+    "width": 1200,
+    "height": 675,
+    "alt": "Интерфейс Claude на экране ноутбука на фоне российского городского пейзажа — символ доступности сервиса в России",
+    "caption": "Claude доступен из России: регистрация, тарифы, оплата и Claude Code"
+  },
+  "inlineImagesByHeading": {
+    "как-оплатить-claude-pro-и-max-из-России": {
+      "src": "/images/guides/claude-v-rossii-kak-polzovatsya-ustanovit-i-oplatit/claude-russia-oplata-skhema.webp",
+      "width": 1200,
+      "height": 800,
+      "alt": "Схема оплаты Claude Pro из России через сервисы-посредники: российская карта → посредник → подписка Claude",
+      "caption": "Три рабочих маршрута оплаты Claude Pro из России в 2026 году"
+    },
+    "claude-code-в-России": {
+      "src": "/images/guides/claude-v-rossii-kak-polzovatsya-ustanovit-i-oplatit/claude-russia-code-terminal.webp",
+      "width": 1200,
+      "height": 800,
+      "alt": "Терминал с командой npm install -g @anthropic-ai/claude-code и примером диалога с Claude Code",
+      "caption": "Claude Code: установка и первый диалог в терминале"
+    }
+  },
+  "relatedLinks": [
+    {
+      "title": "Как выбрать первый ИИ-проект в бизнесе",
+      "description": "Взвешенный скоринг 7 критериев: как выбрать первый ИИ-проект и оценить ROI до старта.",
+      "href": "/guides/kak-vybrat-pervyj-ii-proekt-v-biznese"
+    },
+    {
+      "title": "Какие бизнес-процессы автоматизировать с помощью ИИ",
+      "description": "Матрица выбора процессов: какие задачи отдать ИИ в первую очередь, а какие оставить людям.",
+      "href": "/guides/kakie-biznes-processy-avtomatizirovat-s-pomoshyu-ii"
+    },
+    {
+      "title": "ИИ в России",
+      "description": "Новости российского рынка ИИ: государственные инициативы, российские модели и кейсы компаний.",
+      "href": "/russia"
+    }
+  ],
+  "ctaCards": [
+    {
+      "title": "ИИ-новости каждый день",
+      "text": "Свежие новости об ИИ, инструментах и кейсах — в Telegram без лишнего шума.",
+      "action": "Подписаться на дайджест",
+      "href": "telegram-digest",
+      "intent": "daily_ai_news_digest"
+    },
+    {
+      "title": "Разбор вашего ИИ-проекта",
+      "text": "Проверим процесс, данные, риски и экономику — до того как вы потратите бюджет.",
+      "action": "Оставить заявку",
+      "href": "contacts",
+      "intent": "architecture_review"
+    },
+    {
+      "title": "Личный канал Ивана",
+      "text": "О продуктах, автоматизации и ИИ — без корпоративной шелухи.",
+      "action": "Подписаться",
+      "href": "telegram-personal",
+      "intent": "personal_channel"
+    }
+  ],
+  "inlineCtas": [],
+  "faq": [
+    {
+      "question": "Работает ли Claude в России без VPN?",
+      "answer": "Да, Claude.ai и API Anthropic доступны из России напрямую без VPN по состоянию на июнь 2026 года. Мобильное приложение для iOS может потребовать зарубежного Apple ID для скачивания."
+    },
+    {
+      "question": "Как оплатить Claude Pro из России?",
+      "answer": "Прямая оплата российскими картами недоступна. Используйте сервисы-посредники: GGSel, Syntx.ai, GetPayAll и другие принимают российские платёжные методы (СБП, карты, ЮMoney). Проверяйте актуальность условий перед оформлением."
+    },
+    {
+      "question": "Как установить и использовать Claude Code в России?",
+      "answer": "Выполните `npm install -g @anthropic-ai/claude-code`. API Anthropic работает из России без ограничений. Для использования нужен API-ключ (pay-as-you-go) или активная Pro/Max подписка."
+    },
+    {
+      "question": "Можно ли передавать в Claude персональные данные клиентов?",
+      "answer": "Нет, если это данные российских граждан. Серверы Anthropic находятся в США, что нарушает 152-ФЗ о локализации обработки персональных данных. Для таких задач используйте YandexGPT или GigaChat."
+    },
+    {
+      "question": "Что дешевле — Claude Pro или API?",
+      "answer": "Зависит от объёма задач. Pro (~$20/мес) выгоден при ежедневном активном использовании. API выгоднее при нерегулярной нагрузке или для автоматизации с оптимизированными токенами."
+    },
+    {
+      "question": "Чем Claude отличается от ChatGPT?",
+      "answer": "Оба — мощные языковые модели. Claude традиционно выделяется на задачах с длинным контекстом и точным следованием инструкциям. ChatGPT сильнее интегрирован с экосистемой OpenAI (DALL·E, GPTs). Оба доступны в России."
+    },
+    {
+      "question": "Поддерживает ли Claude русский язык?",
+      "answer": "Да, Claude хорошо работает на русском. Качество ответов на русском сопоставимо с английским для большинства задач."
+    }
+  ],
+  "relatedArticleCategories": [
+    "coding",
+    "ai-industry",
+    "ai-russia"
+  ]
+}
