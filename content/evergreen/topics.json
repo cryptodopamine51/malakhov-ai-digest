@@ -758,7 +758,7 @@
   },
   {
     "id": 32,
-    "status": "planned",
+    "status": "ready_for_codex",
     "cluster": "Доступ к ИИ из России",
     "title": "ChatGPT в России 2026: установка, подписка Plus, оплата",
     "primaryKeyword": "chatgpt в России",
@@ -783,7 +783,7 @@
   },
   {
     "id": 33,
-    "status": "planned",
+    "status": "ready_for_codex",
     "cluster": "Доступ к ИИ из России",
     "title": "Карты и сервисы для оплаты зарубежных ИИ-подписок из России",
     "primaryKeyword": "оплата зарубежных сервисов",

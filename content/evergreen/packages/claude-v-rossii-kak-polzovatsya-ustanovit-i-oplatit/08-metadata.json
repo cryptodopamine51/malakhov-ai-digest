@@ -27,14 +27,14 @@
     "caption": "Claude доступен из России: регистрация, тарифы, оплата и Claude Code"
   },
   "inlineImagesByHeading": {
-    "как-оплатить-claude-pro-и-max-из-России": {
+    "как-оплатить-claude-pro-и-max-из-россии": {
       "src": "/images/guides/claude-v-rossii-kak-polzovatsya-ustanovit-i-oplatit/claude-russia-oplata-skhema.webp",
       "width": 1200,
       "height": 800,
       "alt": "Схема оплаты Claude Pro из России через сервисы-посредники: российская карта → посредник → подписка Claude",
       "caption": "Три рабочих маршрута оплаты Claude Pro из России в 2026 году"
     },
-    "claude-code-в-России": {
+    "claude-code-в-россии": {
       "src": "/images/guides/claude-v-rossii-kak-polzovatsya-ustanovit-i-oplatit/claude-russia-code-terminal.webp",
       "width": 1200,
       "height": 800,
