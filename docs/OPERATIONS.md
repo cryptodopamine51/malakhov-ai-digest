@@ -1022,6 +1022,30 @@ Cтратегия рендеринга по типам страниц:
 - При смене политики безопасно бамкать ключ: `consent_v1` → `consent_v2`. Старое решение
   будет проигнорировано, баннер появится у всех заново.
 
+### Цели Метрики (Management API)
+
+Env: `YANDEX_METRIKA_OAUTH_TOKEN`, `YANDEX_METRIKA_COUNTER_ID`.
+
+Активные автоцели (созданы Яндексом автоматически):
+- `519704544` — клик по номеру телефона
+- `519704545` — переход в мессенджер (`all_messengers`) — покрывает t.me-клики, отдельную цель «Клик в личный TG» не создавать
+- `544856191` — отправка формы
+- `544856192/193` — контактные данные
+
+Цели для создания вручную через Management API (задача B3, 2026-06-11):
+«Визит /services» и «Визит /contacts» — type `url`, condition `contain`.
+**Блокер**: текущий OAuth-токен имеет только `metrika:read`; для создания целей нужен токен
+с областью `metrika:write`. Владельцу: перегенерировать токен с правами на запись на
+[oauth.yandex.ru](https://oauth.yandex.ru), обновить `YANDEX_METRIKA_OAUTH_TOKEN` в env,
+затем выполнить:
+```bash
+curl -X POST "https://api-metrika.yandex.net/management/v1/counter/${YANDEX_METRIKA_COUNTER_ID}/goals" \
+  -H "Authorization: OAuth ${YANDEX_METRIKA_OAUTH_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"goal":{"name":"Визит /services","type":"url","conditions":[{"type":"contain","url":"/services"}]}}'
+# повторить для /contacts
+```
+
 ## Recovery и monitoring
 
 Operational scripts и workflows отвечают за:

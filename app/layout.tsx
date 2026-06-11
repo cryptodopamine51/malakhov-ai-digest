@@ -87,6 +87,7 @@ export const metadata: Metadata = {
   },
   other: {
     'twitter:url': SITE_URL,
+    'verify-admitad': 'c970c0609c',
   },
   robots: {
     index: true,

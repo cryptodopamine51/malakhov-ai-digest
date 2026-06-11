@@ -4,7 +4,14 @@
 > Он не подгружается автоматически “из памяти” между сессиями: в начале каждой новой работы его нужно открыть явно или запустить `npm run context`.
 > Последнее обновление: 2026-06-11
 
-Текущая инициатива (open 2026-06-10): **Полный аудит дайджеста: техника + SEO + развитие** —
+Текущая инициатива (open 2026-06-11): **Монетизация: Admitad + Метрика + money-контент** —
+`docs/spec_2026-06-11_monetization_execution.md`. Выполнено 2026-06-11: B1 (Admitad meta-тег
+`verify-admitad: c970c0609c` в `app/layout.tsx`), B4 (Cursor-статья — title/lead/body обновлены
+под запрос «оплатить cursor», FAQ добавлен). B3 заблокирован: OAuth-токен `YANDEX_METRIKA_OAUTH_TOKEN`
+имеет только `metrika:read`; curl-команды и инструкция для владельца — `docs/OPERATIONS.md`.
+Ждёт: A2 (owner: кнопка верификации Admitad после деплоя), B3-разблокировка (токен с write-правами).
+
+Предыдущая инициатива (open 2026-06-10): **Полный аудит дайджеста: техника + SEO + развитие** —
 `docs/spec_2026-06-10_digest_full_audit.md` (метрики: `docs/baseline_2026-06-10.md`).
 Дополнение 2026-06-11: по `docs/spec_2026-06-11_cost_quality_wave.md` закрыты только W1–W3:
 batch-cost учитывает Anthropic Batch discount, risk-флаги сужены, premium source text cap включён,
