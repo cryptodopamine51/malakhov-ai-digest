@@ -18,7 +18,7 @@
   "verifiedAt": "2026-06-11",
   "caseSourcing": "editorial",
   "readingMinutes": 12,
-  "noindex": true,
+  "noindex": false,
   "heroLead": "Российские карты зарубежные ИИ-сервисы не принимают, но рабочих маршрутов четыре: каталоги МТС и Озона, посредники, виртуальные и иностранные карты. Сравниваем наценки и считаем, что выгоднее на году подписки.",
   "cover": {
     "src": "/images/guides/karty-i-servisy-dlya-oplaty-zarubezhnykh-ii-podpisok/oplata-ii-cover.webp",
