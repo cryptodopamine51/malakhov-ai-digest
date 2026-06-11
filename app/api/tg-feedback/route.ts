@@ -53,12 +53,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: false, error: 'TELEGRAM_BOT_TOKEN missing' }, { status: 500 })
   }
 
-  if (!isAuthorizedFeedbackUser(fromId, fromUsername)) {
+  const chatId = callback.message?.chat?.id ?? null
+  if (!isAuthorizedFeedbackUser(fromId, fromUsername, chatId)) {
     await answerCallbackQuery(botToken, callback.id, 'Недостаточно прав')
     return NextResponse.json({ ok: true, skipped: 'forbidden_user' })
   }
 
-  const chatId = callback.message?.chat?.id ?? null
   const messageId = callback.message?.message_id ?? null
   await upsertArticleFeedback({
     supabase: getServerClient(),

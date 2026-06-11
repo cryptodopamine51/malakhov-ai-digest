@@ -1216,9 +1216,9 @@ npm run tg-feedback:set-webhook
 
 Команда ставит Telegram webhook на `https://news.malakhovai.ru/api/tg-feedback` с
 `allowed_updates=['callback_query']` и secret token `TELEGRAM_FEEDBACK_SECRET_TOKEN`
-(fallback — `CRON_SECRET`). Route принимает только callbacks от `TELEGRAM_OWNER_USER_ID`
-(fallback — `TELEGRAM_ADMIN_CHAT_ID`) либо `TELEGRAM_OWNER_USERNAME`, upsert-ит
-`article_feedback` и редактирует сообщение подтверждением. Повторный тап перезаписывает оценку.
+(fallback — `CRON_SECRET`). Route принимает callbacks от `TELEGRAM_OWNER_USER_ID`,
+`TELEGRAM_OWNER_USERNAME` либо из чата `TELEGRAM_ADMIN_CHAT_ID`, upsert-ит `article_feedback`
+и редактирует сообщение подтверждением. Повторный тап перезаписывает оценку.
 
 Операционный смысл: judge-оценка и owner feedback пока не влияют на publish/ranking. Это baseline
 для будущих модельных переключений; расхождения judge ↔ владелец за 7 дней видны в ops-report.

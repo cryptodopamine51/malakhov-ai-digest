@@ -29,14 +29,19 @@ export function normalizeTelegramUsername(value: string | null | undefined): str
 export function isAuthorizedFeedbackUser(
   fromId: number | null | undefined,
   fromUsername?: string | null,
+  messageChatId?: number | null,
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  const ownerId = env.TELEGRAM_OWNER_USER_ID ?? env.TELEGRAM_ADMIN_CHAT_ID
-  if (ownerId && typeof fromId === 'number' && String(fromId) === String(ownerId)) return true
+  if (env.TELEGRAM_OWNER_USER_ID && typeof fromId === 'number' && String(fromId) === String(env.TELEGRAM_OWNER_USER_ID)) return true
 
   const ownerUsername = normalizeTelegramUsername(env.TELEGRAM_OWNER_USERNAME)
   const callbackUsername = normalizeTelegramUsername(fromUsername)
-  return Boolean(ownerUsername && callbackUsername && ownerUsername === callbackUsername)
+  if (ownerUsername && callbackUsername && ownerUsername === callbackUsername) return true
+
+  if (env.TELEGRAM_ADMIN_CHAT_ID && typeof messageChatId === 'number') {
+    return String(messageChatId) === String(env.TELEGRAM_ADMIN_CHAT_ID)
+  }
+  return false
 }
 
 export function withFeedbackConfirmation(text: string, rating: 0 | 1 | 2): string {
