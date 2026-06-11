@@ -730,5 +730,80 @@
     "priority": "high",
     "cta": "automation_audit",
     "notes": "Сравнить hosted/self-hosted, стоимость владения, интеграции, безопасность, поддержку, сценарии для AI automation."
+  },
+  {
+    "id": 31,
+    "status": "published",
+    "cluster": "Доступ к ИИ из России",
+    "title": "Claude в России 2026: как пользоваться, установить и оплатить",
+    "primaryKeyword": "claude в России",
+    "supportingKeywords": [
+      "как пользоваться claude в России",
+      "claude code в России",
+      "как оплатить claude",
+      "claude pro из России",
+      "как оплатить claude code"
+    ],
+    "intent": "practical",
+    "audience": [
+      "разработчик",
+      "предприниматель",
+      "продакт",
+      "маркетолог"
+    ],
+    "targetSlug": "claude-v-rossii-kak-polzovatsya-ustanovit-i-oplatit",
+    "priority": "high",
+    "cta": "telegram_digest",
+    "notes": "Кластер 8 639 + 2 584 показов/мес. Покрыть: доступ без VPN, регистрация, Claude Code 1 319, оплата через посредников (Syntx, GetPayAll). Реф-ссылки добавить после одобрения партнёрок."
+  },
+  {
+    "id": 32,
+    "status": "planned",
+    "cluster": "Доступ к ИИ из России",
+    "title": "ChatGPT в России 2026: установка, подписка Plus, оплата",
+    "primaryKeyword": "chatgpt в России",
+    "supportingKeywords": [
+      "как пользоваться chatgpt в России",
+      "chatgpt plus купить в России",
+      "как оплатить chatgpt",
+      "chatgpt без VPN",
+      "chatgpt подписка из России"
+    ],
+    "intent": "practical",
+    "audience": [
+      "разработчик",
+      "предприниматель",
+      "продакт",
+      "маркетолог"
+    ],
+    "targetSlug": "chatgpt-v-rossii-ustanovka-podpiska-plus-oplata",
+    "priority": "high",
+    "cta": "telegram_digest",
+    "notes": "Кластер 6 888 + 1 750 показов/мес. Покрыть: регистрация, Plus и Pro, оплата через посредников, Android/iOS, ограничения. Реф-ссылки добавить после одобрения партнёрок."
+  },
+  {
+    "id": 33,
+    "status": "planned",
+    "cluster": "Доступ к ИИ из России",
+    "title": "Карты и сервисы для оплаты зарубежных ИИ-подписок из России",
+    "primaryKeyword": "оплата зарубежных сервисов",
+    "supportingKeywords": [
+      "карта для оплаты зарубежных подписок",
+      "виртуальная карта для иностранных сервисов",
+      "как оплатить chatgpt claude cursor midjourney",
+      "сервис оплаты зарубежных подписок",
+      "посредник для оплаты подписок"
+    ],
+    "intent": "transactional",
+    "audience": [
+      "разработчик",
+      "предприниматель",
+      "маркетолог",
+      "любой пользователь ИИ-инструментов"
+    ],
+    "targetSlug": "karty-i-servisy-dlya-oplaty-zarubezhnykh-ii-podpisok",
+    "priority": "high",
+    "cta": "telegram_digest",
+    "notes": "Кластер 11 714 показов/мес (карта 5 281 + виртуальная карта 3 849). Ниша: «для ИИ-сервисов» — уход от банковских сравнений. Главная партнёрская страница: Syntx, GGSel, GetPayAll. Реф-ссылки добавить после одобрения."
   }
 ]

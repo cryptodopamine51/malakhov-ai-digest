@@ -6,8 +6,9 @@
 
 Предыдущая инициатива (closed 2026-06-11): **Монетизация волна 1: Admitad + Метрика + Cursor SEO** —
 `docs/spec_2026-06-11_monetization_execution.md`. Закрыты B1/B3/B4:
-- **B1**: `<meta name="verify-admitad" content="c970c0609c">` в `app/layout.tsx`, задеплоено;
-  владелец нажал «Проверить» (A2 — площадка верифицирована).
+- **B1**: `<meta name="verify-admitad" content="c970c0609c">` добавлен в двух местах:
+  `app/layout.tsx` + `app/page.tsx` (news.malakhovai.ru); VPS `/opt/malakhovai-site/dist/public/index.html`
+  (malakhovai.ru — площадка в Admitad); **A2 подтверждён 2026-06-11** — площадка верифицирована.
 - **B3**: цели Метрики созданы через Management API: `567855006` (Визит /services),
   `567855105` (Визит /contacts); автоцель `519704545` покрывает t.me-клики.
 - **B4**: Cursor-статья обновлена (title/lead/body для «оплатить cursor» + FAQ 4 вопроса).
