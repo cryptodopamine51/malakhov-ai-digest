@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  buildOwnerFeedbackBatchMessage,
   buildQualityJudgePrompt,
   inferWriterPath,
   parseQualityJudgeJson,
@@ -58,4 +59,19 @@ test('inferWriterPath maps editorial model to stable buckets', () => {
   assert.equal(inferWriterPath({ editorial_model: 'claude-sonnet-4-6' }), 'premium')
   assert.equal(inferWriterPath({ editorial_model: 'claude-haiku-4-5' }), 'haiku-fallback')
   assert.equal(inferWriterPath({ editorial_model: null }), 'unknown')
+})
+
+test('buildOwnerFeedbackBatchMessage creates one numbered Telegram message', () => {
+  const message = buildOwnerFeedbackBatchMessage([
+    { article, source: 'channel_post', reason: null },
+  ])
+
+  assert.match(message.text, /Оценка статей/)
+  assert.match(message.text, /1\. OpenAI выпустила новую модель/)
+  assert.equal(message.replyMarkup.inline_keyboard.length, 1)
+  assert.deepEqual(message.replyMarkup.inline_keyboard[0]?.map((button) => button.callback_data), [
+    `af:${article.id}:2`,
+    `af:${article.id}:1`,
+    `af:${article.id}:0`,
+  ])
 })

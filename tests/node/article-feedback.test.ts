@@ -7,6 +7,7 @@ import {
   normalizeTelegramUsername,
   parseFeedbackCallbackData,
   withFeedbackConfirmation,
+  withFeedbackConfirmationForArticle,
 } from '../../lib/article-feedback'
 
 test('parseFeedbackCallbackData accepts compact Telegram callback payload', () => {
@@ -38,4 +39,29 @@ test('withFeedbackConfirmation replaces previous confirmation', () => {
 
   assert.equal(feedbackRatingLabel(2), '🔥 сильная')
   assert.equal(text, 'Заголовок\n\n✓ оценено: 🔥 сильная')
+})
+
+test('withFeedbackConfirmationForArticle marks the matching batch row', () => {
+  const firstId = '11111111-1111-4111-8111-111111111111'
+  const secondId = '22222222-2222-4222-8222-222222222222'
+  const replyMarkup = {
+    inline_keyboard: [
+      [{ text: '1 🔥', callback_data: `af:${firstId}:2` }],
+      [{ text: '2 👌', callback_data: `af:${secondId}:1` }],
+    ],
+  }
+
+  const text = withFeedbackConfirmationForArticle([
+    'Оценка статей',
+    '',
+    '1. Первая статья',
+    '2. Вторая статья — ✓ 👎 слабая',
+  ].join('\n'), secondId, 2, replyMarkup)
+
+  assert.equal(text, [
+    'Оценка статей',
+    '',
+    '1. Первая статья',
+    '2. Вторая статья — ✓ 🔥 сильная',
+  ].join('\n'))
 })

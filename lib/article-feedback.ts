@@ -49,6 +49,46 @@ export function withFeedbackConfirmation(text: string, rating: 0 | 1 | 2): strin
   return `${clean}\n\n✓ оценено: ${feedbackRatingLabel(rating)}`
 }
 
+export function withFeedbackConfirmationForArticle(
+  text: string,
+  articleId: string,
+  rating: 0 | 1 | 2,
+  replyMarkup?: unknown,
+): string {
+  const index = feedbackButtonIndex(replyMarkup, articleId)
+  if (!index) return withFeedbackConfirmation(text, rating)
+
+  const prefix = `${index}. `
+  const label = feedbackRatingLabel(rating)
+  const statusPattern = /\s+—\s+✓\s+(?:🔥 сильная|👌 норм|👎 слабая)$/u
+  let replaced = false
+  const lines = text.trimEnd().split('\n').map((line) => {
+    if (!line.startsWith(prefix)) return line
+    replaced = true
+    return `${line.replace(statusPattern, '')} — ✓ ${label}`
+  })
+
+  return replaced ? lines.join('\n') : withFeedbackConfirmation(text, rating)
+}
+
+function feedbackButtonIndex(replyMarkup: unknown, articleId: string): number | null {
+  if (!replyMarkup || typeof replyMarkup !== 'object') return null
+  const rows = (replyMarkup as { inline_keyboard?: unknown }).inline_keyboard
+  if (!Array.isArray(rows)) return null
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index]
+    if (!Array.isArray(row)) continue
+    const hasArticleButton = row.some((button) => (
+      button
+      && typeof button === 'object'
+      && typeof (button as { callback_data?: unknown }).callback_data === 'string'
+      && parseFeedbackCallbackData((button as { callback_data: string }).callback_data)?.articleId === articleId
+    ))
+    if (hasArticleButton) return index + 1
+  }
+  return null
+}
+
 export async function upsertArticleFeedback(params: {
   supabase: SupabaseClient
   articleId: string

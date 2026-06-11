@@ -14,6 +14,10 @@ const CHANNEL_SAMPLE_SIZE = 5
 const RANDOM_SAMPLE_SIZE = 5
 const OWNER_FEEDBACK_MAX_MESSAGES = 8
 
+interface TelegramInlineKeyboardMarkup {
+  inline_keyboard: Array<Array<{ text: string; callback_data: string }>>
+}
+
 export interface QualityJudgeArticle {
   id: string
   original_title: string
@@ -50,6 +54,11 @@ export interface QualityFeedbackItem {
   reason: string | null
   source: 'channel_post' | 'judge_worst'
   score?: number | null
+}
+
+export interface OwnerFeedbackBatchMessage {
+  text: string
+  replyMarkup: TelegramInlineKeyboardMarkup
 }
 
 export function inferWriterPath(article: Pick<QualityJudgeArticle, 'editorial_model'>): string {
@@ -207,6 +216,43 @@ export function buildOwnerFeedbackCaption(item: QualityFeedbackItem): string {
   return lines.join('\n\n')
 }
 
+export function buildOwnerFeedbackBatchMessage(items: QualityFeedbackItem[]): OwnerFeedbackBatchMessage {
+  const deliverable = items.filter((item) => item.article.id)
+  const siteUrl = readSiteUrlFromEnv(process.env.NEXT_PUBLIC_SITE_URL) || SITE_URL
+  const lines = [
+    'Оценка статей',
+    '',
+    'Нажмите оценку в строке статьи:',
+    '',
+  ]
+  const keyboard: TelegramInlineKeyboardMarkup['inline_keyboard'] = []
+
+  deliverable.forEach((item, index) => {
+    const number = index + 1
+    const title = truncate(item.article.ru_title ?? item.article.original_title, 140)
+    const url = item.article.slug
+      ? getArticleUrl(siteUrl, item.article.slug, item.article.primary_category)
+      : null
+    lines.push(`${number}. ${title}`)
+    if (item.source === 'judge_worst' && item.reason) {
+      lines.push(`   judge: ${truncate(item.reason, 180)}`)
+    }
+    if (url) lines.push(`   ${url}`)
+    if (index < deliverable.length - 1) lines.push('')
+
+    keyboard.push([
+      { text: `${number} 🔥`, callback_data: `af:${item.article.id}:2` },
+      { text: `${number} 👌`, callback_data: `af:${item.article.id}:1` },
+      { text: `${number} 👎`, callback_data: `af:${item.article.id}:0` },
+    ])
+  })
+
+  return {
+    text: lines.join('\n'),
+    replyMarkup: { inline_keyboard: keyboard },
+  }
+}
+
 export async function sendOwnerFeedbackBatch(params: {
   supabase: SupabaseClient
   botToken: string
@@ -215,22 +261,17 @@ export async function sendOwnerFeedbackBatch(params: {
   dryRun?: boolean
 }): Promise<{ sent: number; skipped: number }> {
   const items = await loadOwnerFeedbackItems(params.supabase, params.now)
-  let sent = 0
-  let skipped = 0
-  for (const item of items) {
-    if (!item.article.id) {
-      skipped++
-      continue
-    }
-    if (params.dryRun) {
-      console.log(buildOwnerFeedbackCaption(item))
-      sent++
-      continue
-    }
-    await sendOwnerFeedbackItem(params.botToken, params.adminChatId, item)
-    sent++
+  const deliverable = items.filter((item) => item.article.id)
+  const skipped = items.length - deliverable.length
+  if (!deliverable.length) return { sent: 0, skipped }
+
+  const message = buildOwnerFeedbackBatchMessage(deliverable)
+  if (params.dryRun) {
+    console.log(message.text)
+    return { sent: deliverable.length, skipped }
   }
-  return { sent, skipped }
+  await sendOwnerFeedbackBatchMessage(params.botToken, params.adminChatId, message)
+  return { sent: deliverable.length, skipped }
 }
 
 async function judgeArticle(params: {
@@ -406,40 +447,19 @@ async function loadWorstJudgeArticles(
   return items
 }
 
-async function sendOwnerFeedbackItem(botToken: string, chatId: string, item: QualityFeedbackItem): Promise<void> {
-  const caption = buildOwnerFeedbackCaption(item)
-  const replyMarkup = {
-    inline_keyboard: [[
-      { text: '🔥 сильная', callback_data: `af:${item.article.id}:2` },
-      { text: '👌 норм', callback_data: `af:${item.article.id}:1` },
-      { text: '👎 слабая', callback_data: `af:${item.article.id}:0` },
-    ]],
-  }
-
-  if (item.article.cover_image_url) {
-    const photoRes = await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        photo: item.article.cover_image_url,
-        caption,
-        parse_mode: 'HTML',
-        reply_markup: replyMarkup,
-      }),
-    })
-    if (photoRes.ok) return
-  }
-
+async function sendOwnerFeedbackBatchMessage(
+  botToken: string,
+  chatId: string,
+  message: OwnerFeedbackBatchMessage,
+): Promise<void> {
   const messageRes = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       chat_id: chatId,
-      text: caption,
-      parse_mode: 'HTML',
+      text: message.text,
       disable_web_page_preview: false,
-      reply_markup: replyMarkup,
+      reply_markup: message.replyMarkup,
     }),
   })
   if (!messageRes.ok) {

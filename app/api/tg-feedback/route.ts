@@ -4,7 +4,7 @@ import {
   isAuthorizedFeedbackUser,
   parseFeedbackCallbackData,
   upsertArticleFeedback,
-  withFeedbackConfirmation,
+  withFeedbackConfirmationForArticle,
 } from '../../../lib/article-feedback'
 
 export const runtime = 'nodejs'
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   })
 
   await answerCallbackQuery(botToken, callback.id, `Оценено: ${ratingShort(parsed.rating)}`)
-  await editFeedbackMessage(botToken, callback, parsed.rating)
+  await editFeedbackMessage(botToken, callback, parsed.articleId, parsed.rating)
 
   return NextResponse.json({ ok: true })
 }
@@ -91,6 +91,7 @@ async function answerCallbackQuery(botToken: string, callbackQueryId: string, te
 async function editFeedbackMessage(
   botToken: string,
   callback: TelegramCallbackQuery,
+  articleId: string,
   rating: 0 | 1 | 2,
 ): Promise<void> {
   const chatId = callback.message?.chat?.id
@@ -107,8 +108,7 @@ async function editFeedbackMessage(
       body: JSON.stringify({
         chat_id: chatId,
         message_id: messageId,
-        caption: withFeedbackConfirmation(caption, rating),
-        parse_mode: 'HTML',
+        caption: withFeedbackConfirmationForArticle(caption, articleId, rating, replyMarkup),
         reply_markup: replyMarkup,
       }),
     }).catch(() => null)
@@ -122,8 +122,7 @@ async function editFeedbackMessage(
       body: JSON.stringify({
         chat_id: chatId,
         message_id: messageId,
-        text: withFeedbackConfirmation(text, rating),
-        parse_mode: 'HTML',
+        text: withFeedbackConfirmationForArticle(text, articleId, rating, replyMarkup),
         disable_web_page_preview: false,
         reply_markup: replyMarkup,
       }),
