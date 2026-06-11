@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import {
   feedbackRatingLabel,
   isAuthorizedFeedbackUser,
+  normalizeTelegramUsername,
   parseFeedbackCallbackData,
   withFeedbackConfirmation,
 } from '../../lib/article-feedback'
@@ -18,9 +19,17 @@ test('parseFeedbackCallbackData accepts compact Telegram callback payload', () =
 })
 
 test('isAuthorizedFeedbackUser falls back to TELEGRAM_ADMIN_CHAT_ID', () => {
-  assert.equal(isAuthorizedFeedbackUser(42, { TELEGRAM_OWNER_USER_ID: '42' } as unknown as NodeJS.ProcessEnv), true)
-  assert.equal(isAuthorizedFeedbackUser(42, { TELEGRAM_ADMIN_CHAT_ID: '42' } as unknown as NodeJS.ProcessEnv), true)
-  assert.equal(isAuthorizedFeedbackUser(43, { TELEGRAM_OWNER_USER_ID: '42' } as unknown as NodeJS.ProcessEnv), false)
+  assert.equal(isAuthorizedFeedbackUser(42, null, { TELEGRAM_OWNER_USER_ID: '42' } as unknown as NodeJS.ProcessEnv), true)
+  assert.equal(isAuthorizedFeedbackUser(42, null, { TELEGRAM_ADMIN_CHAT_ID: '42' } as unknown as NodeJS.ProcessEnv), true)
+  assert.equal(isAuthorizedFeedbackUser(43, null, { TELEGRAM_OWNER_USER_ID: '42' } as unknown as NodeJS.ProcessEnv), false)
+})
+
+test('isAuthorizedFeedbackUser accepts configured owner username', () => {
+  const env = { TELEGRAM_OWNER_USERNAME: '@iddopamine' } as unknown as NodeJS.ProcessEnv
+  assert.equal(normalizeTelegramUsername('@IdDopamine'), 'iddopamine')
+  assert.equal(isAuthorizedFeedbackUser(777, 'iddopamine', env), true)
+  assert.equal(isAuthorizedFeedbackUser(777, 'IdDopamine', env), true)
+  assert.equal(isAuthorizedFeedbackUser(777, 'other_user', env), false)
 })
 
 test('withFeedbackConfirmation replaces previous confirmation', () => {

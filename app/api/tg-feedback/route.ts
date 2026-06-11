@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic'
 interface TelegramCallbackQuery {
   id: string
   data?: string
-  from?: { id?: number }
+  from?: { id?: number; username?: string }
   message?: {
     message_id?: number
     chat?: { id?: number }
@@ -42,6 +42,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const callback = update?.callback_query
   const parsed = parseFeedbackCallbackData(callback?.data)
   const fromId = callback?.from?.id
+  const fromUsername = callback?.from?.username
 
   if (!callback?.id || !parsed) {
     return NextResponse.json({ ok: true, skipped: 'not_feedback_callback' })
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: false, error: 'TELEGRAM_BOT_TOKEN missing' }, { status: 500 })
   }
 
-  if (!isAuthorizedFeedbackUser(fromId)) {
+  if (!isAuthorizedFeedbackUser(fromId, fromUsername)) {
     await answerCallbackQuery(botToken, callback.id, 'Недостаточно прав')
     return NextResponse.json({ ok: true, skipped: 'forbidden_user' })
   }
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     telegramChatId: chatId,
     telegramMessageId: messageId,
     telegramUserId: fromId!,
-    metadata: { callback_id: callback.id },
+    metadata: { callback_id: callback.id, username: fromUsername ?? null },
   })
 
   await answerCallbackQuery(botToken, callback.id, `Оценено: ${ratingShort(parsed.rating)}`)

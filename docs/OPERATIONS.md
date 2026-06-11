@@ -162,6 +162,7 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
 - `QUALITY_JUDGE_MODEL` — модель ежедневного LLM-judge; default `claude-haiku-4-5`.
 - `OPENAI_IMAGE_DAILY_BUDGET_USD` — hard logical cap для AI cover workflow/ручного backfill; текущий workflow задаёт `$1`.
 - `TELEGRAM_OWNER_USER_ID` — Telegram user id владельца, которому разрешены one-tap quality feedback callbacks. Если не задан, route использует `TELEGRAM_ADMIN_CHAT_ID` как fallback.
+- `TELEGRAM_OWNER_USERNAME` — Telegram username владельца без обязательного `@`; дополнительный allow-list для feedback callbacks, когда известен username, но не numeric user id.
 - `TELEGRAM_FEEDBACK_SECRET_TOKEN` — secret token Telegram webhook-а `/api/tg-feedback`. Если не задан, используется `CRON_SECRET`.
 - `TELEGRAM_IMMEDIATE_ALERT_MIN_SEVERITY=critical|warning|info|none` — порог мгновенных Telegram-пушей из `fireAlert`. Default `critical`: warning/info пишутся в `pipeline_alerts`, но не шумят в чат до утренне-вечерней ops-сводки.
 - `TELEGRAM_IMMEDIATE_ALERT_TYPES=alert_a,alert_b` — точечный allow-list типов, которые нужно отправлять мгновенно независимо от severity.
@@ -1216,8 +1217,8 @@ npm run tg-feedback:set-webhook
 Команда ставит Telegram webhook на `https://news.malakhovai.ru/api/tg-feedback` с
 `allowed_updates=['callback_query']` и secret token `TELEGRAM_FEEDBACK_SECRET_TOKEN`
 (fallback — `CRON_SECRET`). Route принимает только callbacks от `TELEGRAM_OWNER_USER_ID`
-(fallback — `TELEGRAM_ADMIN_CHAT_ID`), upsert-ит `article_feedback` и редактирует сообщение
-подтверждением. Повторный тап перезаписывает оценку.
+(fallback — `TELEGRAM_ADMIN_CHAT_ID`) либо `TELEGRAM_OWNER_USERNAME`, upsert-ит
+`article_feedback` и редактирует сообщение подтверждением. Повторный тап перезаписывает оценку.
 
 Операционный смысл: judge-оценка и owner feedback пока не влияют на publish/ranking. Это baseline
 для будущих модельных переключений; расхождения judge ↔ владелец за 7 дней видны в ops-report.

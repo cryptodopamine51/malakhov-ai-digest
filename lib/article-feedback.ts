@@ -21,10 +21,22 @@ export function feedbackRatingLabel(rating: 0 | 1 | 2): string {
   return '👎 слабая'
 }
 
-export function isAuthorizedFeedbackUser(fromId: number | null | undefined, env: NodeJS.ProcessEnv = process.env): boolean {
+export function normalizeTelegramUsername(value: string | null | undefined): string | null {
+  const normalized = value?.trim().replace(/^@/, '').toLowerCase()
+  return normalized || null
+}
+
+export function isAuthorizedFeedbackUser(
+  fromId: number | null | undefined,
+  fromUsername?: string | null,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
   const ownerId = env.TELEGRAM_OWNER_USER_ID ?? env.TELEGRAM_ADMIN_CHAT_ID
-  if (!ownerId || typeof fromId !== 'number') return false
-  return String(fromId) === String(ownerId)
+  if (ownerId && typeof fromId === 'number' && String(fromId) === String(ownerId)) return true
+
+  const ownerUsername = normalizeTelegramUsername(env.TELEGRAM_OWNER_USERNAME)
+  const callbackUsername = normalizeTelegramUsername(fromUsername)
+  return Boolean(ownerUsername && callbackUsername && ownerUsername === callbackUsername)
 }
 
 export function withFeedbackConfirmation(text: string, rating: 0 | 1 | 2): string {
