@@ -53,6 +53,18 @@ const ANTHROPIC_RATES_USD_PER_MTOK: Record<string, AnthropicRate> = {
     cacheRead: 0.3,
     cacheCreate: 3.75,
   },
+  'claude-haiku-4-5': {
+    input: 1,
+    output: 5,
+    cacheRead: 0.1,
+    cacheCreate: 1.25,
+  },
+  'claude-haiku-4.5': {
+    input: 1,
+    output: 5,
+    cacheRead: 0.1,
+    cacheCreate: 1.25,
+  },
 }
 
 const DEEPSEEK_RATES_USD_PER_MTOK: Record<string, DeepSeekRate> = {

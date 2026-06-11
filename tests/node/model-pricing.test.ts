@@ -35,6 +35,19 @@ test('estimateTextCostUsd can apply Anthropic batch discount', () => {
   assert.equal(cost, 0.009)
 })
 
+test('estimateTextCostUsd supports Haiku 4.5 judge pricing', () => {
+  const cost = estimateTextCostUsd({
+    provider: 'anthropic',
+    model: 'claude-haiku-4-5',
+    usage: {
+      inputTokens: 3000,
+      outputTokens: 300,
+    },
+  })
+
+  assert.equal(cost, 0.0045)
+})
+
 test('estimateTextCostUsd uses DeepSeek cache split when present', () => {
   const cost = estimateTextCostUsd({
     provider: 'deepseek',

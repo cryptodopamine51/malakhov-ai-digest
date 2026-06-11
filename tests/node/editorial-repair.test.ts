@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { repairEditorialOutput } from '../../pipeline/editorial-repair'
+import { buildDeepSeekEditorialRepairPrompt, repairEditorialOutput } from '../../pipeline/editorial-repair'
 import type { EditorialOutput } from '../../pipeline/claude'
 
 function output(): EditorialOutput {
@@ -120,4 +120,18 @@ test('repairEditorialOutput restores paragraphs for long single-paragraph body',
 
   assert.ok(repaired.output.editorial_body.split('\n\n').length >= 3)
   assert.ok(repaired.fixes.includes('restore_editorial_body_paragraphs'))
+})
+
+test('buildDeepSeekEditorialRepairPrompt scopes repair to validator errors', () => {
+  const prompt = buildDeepSeekEditorialRepairPrompt({
+    originalTitle: 'Apple готовит Siri для WWDC 2026',
+    originalText: 'Источник говорит о WWDC 2026 и новой Siri.',
+    output: output(),
+    errors: ['галлюцинация прошедшего года: 2025', 'lead без конкретного якоря'],
+  })
+
+  assert.match(prompt.system, /Исправь только перечисленные ошибки/)
+  assert.match(prompt.user, /галлюцинация прошедшего года: 2025/)
+  assert.match(prompt.user, /JSON статьи:/)
+  assert.match(prompt.user, /Apple готовит Siri/)
 })

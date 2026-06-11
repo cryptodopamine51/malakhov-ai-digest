@@ -106,14 +106,22 @@ Batch-specific lifecycle не хранится в `articles.enrich_status`.
   `error_code='claude_parse_failed'` (∈ `PERMANENT_ERRORS`) + warning alert `claude_parse_failed`
   с cooldown 4 часа и dedupe по `batch_id`. Починить ретраем нельзя.
 - Failed editorial validation при распарсенном JSON обрабатывается отдельно (фикс 2026-06-04):
-  если `quality_ok=true`, статья получает `error_code='editorial_validation_failed'`
-  (∈ `RETRYABLE_ERRORS`) → `retry_wait` → переотправка новым батчем до `maxAttempts=3`
-  (стохастичный output обычно проходит на повторе); алёрт поднимается только когда статья
-  терминальна (исчерпала ретраи). Если `quality_ok=false` — это `quality_reject` (терминально,
-  без ретрая: Claude сам признал источник непубликуемым). Раньше любой провал валидации был
-  `claude_parse_failed` и навсегда ронял полностью сгенерированную статью в `failed`.
+  если `quality_ok=true`, collector сначала делает дешёвый DeepSeek repair-pass
+  (`operation='deepseek_editorial_repair'` в `llm_usage_logs`) с инструкцией исправить только
+  перечисленные ошибки валидатора. Если repair проходит strict validator, статья применяется без
+  полного Anthropic retry. Если repair не помог, статья получает
+  `error_code='editorial_validation_failed'` (∈ `RETRYABLE_ERRORS`) → `retry_wait` →
+  переотправка новым батчем до `maxAttempts=3`; алёрт поднимается только когда статья терминальна.
+  Если `quality_ok=false` — это `quality_reject` (терминально, без ретрая: модель сама признала
+  источник непубликуемым). Раньше любой провал валидации был `claude_parse_failed` и навсегда
+  ронял полностью сгенерированную статью в `failed`.
 - Ошибка записи `llm_usage_logs` больше не роняет collect/apply path: `writeLlmUsageLog`
   логирует проблему и поднимает warning alert `llm_usage_log_write_failed`.
+- Cost accounting для Anthropic Batch хранит **billed estimate** со скидкой Batch API:
+  `anthropic_batch_items.estimated_cost_usd`, `anthropic_batches.estimated_cost_usd` и
+  `llm_usage_logs.estimated_cost_usd` считаются с `batch=true` (примерно ×0.5 от list price).
+  List-price сохраняется в `response_payload.estimated_list_cost_usd` и metadata usage-log,
+  чтобы можно было сравнить экономию исторически.
 
 ### Editorial validation and routing experiments
 
@@ -127,7 +135,17 @@ Validator дополнительно проверяет:
 - каждый `link_anchor` должен присутствовать в `editorial_body` дословно;
 - banned phrases из editorial prompt across title/lead/summary/teasers/body;
 - standalone `AI` в русском тексте, кроме известных product/institution names;
+- прошедшие годы в `ru_title` / `lead` / `editorial_body`: если год меньше текущего и не
+  встречается в `original_title`/`original_text`, это `галлюцинация прошедшего года` и обычная
+  validator error (repair/retry path);
 - basic body/teaser/summary shape.
+
+Risk flags (`money`, `legal_regulation`, `medical`, `geopolitics`) живут в
+`pipeline/risk-flags.ts` и используют Unicode word boundaries. Широкие стемы 2026-06-11
+сужены: `выбор модели`/`выборка` больше не дают `geopolitics`; `закономерность` не даёт
+`legal_regulation`; `персональный ассистент` не даёт legal, legal-флаг по персональным данным
+требует связку `персональн* данн*`. Для аудита последних материалов есть read-only script
+`npm run risk:audit -- --limit=500`.
 
 Lead anchor check (`sentenceHasAnchor`, первое предложение лида) считает конкретным якорем
 цифры, русские числительные, латинские product/model names и camelCase identifiers вроде
@@ -156,6 +174,9 @@ Lead anchor check (`sentenceHasAnchor`, первое предложение ли
 - удаление invalid `link_anchors`;
 - сохранение/восстановление paragraph breaks для DeepSeek outputs;
 - безопасное сокращение слишком длинного `ru_title`.
+- LLM repair-pass (`repairEditorialWithDeepSeek`) запускается только после распарсенного JSON и
+  failed validator, до дорогого premium retry. Он не является rewrite-путём: prompt передаёт
+  исходный JSON и список ошибок, а результат снова проходит deterministic repair + validator.
 
 `scripts/run-editorial-routing.ts` (`npm run editorial:routing`) — production routing runner:
 
@@ -170,6 +191,11 @@ Lead anchor check (`sentenceHasAnchor`, первое предложение ли
   `editorial_premium_fallback`;
 - successful low-risk DeepSeek output пишется прямым claim-safe update в `publish_ready`,
   но live-публикация всё равно остаётся за `publish-verify` RPC.
+- Если open alert `anthropic_unavailable:anthropic` активен, включается degraded-режим:
+  low-risk статьи продолжают DeepSeek path без reviewer и без premium fallback
+  (`degraded=true` в `llm_usage_logs`/attempt payload), а high-risk статьи паркуются в
+  `retry_wait` с `last_error_code='anthropic_degraded'` до recovery. В этом режиме
+  `enrich-submit-batch` не создаёт новые Anthropic Batch jobs.
 
 С 2026-05-11 `enrich.yml` запускает `npm run editorial:routing -- --mode=cheap --limit=15 --apply`
 каждые 30 минут. Это не удаляет Anthropic Batch: high-risk статьи, DeepSeek/API failures,
@@ -280,6 +306,27 @@ dedup по deterministic `storyKey`, recent memory за 72 часа из legacy 
 
 Legacy `bot/daily-digest-core.ts` и `digest_runs` оставлены для аудита и обратной совместимости,
 но `/api/cron/tg-digest` больше не отправляет production-сообщения.
+
+### Article quality judge and owner feedback
+
+С 2026-06-11 поверх published/live статей работает отдельный контур контроля качества:
+
+- `npm run quality:judge` берёт ежедневную выборку (вчерашние Telegram channel posts +
+  случайные live-статьи), прогоняет её через Claude Haiku 4.5 (`claude-haiku-4-5`) по рубрике
+  «опора на источник / якорь в лиде / запрещённые фразы / полезность контекста» и пишет
+  `article_quality_scores`. Расход judge-вызовов логируется как `operation='article_quality_judge'`
+  в `llm_usage_logs`.
+- `npm run quality:feedback` отправляет владельцу в admin chat до 8 карточек для оценки:
+  вчерашние channel posts и худшие по judge. Inline-кнопки пишут `callback_data='af:<article_id>:<rating>'`.
+- `app/api/tg-feedback/route.ts` принимает Telegram `callback_query`, проверяет
+  `x-telegram-bot-api-secret-token` и `from.id == TELEGRAM_OWNER_USER_ID`
+  (fallback — `TELEGRAM_ADMIN_CHAT_ID`), upsert-ит `article_feedback` и редактирует сообщение
+  подтверждением `✓ оценено: ...`.
+- `lib/ops-summary.ts` показывает в Telegram ops-report средний judge-балл за день,
+  разбивку по writer path, худшие статьи и расхождения judge ↔ owner за 7 дней.
+
+Этот контур не влияет на ранжирование и publish gate в W1–W3. Он нужен как baseline перед
+любыми модельными переключениями будущих волн.
 
 ### `enrich_runs.rejected_breakdown` (Wave 2.3)
 

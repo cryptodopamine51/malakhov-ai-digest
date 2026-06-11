@@ -81,10 +81,10 @@ npm run context
 
 | Кодовая зона | Канонический doc |
 |---|---|
-| `pipeline/ingest.ts`, `pipeline/rss-parser.ts`, `pipeline/feeds.config.ts`, `pipeline/enricher.ts`, `pipeline/fetcher.ts`, `pipeline/scorer.ts`, `pipeline/slug.ts`, `pipeline/claude.ts`, `pipeline/deepl.ts`, `pipeline/generate-images.ts`, `pipeline/image-*` | `docs/ARTICLE_SYSTEM.md` |
-| `app/articles/**`, `app/archive/**`, `app/topics/**`, `app/sources/**`, `bot/daily-digest.ts`, `bot/daily-digest-core.ts`, `bot/channel-post.ts`, `bot/channel-post-core.ts`, `lib/articles.ts`, `lib/article-slugs.ts`, `app/sitemap.ts`, `src/components/ArticleCard.tsx` | `docs/ARTICLE_SYSTEM.md` |
+| `pipeline/ingest.ts`, `pipeline/rss-parser.ts`, `pipeline/feeds.config.ts`, `pipeline/enricher.ts`, `pipeline/fetcher.ts`, `pipeline/scorer.ts`, `pipeline/slug.ts`, `pipeline/claude.ts`, `pipeline/editorial-*`, `pipeline/risk-flags.ts`, `pipeline/article-quality.ts`, `pipeline/deepl.ts`, `pipeline/generate-images.ts`, `pipeline/image-*` | `docs/ARTICLE_SYSTEM.md` |
+| `app/articles/**`, `app/archive/**`, `app/topics/**`, `app/sources/**`, `bot/daily-digest.ts`, `bot/daily-digest-core.ts`, `bot/channel-post.ts`, `bot/channel-post-core.ts`, `lib/articles.ts`, `lib/article-slugs.ts`, `lib/year-sanitizer.ts`, `lib/article-feedback.ts`, `app/sitemap.ts`, `src/components/ArticleCard.tsx` | `docs/ARTICLE_SYSTEM.md` |
 | `lib/supabase.ts`, `supabase/**`, `app/internal/**` | `docs/ARCHITECTURE.md` |
-| `.github/workflows/**`, `vercel.json`, `package.json`, runtime scripts в `scripts/`, recovery/health/publish verification в `pipeline/` | `docs/OPERATIONS.md` |
+| `.github/workflows/**`, `vercel.json`, `package.json`, runtime scripts в `scripts/`, `app/api/cron/**`, `app/api/tg-feedback/**`, `lib/ops-summary.ts`, recovery/health/publish verification/provider degraded в `pipeline/` | `docs/OPERATIONS.md` |
 | `app/page.tsx`, `app/layout.tsx`, `app/services/**`, `src/components/Header.tsx`, `src/components/Footer.tsx` | `docs/PROJECT.md` |
 | `app/globals.css`, общие UI-компоненты в `src/components/**` (включая `AuthorCard.tsx`), кроме компонентов с отдельной доменной ответственностью | `docs/DESIGN.md` |
 

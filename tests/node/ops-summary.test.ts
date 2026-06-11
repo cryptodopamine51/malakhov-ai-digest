@@ -115,6 +115,20 @@ function baseSummary(overrides: Partial<OpsSummary> = {}): OpsSummary {
       byProvider: [{ key: 'anthropic', costUsd: 0.4 }],
       byOperation: [{ key: 'editorial_batch_result', costUsd: 0.4 }],
     },
+    quality: {
+      scoresToday: 3,
+      averageScore: 4.2,
+      byWriterPath: [{ key: 'deepseek', averageScore: 4.1, count: 2 }],
+      worst: [{
+        articleId: 'article-1',
+        title: 'Слабая статья для проверки',
+        slug: 'weak-article',
+        score: 3,
+        reason: 'Не хватает опоры на источник.',
+      }],
+      feedback7d: { strong: 1, normal: 2, weak: 0, total: 3 },
+      judgeOwnerGap7d: 0.7,
+    },
     sources: {
       runs24h: 20,
       failedRuns24h: 0,
@@ -301,6 +315,9 @@ test('formatOpsSummaryForTelegram renders traffic-light header and escapes HTML'
   assert.match(text, /Последние 6ч: 2 live-публикации/)
   assert.match(text, /Последние 24ч: 12 материалов создано/)
   assert.match(text, /<b>💸 Расходы<\/b>/)
+  assert.match(text, /<b>🧪 Качество<\/b>/)
+  assert.match(text, /Judge: 4\.2\/5 по 3 статьям/)
+  assert.match(text, /Оценки владельца 7д: 🔥 1, 👌 2, 👎 0/)
   assert.doesNotMatch(text, /<blockquote expandable>/)
   assert.doesNotMatch(text, /<pre>/)
 })

@@ -21,6 +21,7 @@ const COOLDOWN_HOURS: Record<string, number> = {
   claude_parse_failed: 4,
   lease_expired_spike: 2,
   llm_usage_log_write_failed: 4,
+  anthropic_unavailable: 1,
   publish_verify_failed: 6,
   publish_verify_failed_warn: 1,
   publish_rpc_bypass_active: 6,

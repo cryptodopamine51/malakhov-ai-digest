@@ -31,6 +31,7 @@ export interface NormalizedBatchResult {
   cacheReadTokens: number
   cacheCreateTokens: number
   estimatedCostUsd: number
+  estimatedListCostUsd: number
   raw: MessageBatchIndividualResponse
 }
 
@@ -149,7 +150,8 @@ function providerErrorMessage(result: MessageBatchResult): string | null {
 
 export function normalizeBatchResult(raw: MessageBatchIndividualResponse): NormalizedBatchResult {
   if (raw.result.type === 'succeeded') {
-    const usage = usageFromMessage(raw.result.message)
+    const usage = usageFromMessage(raw.result.message, { batch: true })
+    const listUsage = usageFromMessage(raw.result.message)
     return {
       customId: raw.custom_id,
       resultType: 'succeeded',
@@ -161,6 +163,7 @@ export function normalizeBatchResult(raw: MessageBatchIndividualResponse): Norma
       cacheReadTokens: usage.cacheReadTokens,
       cacheCreateTokens: usage.cacheCreateTokens,
       estimatedCostUsd: usage.estimatedCostUsd,
+      estimatedListCostUsd: listUsage.estimatedCostUsd,
       raw,
     }
   }
@@ -176,6 +179,7 @@ export function normalizeBatchResult(raw: MessageBatchIndividualResponse): Norma
     cacheReadTokens: 0,
     cacheCreateTokens: 0,
     estimatedCostUsd: 0,
+    estimatedListCostUsd: 0,
     raw,
   }
 }

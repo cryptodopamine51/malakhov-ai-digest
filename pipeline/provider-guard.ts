@@ -11,6 +11,15 @@ config({ path: resolve(process.cwd(), '.env.local') })
 
 import { getServerClient } from '../lib/supabase'
 import { fireAlert, resolveAlert } from './alerts'
+import {
+  disableAnthropicDegradedMode,
+  enableAnthropicDegradedMode,
+  getAnthropicDegradedState,
+  isAnthropicBillingOrAvailabilityError,
+  isAnthropicTransientUnavailable,
+  probeAnthropicAvailability,
+  shouldEnableAnthropicDegradedFromStats,
+} from './provider-degraded'
 
 const WINDOW_HOURS = 2
 const RATE_LIMIT_ALERT_COUNT = 5
@@ -32,7 +41,7 @@ async function checkProviderHealth(): Promise<void> {
 
   const { data: attempts, error } = await supabase
     .from('article_attempts')
-    .select('result_status, error_code')
+    .select('result_status, error_code, error_message')
     .eq('stage', 'enrich')
     .gte('started_at', since)
 
@@ -58,7 +67,23 @@ async function checkProviderHealth(): Promise<void> {
   const totalAttempts = attempts?.length ?? 0
   const totalBatchItems = batchItems?.length ?? 0
   const total = totalAttempts + totalBatchItems
+  const degradedState = await getAnthropicDegradedState(supabase)
   if (!total) {
+    if (degradedState.active) {
+      const probe = await probeAnthropicAvailability()
+      if (probe.ok) {
+        const restored = await disableAnthropicDegradedMode({ supabase, reason: 'provider probe ok', botToken, adminChatId })
+        log(`Anthropic degraded resolved; released_high_risk=${restored.releasedHighRisk}`)
+      } else if (probe.unavailable) {
+        await enableAnthropicDegradedMode({
+          supabase,
+          reason: probe.error ?? 'provider probe unavailable',
+          payload: { probe: true, noRecentActivity: true },
+          botToken,
+          adminChatId,
+        })
+      }
+    }
     log('Нет provider activity за последние 2 часа')
     return
   }
@@ -83,12 +108,53 @@ async function checkProviderHealth(): Promise<void> {
       item.status === 'apply_failed_terminal'
     ).length ?? 0)
   const errorRate = failed / total
+  const billingHits =
+    (attempts?.filter((a) => isAnthropicBillingOrAvailabilityError({
+      message: a.error_message ?? '',
+      status: a.error_code === 'claude_api_error' ? 403 : null,
+    })).length ?? 0) +
+    (batchItems?.filter((item) => isAnthropicBillingOrAvailabilityError({
+      message: `${item.error_code ?? ''} ${item.error_message ?? ''}`,
+      status: item.error_code === 'claude_api_error' ? 403 : null,
+    })).length ?? 0)
+  const unavailableHits =
+    (attempts?.filter((a) => isAnthropicTransientUnavailable({
+      message: `${a.error_code ?? ''} ${a.error_message ?? ''}`,
+    })).length ?? 0) +
+    (batchItems?.filter((item) => isAnthropicTransientUnavailable({
+      message: `${item.error_code ?? ''} ${item.error_message ?? ''}`,
+    })).length ?? 0)
 
   log(
     `Provider activity за ${WINDOW_HOURS}h: attempts=${totalAttempts}, batch_items=${totalBatchItems}, ` +
     `rate_limit=${rateLimitHits}, api_errors=${apiErrors}, invalid_request=${invalidRequestHits}, apply_failures=${batchApplyFailures}, ` +
-    `error_rate=${(errorRate * 100).toFixed(1)}%`,
+    `billing=${billingHits}, unavailable=${unavailableHits}, error_rate=${(errorRate * 100).toFixed(1)}%`,
   )
+
+  if (shouldEnableAnthropicDegradedFromStats({ billingHits, unavailableHits })) {
+    await enableAnthropicDegradedMode({
+      supabase,
+      reason: billingHits > 0 ? 'billing/credits error detected' : `${unavailableHits} unavailable errors in ${WINDOW_HOURS}h`,
+      payload: { billingHits, unavailableHits, totalAttempts, totalBatchItems, errorRate },
+      botToken,
+      adminChatId,
+    })
+    log('⚠️ Anthropic degraded mode active')
+  } else if (degradedState.active) {
+    const probe = await probeAnthropicAvailability()
+    if (probe.ok) {
+      const restored = await disableAnthropicDegradedMode({ supabase, reason: 'provider probe ok', botToken, adminChatId })
+      log(`Anthropic degraded resolved; released_high_risk=${restored.releasedHighRisk}`)
+    } else if (probe.unavailable) {
+      await enableAnthropicDegradedMode({
+        supabase,
+        reason: probe.error ?? 'provider probe unavailable',
+        payload: { probe: true },
+        botToken,
+        adminChatId,
+      })
+    }
+  }
 
   if (invalidRequestHits < INVALID_REQUEST_ALERT_COUNT) {
     await resolveAlert(supabase, 'provider_invalid_request', 'claude')

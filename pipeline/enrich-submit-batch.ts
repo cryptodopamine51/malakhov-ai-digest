@@ -18,6 +18,12 @@ import { isExhausted, isRetryable, nextRetryAt, type ErrorCode } from './types'
 import { ZERO_USAGE_TOTALS } from './llm-usage'
 import { getDailyBudgetStatus } from './cost-guard'
 import { sanitizeArticleMedia } from './media-sanitizer'
+import {
+  enableAnthropicDegradedMode,
+  getAnthropicDegradedState,
+  isAnthropicBillingOrAvailabilityError,
+  isAnthropicTransientUnavailable,
+} from './provider-degraded'
 
 const SUBMIT_BATCH_SIZE = Number(process.env.ENRICH_SUBMIT_BATCH_SIZE ?? 15)
 const MAX_REQUESTS_PER_BATCH = Number(process.env.ANTHROPIC_BATCH_MAX_REQUESTS ?? 15)
@@ -524,6 +530,14 @@ export async function runEnrichSubmitBatch(): Promise<void> {
     log(`cost gate failed: ${budgetErr instanceof Error ? budgetErr.message : String(budgetErr)}`)
   }
 
+  const degraded = await getAnthropicDegradedState(supabase)
+  if (degraded.active) {
+    metrics.errorSummary = `anthropic_degraded: ${degraded.reason ?? 'active alert'}; submit skipped`
+    log(`Anthropic degraded active; batch submit skipped (${degraded.reason ?? 'no reason'})`)
+    await finishEnrichRun(supabase, runId, metrics)
+    return
+  }
+
   const claimedArticles = await claimBatch(supabase, SUBMIT_BATCH_SIZE)
   metrics.claimed = claimedArticles.length
 
@@ -563,6 +577,15 @@ export async function runEnrichSubmitBatch(): Promise<void> {
       const message = error instanceof Error ? error.message : String(error)
       const errorCode = mapBatchCreateError(error)
       const providerInconsistency = message.includes('provider batch created but')
+      const providerUnavailable = isAnthropicBillingOrAvailabilityError(error) || isAnthropicTransientUnavailable(error)
+
+      if (providerUnavailable) {
+        await enableAnthropicDegradedMode({
+          supabase,
+          reason: message,
+          payload: { runId, chunkSize: chunk.length, errorCode },
+        })
+      }
 
       await fireAlert({
         supabase,

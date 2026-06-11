@@ -113,6 +113,15 @@ export interface OpsCostSummary {
   byOperation: Array<{ key: string; costUsd: number }>
 }
 
+export interface OpsQualitySummary {
+  scoresToday: number
+  averageScore: number | null
+  byWriterPath: Array<{ key: string; averageScore: number; count: number }>
+  worst: Array<{ articleId: string; title: string; slug: string | null; score: number; reason: string | null }>
+  feedback7d: { strong: number; normal: number; weak: number; total: number }
+  judgeOwnerGap7d: number | null
+}
+
 export interface OpsSourceSummary {
   runs24h: number
   failedRuns24h: number
@@ -153,6 +162,7 @@ export interface OpsSummary {
   openAlerts: OpsAlertRow[]
   alertGroups: Array<{ key: string; severity: OpsAlertRow['severity']; count: number }>
   costs: OpsCostSummary
+  quality: OpsQualitySummary
   sources: OpsSourceSummary
   traffic: OpsTrafficSummary
 }
@@ -166,6 +176,18 @@ type ArticleFunnelRow = {
 
 type QueueRow = { enrich_status: string | null }
 type CostRow = { provider: string | null; operation: string | null; estimated_cost_usd: number | string | null }
+type QualityScoreRow = {
+  article_id: string | null
+  score: number | string | null
+  writer_path: string | null
+  reasons: Record<string, unknown> | null
+  articles?: { ru_title?: string | null; original_title?: string | null; slug?: string | null } | null
+}
+type FeedbackRow = {
+  article_id: string | null
+  rating: number | string | null
+  created_at: string | null
+}
 type SourceRunRow = {
   source_name: string | null
   status: string | null
@@ -293,6 +315,8 @@ export async function getOpsSummary(
     openAlertsRes,
     sourceRowsRes,
     costRowsRes,
+    qualityScoresRes,
+    feedbackRowsRes,
     traffic,
   ] = await Promise.all([
     getHealthSummary(supabase),
@@ -350,6 +374,17 @@ export async function getOpsSummary(
       .select('provider, operation, estimated_cost_usd')
       .gte('created_at', mskDayStart)
       .limit(20_000),
+    supabase
+      .from('article_quality_scores')
+      .select('article_id, score, writer_path, reasons, articles(ru_title, original_title, slug)')
+      .gte('created_at', mskDayStart)
+      .order('score', { ascending: true })
+      .limit(500),
+    supabase
+      .from('article_feedback')
+      .select('article_id, rating, created_at')
+      .gte('created_at', new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .limit(1000),
     getMetrikaTrafficSummary(now),
   ])
 
@@ -363,6 +398,8 @@ export async function getOpsSummary(
   const openAlerts = rowsOrThrow<OpsAlertRow>(openAlertsRes, 'pipeline alerts')
   const sourceRows = rowsOrThrow<SourceRunRow>(sourceRowsRes, 'source runs')
   const costRows = rowsOrThrow<CostRow>(costRowsRes, 'llm usage logs')
+  const qualityRows = rowsOrEmptyOnMissing<QualityScoreRow>(qualityScoresRes)
+  const feedbackRows = rowsOrEmptyOnMissing<FeedbackRow>(feedbackRowsRes)
 
   const digestToday = selectRepresentativeDigestRun(digestRows.filter((row) => row.digest_date === mskDateKey))
   const latestDigest = selectRepresentativeDigestRun(digestRows)
@@ -382,6 +419,7 @@ export async function getOpsSummary(
   const articles = summarizeArticles(articleRows, queueRows, publishedTodayRows, publishedTodayRes.count)
   const alertGroups = groupAlerts(openAlerts)
   const costs = summarizeCosts(costRows)
+  const quality = summarizeQuality(qualityRows, feedbackRows)
   const sources = summarizeSources(sourceRows)
 
   const baseSummary: Omit<OpsSummary, 'status'> = {
@@ -399,6 +437,7 @@ export async function getOpsSummary(
     openAlerts,
     alertGroups,
     costs,
+    quality,
     sources,
     traffic,
   }
@@ -577,6 +616,66 @@ function summarizeCosts(rows: CostRow[]): OpsCostSummary {
   }
 }
 
+function summarizeQuality(rows: QualityScoreRow[], feedbackRows: FeedbackRow[]): OpsQualitySummary {
+  const numericScores = rows
+    .map((row) => Number(row.score ?? 0))
+    .filter((score) => Number.isFinite(score) && score > 0)
+  const averageScore = numericScores.length
+    ? roundOne(numericScores.reduce((sum, score) => sum + score, 0) / numericScores.length)
+    : null
+  const byWriter = new Map<string, { total: number; count: number }>()
+  for (const row of rows) {
+    const score = Number(row.score ?? 0)
+    if (!Number.isFinite(score) || score <= 0) continue
+    const key = row.writer_path ?? 'unknown'
+    const existing = byWriter.get(key) ?? { total: 0, count: 0 }
+    existing.total += score
+    existing.count += 1
+    byWriter.set(key, existing)
+  }
+
+  const feedback = { strong: 0, normal: 0, weak: 0, total: 0 }
+  const feedbackByArticle = new Map<string, number>()
+  for (const row of feedbackRows) {
+    const rating = Number(row.rating ?? -1)
+    if (rating === 2) feedback.strong += 1
+    else if (rating === 1) feedback.normal += 1
+    else if (rating === 0) feedback.weak += 1
+    else continue
+    feedback.total += 1
+    if (row.article_id) feedbackByArticle.set(row.article_id, rating)
+  }
+
+  const gaps: number[] = []
+  for (const row of rows) {
+    if (!row.article_id || !feedbackByArticle.has(row.article_id)) continue
+    const judgeScore = Number(row.score ?? 0)
+    const ownerScore = (feedbackByArticle.get(row.article_id) ?? 0) * 2 + 1
+    if (judgeScore > 0) gaps.push(Math.abs(judgeScore - ownerScore))
+  }
+
+  return {
+    scoresToday: numericScores.length,
+    averageScore,
+    byWriterPath: [...byWriter.entries()]
+      .map(([key, value]) => ({ key, averageScore: roundOne(value.total / value.count), count: value.count }))
+      .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key)),
+    worst: rows
+      .slice(0, 3)
+      .map((row) => ({
+        articleId: row.article_id ?? '',
+        title: row.articles?.ru_title ?? row.articles?.original_title ?? row.article_id ?? 'unknown',
+        slug: row.articles?.slug ?? null,
+        score: Number(row.score ?? 0),
+        reason: typeof row.reasons?.overall === 'string' ? row.reasons.overall : null,
+      })),
+    feedback7d: feedback,
+    judgeOwnerGap7d: gaps.length
+      ? roundOne(gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length)
+      : null,
+  }
+}
+
 function summarizeSources(rows: SourceRunRow[]): OpsSourceSummary {
   const problemSources: Record<string, number> = {}
   let failedRuns24h = 0
@@ -736,6 +835,9 @@ export function formatOpsSummaryForTelegram(summary: OpsSummary): string {
   lines.push('<b>💸 Расходы</b>')
   lines.push(`• ИИ сегодня: ${formatUsd(summary.costs.totalCostUsd)}`)
   lines.push('')
+  lines.push('<b>🧪 Качество</b>')
+  for (const line of formatQualityLines(summary.quality)) lines.push(`• ${escapeHtml(line)}`)
+  lines.push('')
   lines.push('<b>🎯 Что делать</b>')
   lines.push(escapeHtml(compactActionLine(promptDecision.show, displayStatus)))
   if (promptDecision.show) {
@@ -827,6 +929,27 @@ function buildContentMetricLines(summary: OpsSummary): string[] {
     `Последние 6ч: ${window6h} live-${pluralize(window6h, 'публикация', 'публикации', 'публикаций')}`,
     `Последние 24ч: ${created24h} ${pluralize(created24h, 'материал создан', 'материала создано', 'материалов создано')}`,
   ]
+}
+
+function formatQualityLines(quality: OpsQualitySummary): string[] {
+  if (quality.scoresToday === 0) return ['Judge сегодня ещё не записал оценки.']
+  const lines = [
+    `Judge: ${quality.averageScore?.toFixed(1) ?? 'n/a'}/5 по ${quality.scoresToday} ${pluralize(quality.scoresToday, 'статье', 'статьям', 'статьям')}`,
+  ]
+  if (quality.byWriterPath.length) {
+    lines.push(`По writer-path: ${quality.byWriterPath.map((row) => `${row.key} ${row.averageScore.toFixed(1)} (${row.count})`).join(', ')}`)
+  }
+  if (quality.worst.length) {
+    const worst = quality.worst[0]!
+    lines.push(`Худшая: ${worst.score}/5 — ${truncate(worst.title, 90)}${worst.reason ? ` (${truncate(worst.reason, 90)})` : ''}`)
+  }
+  if (quality.feedback7d.total > 0) {
+    lines.push(
+      `Оценки владельца 7д: 🔥 ${quality.feedback7d.strong}, 👌 ${quality.feedback7d.normal}, 👎 ${quality.feedback7d.weak}` +
+      (quality.judgeOwnerGap7d !== null ? `; средний разрыв ${quality.judgeOwnerGap7d.toFixed(1)}` : ''),
+    )
+  }
+  return lines
 }
 
 function buildCompactIssueLines(summary: OpsSummary, hasPrompt: boolean, displayStatus: OpsStatus): string[] {
@@ -1458,6 +1581,10 @@ function topCosts(map: Record<string, number>, limit: number): Array<{ key: stri
 
 function roundUsd(value: number): number {
   return Number(value.toFixed(6))
+}
+
+function roundOne(value: number): number {
+  return Number(value.toFixed(1))
 }
 
 function severityRank(severity: OpsAlertRow['severity']): number {

@@ -1,10 +1,54 @@
+import OpenAI from 'openai'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { EditorialOutput } from './claude'
-import { EDITORIAL_BANNED_PHRASES, getFirstSentence, sentenceHasAnchor, splitSentences } from './claude'
+import {
+  EDITORIAL_BANNED_PHRASES,
+  getFirstSentence,
+  parseEditorialJson,
+  sentenceHasAnchor,
+  splitSentences,
+  type EditorialValidationContext,
+  type EditorialValidationResult,
+} from './claude'
+import { addUsageTotals, writeLlmUsageLog, ZERO_USAGE_TOTALS, type UsageTotals } from './llm-usage'
+import { estimateTextCostUsd, type TextUsageForCost } from './model-pricing'
 
 export interface EditorialRepairResult {
   output: EditorialOutput
   fixes: string[]
 }
+
+export interface DeepSeekEditorialRepairParams {
+  supabase: SupabaseClient
+  articleId: string
+  runId: string
+  sourceName: string
+  sourceLang: string
+  originalTitle: string
+  originalText: string
+  output: EditorialOutput
+  validation: EditorialValidationResult
+  validationContext?: EditorialValidationContext
+  model?: string
+  runKind?: string | null
+  batchItemId?: string | null
+  operation?: string
+  createCompletion?: (params: {
+    model: string
+    system: string
+    user: string
+  }) => Promise<{ text: string; usage: TextUsageForCost }>
+}
+
+export interface DeepSeekEditorialRepairResult {
+  output: EditorialOutput | null
+  rawText: string | null
+  usage: UsageTotals
+  costUsd: number
+  error: string | null
+}
+
+const DEFAULT_DEEPSEEK_REPAIR_MODEL = 'deepseek-v4-flash'
 
 export function repairEditorialOutput(input: EditorialOutput): EditorialRepairResult {
   const output: EditorialOutput = {
@@ -94,6 +138,167 @@ export function repairEditorialOutput(input: EditorialOutput): EditorialRepairRe
   }
 
   return { output, fixes: [...new Set(fixes)] }
+}
+
+export function buildDeepSeekEditorialRepairPrompt(params: {
+  originalTitle: string
+  originalText: string
+  output: EditorialOutput
+  errors: string[]
+}): { system: string; user: string } {
+  return {
+    system: [
+      'Ты редакционный repair-pass для Malakhov AI Digest.',
+      'Исправь только перечисленные ошибки валидатора в JSON статьи.',
+      'Не добавляй новые факты, которых нет в источнике. Не меняй смысл и структуру без необходимости.',
+      'Верни только валидный JSON в исходной схеме, без пояснений.',
+    ].join(' '),
+    user: [
+      `Оригинальный заголовок:\n${params.originalTitle}`,
+      '',
+      `Ошибки валидатора:\n${params.errors.map((error) => `- ${error}`).join('\n')}`,
+      '',
+      `Фрагмент источника:\n${params.originalText.replace(/\s+/g, ' ').slice(0, 6000)}`,
+      '',
+      'JSON статьи:',
+      JSON.stringify(params.output, null, 2),
+    ].join('\n'),
+  }
+}
+
+export async function repairEditorialWithDeepSeek(
+  params: DeepSeekEditorialRepairParams,
+): Promise<DeepSeekEditorialRepairResult> {
+  const model = params.model ?? process.env.DEEPSEEK_REPAIR_MODEL ?? process.env.DEEPSEEK_WRITER_MODEL ?? DEFAULT_DEEPSEEK_REPAIR_MODEL
+  const prompt = buildDeepSeekEditorialRepairPrompt({
+    originalTitle: params.originalTitle,
+    originalText: params.originalText,
+    output: params.output,
+    errors: params.validation.errors,
+  })
+  const startedAt = new Date().toISOString()
+
+  if (!process.env.DEEPSEEK_API_KEY && !params.createCompletion) {
+    return { output: null, rawText: null, usage: ZERO_USAGE_TOTALS, costUsd: 0, error: 'DEEPSEEK_API_KEY missing' }
+  }
+
+  try {
+    const completion = params.createCompletion
+      ? await params.createCompletion({ model, system: prompt.system, user: prompt.user })
+      : await callDeepSeekRepairCompletion(model, prompt.system, prompt.user)
+    const costUsd = estimateTextCostUsd({
+      provider: 'deepseek',
+      model,
+      usage: completion.usage,
+    })
+    const usage = addUsageTotals(ZERO_USAGE_TOTALS, {
+      inputTokens: completion.usage.inputTokens,
+      outputTokens: completion.usage.outputTokens,
+      cacheReadTokens: completion.usage.cacheReadTokens,
+      cacheCreateTokens: completion.usage.cacheCreateTokens,
+      estimatedCostUsd: costUsd,
+    })
+    const parsed = completion.text ? parseEditorialJson(completion.text) : null
+
+    await writeLlmUsageLog({
+      supabase: params.supabase,
+      provider: 'deepseek',
+      model,
+      operation: params.operation ?? 'deepseek_editorial_repair',
+      runKind: params.runKind ?? 'editorial_repair',
+      enrichRunId: params.runId,
+      articleId: params.articleId,
+      batchItemId: params.batchItemId ?? null,
+      sourceName: params.sourceName,
+      sourceLang: params.sourceLang,
+      originalTitle: params.originalTitle,
+      resultStatus: parsed ? 'ok' : 'failed',
+      metadata: {
+        validation_errors: params.validation.errors,
+        prompt_chars: prompt.system.length + prompt.user.length,
+      },
+      createdAt: startedAt,
+      usage,
+    })
+
+    return {
+      output: parsed,
+      rawText: completion.text,
+      usage,
+      costUsd,
+      error: parsed ? null : 'repair JSON parse failed',
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    await writeLlmUsageLog({
+      supabase: params.supabase,
+      provider: 'deepseek',
+      model,
+      operation: params.operation ?? 'deepseek_editorial_repair',
+      runKind: params.runKind ?? 'editorial_repair',
+      enrichRunId: params.runId,
+      articleId: params.articleId,
+      batchItemId: params.batchItemId ?? null,
+      sourceName: params.sourceName,
+      sourceLang: params.sourceLang,
+      originalTitle: params.originalTitle,
+      resultStatus: 'failed',
+      metadata: {
+        validation_errors: params.validation.errors,
+        error: message,
+      },
+      createdAt: startedAt,
+      usage: ZERO_USAGE_TOTALS,
+    })
+    return { output: null, rawText: null, usage: ZERO_USAGE_TOTALS, costUsd: 0, error: message }
+  }
+}
+
+async function callDeepSeekRepairCompletion(
+  model: string,
+  system: string,
+  user: string,
+): Promise<{ text: string; usage: TextUsageForCost }> {
+  const client = new OpenAI({
+    apiKey: process.env.DEEPSEEK_API_KEY,
+    baseURL: process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com',
+    timeout: numberEnv('DEEPSEEK_REPAIR_TIMEOUT_MS', 90_000),
+    maxRetries: numberEnv('DEEPSEEK_REPAIR_MAX_RETRIES', 1),
+  })
+  const response = await client.chat.completions.create({
+    model,
+    temperature: 0.1,
+    max_tokens: 4000,
+    response_format: { type: 'json_object' },
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ],
+  } as any)
+
+  return {
+    text: response.choices[0]?.message?.content ?? '',
+    usage: deepSeekUsage(response.usage),
+  }
+}
+
+function deepSeekUsage(value: unknown): TextUsageForCost {
+  const raw = (value ?? {}) as Record<string, unknown>
+  const promptTokens = Number(raw.prompt_tokens ?? 0)
+  const completionTokens = Number(raw.completion_tokens ?? 0)
+  const cacheHit = Number(raw.prompt_cache_hit_tokens ?? 0)
+  const cacheMiss = Number(raw.prompt_cache_miss_tokens ?? Math.max(0, promptTokens - cacheHit))
+  return {
+    inputTokens: promptTokens,
+    outputTokens: completionTokens,
+    cacheHitInputTokens: cacheHit,
+    cacheMissInputTokens: cacheMiss,
+  }
+}
+
+function numberEnv(name: string, fallback: number): number {
+  const value = Number(process.env[name])
+  return Number.isFinite(value) && value > 0 ? value : fallback
 }
 
 function replaceStandaloneAi(value: string): string {

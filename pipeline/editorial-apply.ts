@@ -4,6 +4,7 @@ import {
   parseEditorialJson,
   validateEditorialDetailed,
   type EditorialOutput,
+  type EditorialValidationContext,
   type EditorialValidationResult,
 } from './claude'
 import { releaseClaim } from './claims'
@@ -71,7 +72,10 @@ export function normalizeEditorialOutput(output: EditorialOutput): EditorialOutp
   }
 }
 
-export function parseRepairValidateEditorial(raw: string): EditorialParseRepairValidation {
+export function parseRepairValidateEditorial(
+  raw: string,
+  validationContext: EditorialValidationContext = {},
+): EditorialParseRepairValidation {
   const parsed = parseEditorialJson(raw)
   if (!parsed) {
     return {
@@ -85,7 +89,7 @@ export function parseRepairValidateEditorial(raw: string): EditorialParseRepairV
   const normalized = normalizeEditorialOutput(parsed)
   const repaired = repairEditorialOutput(normalized)
   const output = normalizeEditorialOutput(repaired.output)
-  const validation = validateEditorialDetailed(output)
+  const validation = validateEditorialDetailed(output, validationContext)
 
   return {
     output,
