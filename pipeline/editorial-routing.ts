@@ -1,4 +1,5 @@
 import type { EditorialOutput, EditorialRequest, EditorialValidationResult } from './claude'
+import { detectEditorialRiskFlags as detectRiskFlags } from './risk-flags'
 
 export type EditorialRoutingMode = 'cheap' | 'balanced' | 'premium'
 export type EditorialWriterProvider = 'deepseek' | 'anthropic'
@@ -33,12 +34,6 @@ export interface ClaudeReviewerResult {
   patch_suggestions: string[]
   publish_recommendation: 'publish' | 'fix' | 'premium_fallback' | 'manual_review'
 }
-
-const MONEY_RE = /\$|млн|млрд|оценк[аиу]|инвестиц|раунд|выручк|капитализац|акци[ияй]|IPO/i
-const LEGAL_RE = /регулирован|закон|иск|судебн|правов|антимонопол|санкци|конфиденциальн|персональн|авторск|EU AI Act|AI Act/i
-const RESEARCH_TOPIC_RE = /\bai-research\b|исследован/i
-const MEDICAL_RE = /медицин|диагноз|пациент|лекарств|клиник|врач/i
-const GEOPOLITICS_RE = /войн|геополит|выбор|государств|разведк|оборон|военн/i
 
 export function getEditorialRoutingConfig(env: Record<string, string | undefined> = process.env): EditorialRoutingConfig {
   const mode = parseRoutingMode(env.EDITORIAL_ROUTING_MODE)
@@ -93,25 +88,7 @@ export function buildDeterministicEditorialBrief(context: ArticleRoutingContext)
 }
 
 export function detectEditorialRiskFlags(context: ArticleRoutingContext): string[] {
-  const text = [
-    context.originalTitle,
-    context.originalText,
-    ...(context.topics ?? []),
-    context.primaryCategory ?? '',
-    ...(context.secondaryCategories ?? []),
-  ].join('\n')
-  const flags: string[] = []
-
-  if (MONEY_RE.test(text)) flags.push('money')
-  if (LEGAL_RE.test(text)) flags.push('legal_regulation')
-  if (context.primaryCategory === 'ai-research' || (context.topics ?? []).some((topic) => RESEARCH_TOPIC_RE.test(topic))) {
-    flags.push('research')
-  }
-  if (MEDICAL_RE.test(text)) flags.push('medical')
-  if (GEOPOLITICS_RE.test(text)) flags.push('geopolitics')
-  if ((context.score ?? 0) >= 8) flags.push('high_score')
-
-  return [...new Set(flags)]
+  return detectRiskFlags(context)
 }
 
 function buildAngleHint(context: ArticleRoutingContext, riskFlags: string[]): string {

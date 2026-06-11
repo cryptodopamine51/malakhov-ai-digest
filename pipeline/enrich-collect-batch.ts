@@ -11,6 +11,8 @@ import { fireAlert, resolveAlert } from './alerts'
 import { isExhausted, isRetryable, nextRetryAt, type ErrorCode } from './types'
 import { addUsageTotals, formatUsageSummary, refreshAnthropicBatchUsageTotals, writeLlmUsageLog, ZERO_USAGE_TOTALS, type UsageTotals } from './llm-usage'
 import { parseRepairValidateEditorial, prepareEditorialApplication } from './editorial-apply'
+import { repairEditorialWithDeepSeek } from './editorial-repair'
+import { getAnthropicDegradedState } from './provider-degraded'
 
 const BATCH_POLL_LIMIT = Number(process.env.ANTHROPIC_BATCH_POLL_LIMIT ?? 10)
 const APPLY_READY_LIMIT = Number(process.env.ANTHROPIC_BATCH_APPLY_LIMIT ?? 50)
@@ -181,6 +183,8 @@ async function importBatchResults(
     const responsePayload = {
       output_text: result.outputText,
       raw_result: result.raw,
+      estimated_list_cost_usd: result.estimatedListCostUsd,
+      estimated_billed_cost_usd: result.estimatedCostUsd,
     }
 
     const updatePayload = {
@@ -248,6 +252,10 @@ async function importBatchResults(
       metadata: {
         provider_batch_id: batchRow.provider_batch_id,
         result_type: result.resultType,
+        estimated_list_cost_usd: result.estimatedListCostUsd,
+        batch_discount: result.estimatedListCostUsd > 0
+          ? Number((1 - result.estimatedCostUsd / result.estimatedListCostUsd).toFixed(4))
+          : null,
       },
       createdAt: importedAt,
       usage: {
@@ -348,7 +356,15 @@ async function applyReadyResults(
       continue
     }
 
-    const parsedEditorial = parseRepairValidateEditorial(outputText)
+    const requestPayload = item.request_payload as Record<string, unknown>
+    const articleContext = ((requestPayload.article_context ?? {}) as Record<string, unknown>)
+    const validationContext = {
+      originalTitle: article.original_title,
+      originalText: typeof articleContext.original_text === 'string'
+        ? articleContext.original_text
+        : article.original_text ?? '',
+    }
+    let parsedEditorial = parseRepairValidateEditorial(outputText, validationContext)
     if (!parsedEditorial.output) {
       const parseFailureReason = 'failed to parse editorial json from batch item'
       const outcome = await finalizeBatchFailure(
@@ -371,6 +387,36 @@ async function applyReadyResults(
         reason: parseFailureReason,
       })
       continue
+    }
+
+    if (!parsedEditorial.validation.ok && parsedEditorial.output && parsedEditorial.output.quality_ok !== false) {
+      const repaired = await repairEditorialWithDeepSeek({
+        supabase,
+        articleId: article.id,
+        batchItemId: item.id,
+        runId,
+        sourceName: article.source_name,
+        sourceLang: article.source_lang,
+        originalTitle: article.original_title,
+        originalText: validationContext.originalText,
+        output: parsedEditorial.output,
+        validation: parsedEditorial.validation,
+        validationContext,
+        runKind: 'batch_collect',
+      })
+      if (repaired.rawText) {
+        const repairedEditorial = parseRepairValidateEditorial(repaired.rawText, validationContext)
+        if (repairedEditorial.output && repairedEditorial.validation.ok) {
+          parsedEditorial = {
+            ...repairedEditorial,
+            repairs: [
+              ...parsedEditorial.repairs,
+              'deepseek_editorial_repair',
+              ...repairedEditorial.repairs,
+            ],
+          }
+        }
+      }
     }
 
     if (!parsedEditorial.validation.ok) {
@@ -414,15 +460,18 @@ async function applyReadyResults(
       continue
     }
 
-    const requestPayload = item.request_payload as Record<string, unknown>
-    const articleContext = ((requestPayload.article_context ?? {}) as Record<string, unknown>)
+    const parsedOutput = parsedEditorial.output
+    if (!parsedOutput) {
+      metrics.failed++
+      continue
+    }
 
     let prepared
     try {
       prepared = await prepareEditorialApplication({
         supabase,
         article,
-        output: parsedEditorial.output,
+        output: parsedOutput,
         validation: parsedEditorial.validation,
         repairs: parsedEditorial.repairs,
         sourceContext: {
@@ -658,10 +707,16 @@ export async function runEnrichCollectBatch(): Promise<void> {
   }
 
   try {
-    const imported = await pollBatches(supabase, runId)
-    metrics.retryable += imported.retryable
-    metrics.failed += imported.failed
-    metrics.usage = addUsageTotals(metrics.usage, imported.usage)
+    const degraded = await getAnthropicDegradedState(supabase)
+    if (degraded.active) {
+      log(`Anthropic degraded active; remote batch polling skipped (${degraded.reason ?? 'no reason'})`)
+      metrics.errorSummary = `anthropic_degraded: ${degraded.reason ?? 'active alert'}; poll skipped`
+    } else {
+      const imported = await pollBatches(supabase, runId)
+      metrics.retryable += imported.retryable
+      metrics.failed += imported.failed
+      metrics.usage = addUsageTotals(metrics.usage, imported.usage)
+    }
 
     const applied = await applyReadyResults(supabase, runId, rejectedBreakdown)
     metrics.enrichedOk += applied.enrichedOk

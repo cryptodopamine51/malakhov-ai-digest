@@ -1,10 +1,15 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { Message, MessageCreateParamsNonStreaming } from '@anthropic-ai/sdk/resources/messages/messages'
+import { findStaleHallucinatedYears } from '../lib/year-sanitizer'
 import { writeLlmUsageLog } from './llm-usage'
+import { estimateTextCostUsd } from './model-pricing'
+import { detectRiskFlagsFromText } from './risk-flags'
 
 export const MODEL = 'claude-sonnet-4-6'
 export const MAX_TOKENS = 4000
 export const TEMPERATURE = 0.4
+export const DEFAULT_EDITORIAL_SOURCE_TEXT_CAP = 15_000
+export const EDITORIAL_SOURCE_TEXT_TRUNCATION_MARKER = '[текст сокращён]'
 
 export interface GlossaryEntry {
   term: string
@@ -178,6 +183,12 @@ export interface EditorialValidationResult {
   riskFlags: string[]
 }
 
+export interface EditorialValidationContext {
+  originalTitle?: string | null
+  originalText?: string | null
+  now?: Date
+}
+
 export const ZERO_USAGE: TokenUsage = {
   inputTokens: 0,
   outputTokens: 0,
@@ -192,6 +203,37 @@ function ts(): string {
 
 export function buildEditorialSystemPrompt(): string {
   return SYSTEM_PROMPT
+}
+
+export function getEditorialSourceTextCap(env: Record<string, string | undefined> = process.env): number {
+  const value = Number(env.EDITORIAL_SOURCE_TEXT_CAP)
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : DEFAULT_EDITORIAL_SOURCE_TEXT_CAP
+}
+
+export function truncateEditorialSourceText(
+  originalText: string,
+  cap = getEditorialSourceTextCap(),
+): { text: string; truncated: boolean } {
+  if (!originalText || originalText.length <= cap) return { text: originalText, truncated: false }
+
+  const minimumUsefulLength = Math.floor(cap * 0.6)
+  const paragraphBoundary = originalText.lastIndexOf('\n\n', cap)
+  const cutAt = paragraphBoundary >= minimumUsefulLength
+    ? paragraphBoundary
+    : findWhitespaceCut(originalText, cap, minimumUsefulLength)
+
+  const text = originalText.slice(0, cutAt).trimEnd()
+  return {
+    text: `${text}\n\n${EDITORIAL_SOURCE_TEXT_TRUNCATION_MARKER}`,
+    truncated: true,
+  }
+}
+
+function findWhitespaceCut(text: string, cap: number, minimumUsefulLength: number): number {
+  for (let index = cap; index >= minimumUsefulLength; index--) {
+    if (/\s/.test(text[index] ?? '')) return index
+  }
+  return cap
 }
 
 function buildCategoryHint(
@@ -234,6 +276,7 @@ export function buildEditorialUserMessage({
   ].filter(Boolean).join('; ')
 
   const categoryHint = buildCategoryHint(primaryCategory, secondaryCategories)
+  const sourceText = truncateEditorialSourceText(originalText).text
 
   return (
     `Источник: ${sourceName}\n` +
@@ -242,7 +285,7 @@ export function buildEditorialUserMessage({
     (categories ? `Категории: ${categories}\n\n` : '') +
     categoryHint +
     `Оригинальный заголовок:\n${originalTitle}\n\n` +
-    `Оригинальный текст:\n${originalText}`
+    `Оригинальный текст:\n${sourceText}`
   )
 }
 
@@ -400,7 +443,10 @@ function hasLeadAnchor(lead: string): boolean {
   return sentenceHasAnchor(getFirstSentence(lead))
 }
 
-export function validateEditorialDetailed(out: EditorialOutput): EditorialValidationResult {
+export function validateEditorialDetailed(
+  out: EditorialOutput,
+  context: EditorialValidationContext = {},
+): EditorialValidationResult {
   const errors: string[] = []
   const warnings: string[] = []
   const riskFlags: string[] = []
@@ -490,12 +536,27 @@ export function validateEditorialDetailed(out: EditorialOutput): EditorialValida
 
   if (hasDisallowedStandaloneAi(fullText)) errors.push('standalone AI в русском тексте')
 
-  if (/\$|млн|млрд|оценк[аиу]|инвестиц|раунд/i.test(fullText)) riskFlags.push('money')
-  if (/регулирован|закон|иск|судебн|правов|санкци|конфиденциальн|персональн|авторск|EU AI Act|AI Act/i.test(fullText)) {
-    riskFlags.push('legal_regulation')
+  const sourceTextForYearCheck = [context.originalTitle, context.originalText].filter(Boolean).join('\n')
+  if (sourceTextForYearCheck) {
+    const staleYears = findStaleHallucinatedYears({
+      generatedText: [
+        out.ru_title,
+        out.lead,
+        out.editorial_body,
+      ].filter((value): value is string => typeof value === 'string').join('\n'),
+      sourceText: sourceTextForYearCheck,
+      now: context.now,
+    })
+    if (staleYears.length > 0) {
+      errors.push(`галлюцинация прошедшего года: ${staleYears.join(', ')}`)
+    }
   }
-  if (/медицин|диагноз|пациент|лекарств|клиник/i.test(fullText)) riskFlags.push('medical')
-  if (/войн|геополит|выбор|государств|разведк/i.test(fullText)) riskFlags.push('geopolitics')
+
+  riskFlags.push(...detectRiskFlagsFromText({
+    text: fullText,
+    topics: [],
+    primaryCategory: null,
+  }).filter((flag) => flag !== 'research' && flag !== 'high_score'))
 
   return {
     ok: errors.length === 0,
@@ -505,22 +566,29 @@ export function validateEditorialDetailed(out: EditorialOutput): EditorialValida
   }
 }
 
-export function validateEditorial(out: EditorialOutput): string | null {
-  const result = validateEditorialDetailed(out)
+export function validateEditorial(out: EditorialOutput, context: EditorialValidationContext = {}): string | null {
+  const result = validateEditorialDetailed(out, context)
   return result.ok ? null : result.errors[0] ?? 'validation failed'
 }
 
-export function usageFromMessage(message: Pick<Message, 'usage'>): TokenUsage {
+export function usageFromMessage(message: Pick<Message, 'usage'>, options: { batch?: boolean } = {}): TokenUsage {
   const rawUsage = message.usage as unknown as Record<string, number>
   const inputTokens = rawUsage.input_tokens ?? 0
   const outputTokens = rawUsage.output_tokens ?? 0
   const cacheReadTokens = rawUsage.cache_read_input_tokens ?? 0
   const cacheCreateTokens = rawUsage.cache_creation_input_tokens ?? 0
 
-  // Sonnet 4.6 rates: input $3/M, output $15/M, cache_read $0.30/M, cache_create $3.75/M
-  const estimatedCostUsd =
-    (inputTokens * 3 + cacheCreateTokens * 3.75 + cacheReadTokens * 0.3) / 1_000_000 +
-    (outputTokens * 15) / 1_000_000
+  const estimatedCostUsd = estimateTextCostUsd({
+    provider: 'anthropic',
+    model: MODEL,
+    batch: options.batch,
+    usage: {
+      inputTokens,
+      outputTokens,
+      cacheReadTokens,
+      cacheCreateTokens,
+    },
+  })
 
   return { inputTokens, outputTokens, cacheReadTokens, cacheCreateTokens, estimatedCostUsd }
 }
@@ -613,7 +681,11 @@ export async function generateEditorialSync(request: EditorialRequest): Promise<
     if (!parsed.glossary) parsed.glossary = []
     if (!parsed.link_anchors) parsed.link_anchors = []
 
-    const validationError = validateEditorial(parsed)
+    const validationContext = {
+      originalTitle: request.originalTitle,
+      originalText: request.originalText,
+    }
+    const validationError = validateEditorial(parsed, validationContext)
     if (validationError) {
       const errorMessage = `валидация провалена (${validationError}) для "${request.originalTitle.slice(0, 60)}"`
       console.warn(`[${ts()}] Claude: ${errorMessage}`)

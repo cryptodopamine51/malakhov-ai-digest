@@ -14,6 +14,7 @@ import { readSiteUrlFromEnv } from '../lib/site'
 import { getServerClient } from '../lib/supabase'
 import type { Article } from '../lib/supabase'
 import { getMoscowDateKey } from '../lib/utils'
+import { hasStaleYearHallucination as hasStaleYearHallucinationInText } from '../lib/year-sanitizer'
 import { writeLlmUsageLog, ZERO_USAGE_TOTALS, type UsageTotals } from '../pipeline/llm-usage'
 import { estimateTextCostUsd, type TextUsageForCost } from '../pipeline/model-pricing'
 import { assertServiceRoleKey, markArticlesSent } from './daily-digest-core'
@@ -291,9 +292,6 @@ export function hasStaleYearHallucination(
   captionText: string,
   now: Date = new Date(),
 ): boolean {
-  const currentYear = now.getUTCFullYear()
-  const years = captionText.match(/\b20\d{2}\b/g)
-  if (!years) return false
   const sourceText = [
     article.ru_title,
     article.original_title,
@@ -301,7 +299,11 @@ export function hasStaleYearHallucination(
     article.lead,
     article.card_teaser,
   ].filter(Boolean).join(' ')
-  return years.some((year) => Number(year) < currentYear && !sourceText.includes(year))
+  return hasStaleYearHallucinationInText({
+    generatedText: captionText,
+    sourceText,
+    now,
+  })
 }
 
 export function buildTelegramCaptionFromDeepSeekJson(

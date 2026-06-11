@@ -1,0 +1,42 @@
+name: Article Quality Judge and Feedback
+
+on:
+  schedule:
+    # Daily after the morning publication cycle: 11:15 MSK.
+    - cron: '15 8 * * *'
+  workflow_dispatch:
+
+jobs:
+  quality-feedback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run daily quality judge
+        run: npm run quality:judge
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          QUALITY_JUDGE_MODEL: claude-haiku-4-5
+
+      - name: Send owner feedback buttons
+        run: npm run quality:feedback
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+          NEXT_PUBLIC_SITE_URL: https://news.malakhovai.ru

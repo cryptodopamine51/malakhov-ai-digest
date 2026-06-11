@@ -49,6 +49,38 @@ test('detectEditorialRiskFlags marks money and high score stories', () => {
   assert.deepEqual(detectEditorialRiskFlags(context), ['money', 'high_score'])
 })
 
+test('detectEditorialRiskFlags avoids broad Russian substring false positives', () => {
+  assert.deepEqual(detectEditorialRiskFlags({
+    sourceName: 'Habr AI',
+    originalTitle: 'Как устроен выбор модели для RAG-пайплайна',
+    originalText: 'Автор сравнивает выбор модели, размер выборки и закономерности качества. Персональный ассистент помогает писать код.',
+    topics: ['ai-tools'],
+    primaryCategory: 'ai-tools',
+    secondaryCategories: [],
+    score: 4,
+  }), [])
+
+  assert.ok(detectEditorialRiskFlags({
+    sourceName: 'Reuters',
+    originalTitle: 'ЕС готовит закон об ИИ',
+    originalText: 'Новый законопроект регулирует персональные данные и авторские права.',
+    topics: ['ai-industry'],
+    primaryCategory: 'ai-industry',
+    secondaryCategories: [],
+    score: 5,
+  }).includes('legal_regulation'))
+
+  assert.ok(detectEditorialRiskFlags({
+    sourceName: 'Reuters',
+    originalTitle: 'Выборы и ИИ-реклама стали темой регуляторов',
+    originalText: 'В выборах обсуждают ограничения на синтетические ролики.',
+    topics: ['ai-industry'],
+    primaryCategory: 'ai-industry',
+    secondaryCategories: [],
+    score: 5,
+  }).includes('geopolitics'))
+})
+
 test('buildDeterministicEditorialBrief includes risk flags and source excerpt', () => {
   const brief = buildDeterministicEditorialBrief(context)
   assert.match(brief, /Risk flags: money, high_score/)

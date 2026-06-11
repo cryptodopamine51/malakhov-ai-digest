@@ -2,10 +2,15 @@
 
 > Главный управляющий файл проекта.
 > Он не подгружается автоматически “из памяти” между сессиями: в начале каждой новой работы его нужно открыть явно или запустить `npm run context`.
-> Последнее обновление: 2026-06-10
+> Последнее обновление: 2026-06-11
 
 Текущая инициатива (open 2026-06-10): **Полный аудит дайджеста: техника + SEO + развитие** —
 `docs/spec_2026-06-10_digest_full_audit.md` (метрики: `docs/baseline_2026-06-10.md`).
+Дополнение 2026-06-11: по `docs/spec_2026-06-11_cost_quality_wave.md` закрыты только W1–W3:
+batch-cost учитывает Anthropic Batch discount, risk-флаги сужены, premium source text cap включён,
+год-санитайзер применён к article body, DeepSeek repair-pass стоит перед дорогим retry,
+Anthropic degraded-mode авто-включается через `anthropic_unavailable`, добавлены daily
+LLM-judge и one-tap owner feedback. W4–W6 не тронуты.
 Оба P0-инцидента **разрешены 2026-06-10 вечером**:
 1. **Anthropic credits** — владелец пополнил billing → retry-failed зелёный (ручной dispatch
    проверен), очередь pending разобрана, 23 публикации за день и растёт. Stale-алёрты

@@ -41,6 +41,7 @@ import {
   prepareEditorialApplication,
   type EditorialApplySourceContext,
 } from '../pipeline/editorial-apply'
+import { repairEditorialWithDeepSeek } from '../pipeline/editorial-repair'
 import { claimBatch, releaseClaim } from '../pipeline/claims'
 import {
   createEnrichRun,
@@ -57,6 +58,11 @@ import { estimateTextCostUsd, type TextUsageForCost } from '../pipeline/model-pr
 import { sanitizeArticleMedia } from '../pipeline/media-sanitizer'
 import { scoreArticle } from '../pipeline/scorer'
 import { articleHasCategory, getMinScoreForArticle } from '../pipeline/scorer.config'
+import {
+  getAnthropicDegradedState,
+  parkArticleForAnthropicRecovery,
+  type AnthropicDegradedState,
+} from '../pipeline/provider-degraded'
 import {
   bumpRejectedBreakdown,
   mapBatchCreateError,
@@ -516,6 +522,7 @@ async function callDeepSeekWriter(params: {
   runId: string
   system: string
   user: string
+  degraded?: boolean
 }): Promise<{ text: string; usage: UsageTotals; costUsd: number; error: string | null }> {
   const client = deepSeekClient()
   let totalUsage = ZERO_USAGE_TOTALS
@@ -551,6 +558,7 @@ async function callDeepSeekWriter(params: {
         resultStatus: text ? 'ok' : 'failed',
         metadata: {
           mode: args.mode,
+          degraded: params.degraded === true,
           attempt,
           prompt_chars: params.system.length + params.user.length,
           error: text ? null : 'empty_response',
@@ -575,7 +583,7 @@ async function callDeepSeekWriter(params: {
         sourceLang: params.article.source_lang,
         originalTitle: params.article.original_title,
         resultStatus: 'failed',
-        metadata: { mode: args.mode, attempt, error: lastError },
+        metadata: { mode: args.mode, degraded: params.degraded === true, attempt, error: lastError },
         usage: ZERO_USAGE_TOTALS,
       })
       if (attempt < 2) await sleep(1500 * attempt)
@@ -805,6 +813,7 @@ async function routeArticle(params: {
   runId: string
   hydrated: HydratedArticle
   spentTodayUsd: number
+  anthropicDegraded: AnthropicDegradedState
 }): Promise<RoutingResult> {
   const { article, sourceContext, score } = params.hydrated
   const startedAt = new Date()
@@ -813,6 +822,32 @@ async function routeArticle(params: {
   const preFallbackReason = shouldFallbackBeforeDeepSeek(args.mode, riskFlags)
 
   if (preFallbackReason) {
+    if (params.anthropicDegraded.active) {
+      const reason = `${preFallbackReason}; degraded=${params.anthropicDegraded.reason ?? 'active'}`
+      const parked = await parkArticleForAnthropicRecovery({
+        supabase: params.supabase,
+        articleId: article.id,
+        claimToken: article.claim_token,
+        reason,
+      })
+      await writeEnrichAttempt(params.supabase, {
+        articleId: article.id,
+        attemptNo: (article.attempt_count ?? 0) + 1,
+        startedAt,
+        resultStatus: parked ? 'retryable' : 'failed',
+        claimToken: article.claim_token,
+        errorCode: 'claude_api_error',
+        errorMessage: `anthropic_degraded: ${reason}`,
+        payload: {
+          run_id: params.runId,
+          phase: 'editorial_routing',
+          degraded: true,
+          risk_flags: riskFlags,
+          fallback_reason: preFallbackReason,
+        },
+      })
+      return { ...resultFor(article, parked ? 'skipped' : 'failed', `anthropic_degraded:${preFallbackReason}`, 0), riskFlags }
+    }
     const result = await queuePremiumFallback({
       supabase: params.supabase,
       runId: params.runId,
@@ -843,6 +878,17 @@ async function routeArticle(params: {
   }
 
   if (args.deepseekDailyBudgetUsd > 0 && params.spentTodayUsd + estimatedCost > args.deepseekDailyBudgetUsd) {
+    if (params.anthropicDegraded.active) {
+      const failure = await releaseRoutingFailure(
+        params.supabase,
+        article,
+        params.runId,
+        startedAt,
+        'claude_api_error',
+        `deepseek_budget_cap_degraded:${args.deepseekDailyBudgetUsd}`,
+      )
+      return resultFor(article, failure === 'retryable' ? 'skipped' : 'failed', `deepseek_budget_cap_degraded:${args.deepseekDailyBudgetUsd}`, 0)
+    }
     return queuePremiumFallback({
       supabase: params.supabase,
       runId: params.runId,
@@ -859,9 +905,21 @@ async function routeArticle(params: {
     runId: params.runId,
     system,
     user,
+    degraded: params.anthropicDegraded.active,
   })
 
   if (!writer.text) {
+    if (params.anthropicDegraded.active) {
+      const failure = await releaseRoutingFailure(
+        params.supabase,
+        article,
+        params.runId,
+        startedAt,
+        'unhandled_error',
+        `deepseek_failed_degraded:${writer.error ?? 'missing_output'}`,
+      )
+      return resultFor(article, failure === 'retryable' ? 'skipped' : 'failed', `deepseek_failed_degraded:${writer.error ?? 'missing_output'}`, writer.costUsd)
+    }
     return queuePremiumFallback({
       supabase: params.supabase,
       runId: params.runId,
@@ -872,8 +930,55 @@ async function routeArticle(params: {
     })
   }
 
-  const parsed = parseRepairValidateEditorial(writer.text)
+  const validationContext = {
+    originalTitle: article.original_title,
+    originalText: sourceContext.originalText,
+  }
+  let parsed = parseRepairValidateEditorial(writer.text, validationContext)
+  let repairCost = 0
+  if (!parsed.validation.ok && parsed.output && parsed.output.quality_ok !== false) {
+    const repair = await repairEditorialWithDeepSeek({
+      supabase: params.supabase,
+      articleId: article.id,
+      runId: params.runId,
+      sourceName: article.source_name,
+      sourceLang: article.source_lang,
+      originalTitle: article.original_title,
+      originalText: sourceContext.originalText,
+      output: parsed.output,
+      validation: parsed.validation,
+      validationContext,
+      runKind: 'editorial_routing',
+    })
+    repairCost = repair.costUsd
+    if (repair.rawText) {
+      const repaired = parseRepairValidateEditorial(repair.rawText, validationContext)
+      if (repaired.output && repaired.validation.ok) {
+        parsed = {
+          ...repaired,
+          repairs: [...parsed.repairs, 'deepseek_editorial_repair', ...repaired.repairs],
+        }
+      }
+    }
+  }
   if (!parsed.output || !parsed.validation.ok) {
+    if (params.anthropicDegraded.active) {
+      const failure = await releaseRoutingFailure(
+        params.supabase,
+        article,
+        params.runId,
+        startedAt,
+        'editorial_validation_failed',
+        `validator_failed_degraded:${parsed.error ?? 'validation'}`,
+      )
+      return {
+        ...resultFor(article, failure === 'retryable' ? 'skipped' : 'failed', `validator_failed_degraded:${parsed.error ?? 'validation'}`, writer.costUsd + repairCost),
+        validationErrors: parsed.validation.errors,
+        validationWarnings: parsed.validation.warnings,
+        repairs: parsed.repairs,
+        riskFlags,
+      }
+    }
     return {
       ...(await queuePremiumFallback({
         supabase: params.supabase,
@@ -883,7 +988,7 @@ async function routeArticle(params: {
         reason: `validator_failed:${parsed.error ?? 'validation'}`,
         startedAt,
       })),
-      costUsd: writer.costUsd,
+      costUsd: writer.costUsd + repairCost,
       validationErrors: parsed.validation.errors,
       validationWarnings: parsed.validation.warnings,
       repairs: parsed.repairs,
@@ -892,6 +997,25 @@ async function routeArticle(params: {
   }
 
   if (parsed.output.quality_ok === false) {
+    if (params.anthropicDegraded.active) {
+      await rejectBeforeRouting(
+        params.supabase,
+        article,
+        params.runId,
+        startedAt,
+        score,
+        sourceContext.originalText,
+        sourceContext.coverImageUrl,
+        parsed.output.quality_reason || 'quality_not_ok',
+        `quality_not_ok_degraded:${parsed.output.quality_reason || 'unspecified'}`,
+      )
+      return {
+        ...resultFor(article, 'rejected', `quality_not_ok_degraded:${parsed.output.quality_reason || 'unspecified'}`, writer.costUsd + repairCost),
+        validationWarnings: parsed.validation.warnings,
+        repairs: parsed.repairs,
+        riskFlags,
+      }
+    }
     return {
       ...(await queuePremiumFallback({
         supabase: params.supabase,
@@ -901,7 +1025,7 @@ async function routeArticle(params: {
         reason: `quality_not_ok:${parsed.output.quality_reason || 'unspecified'}`,
         startedAt,
       })),
-      costUsd: writer.costUsd,
+      costUsd: writer.costUsd + repairCost,
       validationWarnings: parsed.validation.warnings,
       repairs: parsed.repairs,
       riskFlags,
@@ -916,7 +1040,7 @@ async function routeArticle(params: {
     validation: parsed.validation,
     output: parsed.output,
   })
-  if (args.mode === 'balanced' && reviewDecision.shouldReview) {
+  if (!params.anthropicDegraded.active && args.mode === 'balanced' && reviewDecision.shouldReview) {
     const review = await reviewWithClaude({
       supabase: params.supabase,
       article,
@@ -938,7 +1062,7 @@ async function routeArticle(params: {
           reason: `review_rejected:${reviewResult?.publish_recommendation ?? review.error ?? 'failed'}`,
           startedAt,
         })),
-        costUsd: writer.costUsd + reviewCost,
+        costUsd: writer.costUsd + repairCost + reviewCost,
         validationWarnings: parsed.validation.warnings,
         repairs: parsed.repairs,
         riskFlags,
@@ -971,15 +1095,16 @@ async function routeArticle(params: {
     payload: {
       provider: 'deepseek',
       mode: args.mode,
+      degraded: params.anthropicDegraded.active,
       risk_flags: riskFlags,
-      review_required: reviewDecision.shouldReview,
+      review_required: !params.anthropicDegraded.active && reviewDecision.shouldReview,
       review_reasons: reviewDecision.reasons,
       review_result: reviewResult,
     },
   })
 
   return {
-    ...resultFor(article, applied ? 'applied' : 'failed', applied ? null : 'claim_release_failed', writer.costUsd + reviewCost),
+    ...resultFor(article, applied ? 'applied' : 'failed', applied ? null : 'claim_release_failed', writer.costUsd + repairCost + reviewCost),
     validationWarnings: parsed.validation.warnings,
     repairs: parsed.repairs,
     riskFlags,
@@ -1016,6 +1141,9 @@ async function main(): Promise<void> {
     rejectedBreakdown,
   }
   const spentTodayUsd = args.apply ? await getTodayDeepSeekSpend(supabase) : 0
+  const anthropicDegraded = args.apply
+    ? await getAnthropicDegradedState(supabase)
+    : { active: false, reason: null, firstSeenAt: null, lastSeenAt: null }
   const articles = args.apply
     ? await claimBatch(supabase, args.limit)
     : await selectDryRunArticles(supabase, args.limit)
@@ -1023,6 +1151,7 @@ async function main(): Promise<void> {
 
   log(`editorial-routing mode=${args.mode} apply=${args.apply} limit=${args.limit} selected=${articles.length}`)
   log(`deepseek budget today: spent=$${spentTodayUsd.toFixed(4)} cap=$${args.deepseekDailyBudgetUsd.toFixed(2)}`)
+  if (anthropicDegraded.active) log(`anthropic degraded active: ${anthropicDegraded.reason ?? 'no reason'}`)
 
   const results: RoutingResult[] = []
   let rollingDeepSeekSpend = spentTodayUsd
@@ -1038,6 +1167,7 @@ async function main(): Promise<void> {
       runId,
       hydrated: hydrated.hydrated,
       spentTodayUsd: rollingDeepSeekSpend,
+      anthropicDegraded,
     })
     results.push(result)
     rollingDeepSeekSpend = roundUsd(rollingDeepSeekSpend + result.costUsd)

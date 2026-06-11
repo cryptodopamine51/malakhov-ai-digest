@@ -5,9 +5,11 @@ import {
   buildEditorialMessageParams,
   buildEditorialSystemPrompt,
   buildEditorialUserMessage,
+  EDITORIAL_SOURCE_TEXT_TRUNCATION_MARKER,
   extractEditorialText,
   MAX_TOKENS,
   parseEditorialJson,
+  truncateEditorialSourceText,
   validateEditorial,
   validateEditorialDetailed,
 } from '../../pipeline/claude'
@@ -213,6 +215,40 @@ test('validateEditorial accepts camelCase product names as lead anchors and warn
   assert.ok(detailed.warnings.some((warning) => warning.startsWith('card_teaser короткий')))
 })
 
+test('truncateEditorialSourceText caps premium source text on paragraph boundary', () => {
+  const paragraph = 'Абзац с подробностями '.repeat(120)
+  const text = `${paragraph}\n\n${paragraph}\n\n${paragraph}`
+  const truncated = truncateEditorialSourceText(text, 3000)
+
+  assert.equal(truncated.truncated, true)
+  assert.ok(truncated.text.endsWith(EDITORIAL_SOURCE_TEXT_TRUNCATION_MARKER))
+  assert.ok(truncated.text.length < text.length)
+  assert.match(truncated.text, /\n\n\[текст сокращён\]$/)
+})
+
+test('validateEditorial rejects stale year hallucination when source does not contain that year', () => {
+  const parsed = parseEditorialJson(VALID_EDITORIAL_JSON)!
+  parsed.ru_title = 'Apple покажет Siri на WWDC 2025'
+  parsed.lead = 'Apple на WWDC 2025 покажет новую Siri на базе ИИ, хотя исходный материал говорит о конференции 2026 года и свежих функциях.'
+  parsed.editorial_body = parsed.editorial_body.replace('OpenAI 21 апреля', 'Apple на WWDC 2025')
+
+  const detailed = validateEditorialDetailed(parsed, {
+    originalTitle: 'Apple готовит Siri для WWDC 2026',
+    originalText: 'Источник пишет о WWDC 2026 и не упоминает прошлогоднюю конференцию.',
+    now: new Date('2026-06-11T00:00:00Z'),
+  })
+
+  assert.equal(detailed.ok, false)
+  assert.ok(detailed.errors.some((error) => error.includes('галлюцинация прошедшего года: 2025')))
+
+  const allowed = validateEditorialDetailed(parsed, {
+    originalTitle: 'Apple сравнила WWDC 2025 и WWDC 2026',
+    originalText: 'В источнике есть WWDC 2025 и WWDC 2026.',
+    now: new Date('2026-06-11T00:00:00Z'),
+  })
+  assert.equal(allowed.errors.some((error) => error.includes('галлюцинация прошедшего года')), false)
+})
+
 test('normalizeBatchResult extracts text and usage for succeeded item', () => {
   const normalized = normalizeBatchResult({
     custom_id: 'article:article-1:attempt:1:item:item-1',
@@ -234,7 +270,8 @@ test('normalizeBatchResult extracts text and usage for succeeded item', () => {
   assert.equal(normalized.outputText, VALID_EDITORIAL_JSON)
   assert.equal(normalized.inputTokens, 100)
   assert.equal(normalized.outputTokens, 200)
-  assert.ok(normalized.estimatedCostUsd > 0)
+  assert.equal(normalized.estimatedCostUsd, 0.001704)
+  assert.equal(normalized.estimatedListCostUsd, 0.003409)
 })
 
 test('normalizeBatchResult maps errored item to internal error shape', () => {
@@ -257,6 +294,7 @@ test('normalizeBatchResult maps errored item to internal error shape', () => {
   assert.equal(normalized.outputText, null)
   assert.equal(normalized.errorCode, 'rate_limit_error')
   assert.equal(normalized.errorMessage, 'rate limited')
+  assert.equal(normalized.estimatedListCostUsd, 0)
 })
 
 test('extractEditorialText joins multiple text response blocks', () => {

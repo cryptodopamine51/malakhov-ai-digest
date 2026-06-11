@@ -13,6 +13,7 @@ config({ path: resolve(process.cwd(), '.env.local') })
 
 import { getServerClient } from '../lib/supabase'
 import { RETRY_POLICY } from './types'
+import { ANTHROPIC_DEGRADED_ERROR_CODE, getAnthropicDegradedState } from './provider-degraded'
 
 function log(msg: string): void {
   const ts = new Date().toTimeString().slice(0, 8)
@@ -24,11 +25,12 @@ async function retryFailed(): Promise<void> {
 
   const supabase = getServerClient()
   const now = new Date().toISOString()
+  const anthropicDegraded = await getAnthropicDegradedState(supabase)
 
   // Articles in retry_wait whose timer has expired and haven't exceeded max attempts
   const { data: ready, error: selectError } = await supabase
     .from('articles')
-    .select('id, attempt_count, original_title, current_batch_item_id')
+    .select('id, attempt_count, original_title, current_batch_item_id, last_error_code')
     .eq('enrich_status', 'retry_wait')
     .lte('next_retry_at', now)
     .lt('attempt_count', RETRY_POLICY.maxAttempts)
@@ -62,13 +64,16 @@ async function retryFailed(): Promise<void> {
   }
 
   const readyToReset = (ready ?? []).filter((article) => {
+    if (anthropicDegraded.active && article.last_error_code === ANTHROPIC_DEGRADED_ERROR_CODE) return false
     if (!article.current_batch_item_id) return true
     const batchStatus = batchStatusById.get(article.current_batch_item_id)
     return !batchStatus || ['batch_failed', 'apply_failed_retriable', 'apply_failed_terminal', 'applied'].includes(batchStatus)
   })
 
   if (!readyToReset.length) {
-    log('Нет статей для retry после проверки batch item status')
+    log(anthropicDegraded.active
+      ? 'Нет статей для retry после проверки batch item status/degraded hold'
+      : 'Нет статей для retry после проверки batch item status')
     return
   }
 

@@ -46,7 +46,7 @@ RLS contract:
 - public tables в схеме `public` работают с включённым RLS;
 - единственная публичная policy на `articles` разрешает `SELECT` только для live-материалов (`published=true`, `quality_ok=true`, `verified_live=true`, `publish_status='live'`);
 - `categories` имеет public read только для `is_active=true`; запись — только через `service_role`;
-- operational tables (`article_attempts`, `ingest_runs`, `enrich_runs`, `digest_runs`, `telegram_channel_posts`, `pipeline_alerts`, `source_runs`) не имеют public policies и должны читаться/писаться только через `service_role`.
+- operational tables (`article_attempts`, `ingest_runs`, `enrich_runs`, `digest_runs`, `telegram_channel_posts`, `pipeline_alerts`, `source_runs`, `article_quality_scores`, `article_feedback`) не имеют public policies и должны читаться/писаться только через `service_role`.
 
 Модель категорий:
 - одна основная категория на статью (`articles.primary_category`, FK на `categories.slug`, NOT NULL);
@@ -64,6 +64,8 @@ RLS contract:
 - `telegram_channel_posts`
 - `article_attempts`
 - `pipeline_alerts`
+- `article_quality_scores`
+- `article_feedback`
 
 Для batch enrich действует отдельная граница ответственности:
 
@@ -89,6 +91,10 @@ RLS contract:
 Миграция 017 (2026-06-01) заменяет delivery на 5 `telegram_channel_posts` в день, создаёт таблицу
 slot-level отправок и unschedule-ит legacy `tg-digest-*` jobs. См. `docs/OPERATIONS.md` секцию
 «Cron-расписание Telegram channel posts».
+Миграция `20260610221300_article_quality_feedback.sql` добавляет `article_quality_scores`
+для ежедневного LLM-judge и `article_feedback` для owner feedback из Telegram. Обе таблицы
+включают RLS без public policies; запись идёт только через service-role pipeline/webhook после
+проверки Telegram owner id на уровне приложения.
 
 ## Основные модули
 
