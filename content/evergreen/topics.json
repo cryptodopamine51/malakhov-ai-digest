@@ -149,7 +149,7 @@
   },
   {
     "id": 7,
-    "status": "ready_for_codex",
+    "status": "published",
     "cluster": "ИИ-агенты",
     "title": "ИИ-агенты для бизнеса: что это и где применять",
     "primaryKeyword": "ИИ агенты для бизнеса",
@@ -198,7 +198,7 @@
   },
   {
     "id": 9,
-    "status": "ready_for_codex",
+    "status": "published",
     "cluster": "ИИ-агенты",
     "title": "ИИ-агенты в продажах",
     "primaryKeyword": "ИИ агенты в продажах",
@@ -222,7 +222,7 @@
   },
   {
     "id": 10,
-    "status": "planned",
+    "status": "ready_for_codex",
     "cluster": "ИИ-агенты",
     "title": "ИИ-агенты в поддержке клиентов",
     "primaryKeyword": "ИИ агенты в поддержке клиентов",
@@ -295,7 +295,7 @@
   },
   {
     "id": 13,
-    "status": "planned",
+    "status": "ready_for_codex",
     "cluster": "Маркетинг и контент",
     "title": "Нейросети для маркетинга: 25 сценариев",
     "primaryKeyword": "нейросети для маркетинга",
@@ -758,7 +758,7 @@
   },
   {
     "id": 32,
-    "status": "ready_for_codex",
+    "status": "published",
     "cluster": "Доступ к ИИ из России",
     "title": "ChatGPT в России 2026: установка, подписка Plus, оплата",
     "primaryKeyword": "chatgpt в России",
@@ -805,5 +805,30 @@
     "priority": "high",
     "cta": "telegram_digest",
     "notes": "Кластер 11 714 показов/мес (карта 5 281 + виртуальная карта 3 849). Ниша: «для ИИ-сервисов» — уход от банковских сравнений. Главная партнёрская страница: Syntx, GGSel, GetPayAll. Реф-ссылки добавить после одобрения."
+  },
+  {
+    "id": 34,
+    "status": "ready_for_codex",
+    "cluster": "Доступ к ИИ из России",
+    "title": "Локальные нейросети 2026: как запустить ИИ на своём компьютере",
+    "primaryKeyword": "локальная нейросеть",
+    "supportingKeywords": [
+      "нейросеть на компьютере",
+      "запустить llm локально",
+      "локальные нейросети на пк",
+      "нейросеть без интернета",
+      "ollama на русском"
+    ],
+    "intent": "practical",
+    "audience": [
+      "разработчик",
+      "предприниматель",
+      "технический специалист",
+      "энтузиаст"
+    ],
+    "targetSlug": "lokalnye-nejroseti-kak-zapustit-ii-na-svoem-kompyutere",
+    "priority": "high",
+    "cta": "telegram_digest",
+    "notes": "Вордстат 2026-06-11: кластер 6 217 показов/мес + «запустить llm локально» 151 + «сервер для нейросети» 900. Шорт-лист money-гайдов B6 п.4. Покрыть: Ollama/LM Studio, выбор модели, требования к железу, worked example «потянет ли мой ПК», 152-ФЗ как аргумент. Мостик на аренду GPU (974) — реф-потенциал позже."
   }
 ]

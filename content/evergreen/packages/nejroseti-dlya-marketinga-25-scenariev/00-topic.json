@@ -1,0 +1,24 @@
+{
+  "id": 13,
+  "status": "planned",
+  "cluster": "Маркетинг и контент",
+  "title": "Нейросети для маркетинга: 25 сценариев",
+  "primaryKeyword": "нейросети для маркетинга",
+  "supportingKeywords": [
+    "ИИ для маркетинга",
+    "AI инструменты для маркетинга",
+    "как использовать нейросети в маркетинге",
+    "сценарии ИИ для маркетолога"
+  ],
+  "intent": "practical",
+  "audience": [
+    "маркетолог",
+    "CMO",
+    "предприниматель",
+    "контент-маркетолог"
+  ],
+  "targetSlug": "nejroseti-dlya-marketinga-25-scenariev",
+  "priority": "high",
+  "cta": "marketing_ai_checklist",
+  "notes": "Не список ради списка: сгруппировать по research, strategy, content, ads, analytics, operations."
+}
