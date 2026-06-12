@@ -49,6 +49,7 @@ test('buildQualityJudgePrompt contains source and candidate article', () => {
   const prompt = buildQualityJudgePrompt(article)
 
   assert.match(prompt.user, /Source grounding/)
+  assert.match(prompt.user, /Write every reasons\.\* value in Russian/)
   assert.match(prompt.user, /OpenAI releases new model/)
   assert.match(prompt.user, /Candidate article:/)
   assert.match(prompt.user, /Return JSON exactly/)
@@ -63,15 +64,34 @@ test('inferWriterPath maps editorial model to stable buckets', () => {
 
 test('buildOwnerFeedbackBatchMessage creates one numbered Telegram message', () => {
   const message = buildOwnerFeedbackBatchMessage([
-    { article, source: 'channel_post', reason: null },
+    { article, source: 'channel_post', reason: null, score: 4 },
   ])
 
   assert.match(message.text, /Оценка статей/)
-  assert.match(message.text, /1\. OpenAI выпустила новую модель/)
+  assert.match(message.text, /1\. \[канал, 4\/5\] OpenAI News: OpenAI выпустила новую модель/)
   assert.equal(message.replyMarkup.inline_keyboard.length, 1)
   assert.deepEqual(message.replyMarkup.inline_keyboard[0]?.map((button) => button.callback_data), [
     `af:${article.id}:2`,
     `af:${article.id}:1`,
     `af:${article.id}:0`,
   ])
+})
+
+test('buildOwnerFeedbackBatchMessage falls back from dangling truncated titles', () => {
+  const message = buildOwnerFeedbackBatchMessage([
+    {
+      article: {
+        ...article,
+        source_name: 'Habr AI',
+        ru_title: 'Claude пишет 80% кода Anthropic, PyPI заблокировали в России, GitHub захлёбывается от',
+        card_teaser: 'Claude пишет 80% кода Anthropic, PyPI пропал в России, GitHub тонет в ИИ-PR — главное за неделю',
+      },
+      source: 'channel_post',
+      reason: 'Хорошая статья',
+      score: 4,
+    },
+  ])
+
+  assert.match(message.text, /GitHub тонет в ИИ-PR/)
+  assert.doesNotMatch(message.text, /захлёбывается от\n/)
 })

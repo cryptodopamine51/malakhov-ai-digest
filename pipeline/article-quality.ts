@@ -1,7 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { Message } from '@anthropic-ai/sdk/resources/messages/messages'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Article } from '../lib/supabase'
 import { getArticleUrl } from '../lib/article-slugs'
 import { readSiteUrlFromEnv, SITE_URL } from '../lib/site'
 import { getMoscowDateKey, shiftMoscowDateKey, truncate } from '../lib/utils'
@@ -100,6 +99,7 @@ export function buildQualityJudgePrompt(article: QualityJudgeArticle): { system:
       '3. Banned phrases/style: no hype, no bureaucratic filler, no generic AI cliches.',
       '4. Useful context: explains why the story matters without inventing data.',
       '5. Overall usefulness for a Russian AI-news reader.',
+      'Write every reasons.* value in Russian.',
       '',
       `Source: ${article.source_name}`,
       `Original title: ${article.original_title}`,
@@ -189,11 +189,16 @@ export async function loadOwnerFeedbackItems(
   const sampleDate = shiftMoscowDateKey(getMoscowDateKey(now), -1)
   const channelIds = await loadYesterdayChannelArticleIds(supabase, sampleDate)
   const channelArticles = await loadArticlesByIds(supabase, channelIds.slice(0, CHANNEL_SAMPLE_SIZE))
-  const items: QualityFeedbackItem[] = channelArticles.map((article) => ({
-    article,
-    reason: null,
-    source: 'channel_post',
-  }))
+  const channelScores = await loadLatestJudgeScores(supabase, channelArticles.map((article) => article.id), now)
+  const items: QualityFeedbackItem[] = channelArticles.map((article) => {
+    const score = channelScores.get(article.id)
+    return {
+      article,
+      reason: score?.reason ?? null,
+      source: 'channel_post',
+      score: score?.score ?? null,
+    }
+  })
   const seen = new Set(items.map((item) => item.article.id))
   const worst = await loadWorstJudgeArticles(supabase, now, seen, OWNER_FEEDBACK_MAX_MESSAGES - items.length)
   items.push(...worst)
@@ -201,15 +206,15 @@ export async function loadOwnerFeedbackItems(
 }
 
 export function buildOwnerFeedbackCaption(item: QualityFeedbackItem): string {
-  const title = item.article.ru_title ?? item.article.original_title
+  const title = feedbackTitle(item.article)
   const siteUrl = readSiteUrlFromEnv(process.env.NEXT_PUBLIC_SITE_URL) || SITE_URL
   const url = item.article.slug
     ? getArticleUrl(siteUrl, item.article.slug, item.article.primary_category)
     : null
   const lines = [
     `<b>${escapeHtml(title)}</b>`,
-    item.source === 'judge_worst' && item.reason
-      ? `judge считает слабой: ${escapeHtml(item.reason)}`
+    item.source === 'judge_worst' && item.reason && (item.score ?? 5) <= 3
+      ? `judge: ${item.score}/5 — ${escapeHtml(item.reason)}`
       : null,
     url ? `<a href="${escapeHtml(url)}">Открыть статью</a>` : null,
   ].filter(Boolean)
@@ -229,13 +234,18 @@ export function buildOwnerFeedbackBatchMessage(items: QualityFeedbackItem[]): Ow
 
   deliverable.forEach((item, index) => {
     const number = index + 1
-    const title = truncate(item.article.ru_title ?? item.article.original_title, 140)
+    const title = truncateAtWordBoundary(feedbackTitle(item.article), 140)
     const url = item.article.slug
       ? getArticleUrl(siteUrl, item.article.slug, item.article.primary_category)
       : null
-    lines.push(`${number}. ${title}`)
-    if (item.source === 'judge_worst' && item.reason) {
-      lines.push(`   judge: ${truncate(item.reason, 180)}`)
+    const marker = item.source === 'channel_post' ? 'канал' : 'judge'
+    const score = typeof item.score === 'number' && Number.isFinite(item.score)
+      ? `, ${item.score}/5`
+      : ''
+
+    lines.push(`${number}. [${marker}${score}] ${item.article.source_name}: ${title}`)
+    if (item.reason && ((item.score ?? 5) <= 3 || item.source === 'judge_worst')) {
+      lines.push(`   проблема: ${truncateAtWordBoundary(item.reason, 180)}`)
     }
     if (url) lines.push(`   ${url}`)
     if (index < deliverable.length - 1) lines.push('')
@@ -375,6 +385,34 @@ async function loadArticlesByIds(supabase: SupabaseClient, ids: string[]): Promi
   return ids.map((id) => byId.get(id)).filter((article): article is QualityJudgeArticle => Boolean(article))
 }
 
+async function loadLatestJudgeScores(
+  supabase: SupabaseClient,
+  articleIds: string[],
+  now: Date,
+): Promise<Map<string, { score: number; reason: string | null }>> {
+  if (!articleIds.length) return new Map()
+  const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  const { data, error } = await supabase
+    .from('article_quality_scores')
+    .select('article_id, score, reasons, created_at')
+    .in('article_id', articleIds)
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+  if (error || !data?.length) return new Map()
+
+  const scores = new Map<string, { score: number; reason: string | null }>()
+  for (const row of data) {
+    const articleId = String(row.article_id ?? '')
+    if (!articleId || scores.has(articleId)) continue
+    const reasons = (row.reasons ?? {}) as Record<string, unknown>
+    scores.set(articleId, {
+      score: Number(row.score ?? 0),
+      reason: typeof reasons.overall === 'string' ? reasons.overall : null,
+    })
+  }
+  return scores
+}
+
 async function loadRandomPublishedArticles(
   supabase: SupabaseClient,
   sampleDate: string,
@@ -422,14 +460,23 @@ async function loadWorstJudgeArticles(
     .from('article_quality_scores')
     .select('article_id, score, reasons, created_at')
     .gte('created_at', since)
-    .order('score', { ascending: true })
     .order('created_at', { ascending: false })
-    .limit(20)
+    .limit(40)
   if (error || !data?.length) return []
 
-  const rows = (data ?? [])
-    .filter((row) => !excludeIds.has(String(row.article_id)))
-    .slice(0, limit)
+  const selectedIds = new Set(excludeIds)
+  const rows = []
+  for (const row of data ?? []) {
+    const articleId = String(row.article_id ?? '')
+    if (!articleId || selectedIds.has(articleId)) continue
+    selectedIds.add(articleId)
+    if (Number(row.score ?? 0) > 3) continue
+    rows.push(row)
+  }
+  rows.sort((a, b) => Number(a.score ?? 0) - Number(b.score ?? 0))
+  if (rows.length > limit) {
+    rows.length = limit
+  }
   const articles = await loadArticlesByIds(supabase, rows.map((row) => String(row.article_id)))
   const byId = new Map(articles.map((article) => [article.id, article]))
   const items: QualityFeedbackItem[] = []
@@ -458,7 +505,7 @@ async function sendOwnerFeedbackBatchMessage(
     body: JSON.stringify({
       chat_id: chatId,
       text: message.text,
-      disable_web_page_preview: false,
+      disable_web_page_preview: true,
       reply_markup: message.replyMarkup,
     }),
   })
@@ -488,6 +535,84 @@ function hashString(value: string): number {
     hash = Math.imul(hash, 16777619)
   }
   return hash >>> 0
+}
+
+function feedbackTitle(article: QualityJudgeArticle): string {
+  const title = normalizeFeedbackTitle(article.ru_title)
+  if (title && !looksTruncatedFeedbackTitle(title)) return title
+
+  return normalizeFeedbackTitle(article.card_teaser)
+    || normalizeFeedbackTitle(article.tg_teaser)
+    || normalizeFeedbackTitle(article.original_title)
+    || 'Без заголовка'
+}
+
+function normalizeFeedbackTitle(value: string | null | undefined): string {
+  return (value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[.。]+$/u, '')
+}
+
+function looksTruncatedFeedbackTitle(value: string): boolean {
+  const lastWord = value
+    .split(/\s+/u)
+    .pop()
+    ?.toLowerCase()
+    .replace(/[,:;!?…]+$/u, '')
+  if (!lastWord) return false
+
+  return new Set([
+    'а',
+    'без',
+    'в',
+    'для',
+    'и',
+    'или',
+    'из',
+    'к',
+    'на',
+    'над',
+    'о',
+    'об',
+    'от',
+    'по',
+    'под',
+    'при',
+    'про',
+    'с',
+    'у',
+    'about',
+    'against',
+    'and',
+    'as',
+    'by',
+    'for',
+    'from',
+    'in',
+    'of',
+    'on',
+    'or',
+    'over',
+    'the',
+    'to',
+    'under',
+    'with',
+  ]).has(lastWord)
+}
+
+function truncateAtWordBoundary(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value
+  const sliced = value.slice(0, maxLength - 1).trimEnd()
+  const boundary = Math.max(
+    sliced.lastIndexOf(' '),
+    sliced.lastIndexOf('—'),
+    sliced.lastIndexOf('-'),
+  )
+  const cut = boundary >= Math.floor(maxLength * 0.65)
+    ? sliced.slice(0, boundary).trimEnd().replace(/[,:;—-]+$/u, '')
+    : sliced
+  return `${cut}…`
 }
 
 function escapeHtml(value: string): string {
