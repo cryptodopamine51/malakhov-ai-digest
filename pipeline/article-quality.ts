@@ -51,7 +51,7 @@ export interface QualityJudgeResult {
 export interface QualityFeedbackItem {
   article: QualityJudgeArticle
   reason: string | null
-  source: 'channel_post' | 'judge_worst'
+  source: 'channel_post' | 'judge_worst' | 'judge_recent'
   score?: number | null
 }
 
@@ -202,6 +202,9 @@ export async function loadOwnerFeedbackItems(
   const seen = new Set(items.map((item) => item.article.id))
   const worst = await loadWorstJudgeArticles(supabase, now, seen, OWNER_FEEDBACK_MAX_MESSAGES - items.length)
   items.push(...worst)
+  for (const item of worst) seen.add(item.article.id)
+  const recent = await loadRecentJudgeArticles(supabase, now, seen, OWNER_FEEDBACK_MAX_MESSAGES - items.length)
+  items.push(...recent)
   return items.slice(0, OWNER_FEEDBACK_MAX_MESSAGES)
 }
 
@@ -487,6 +490,49 @@ async function loadWorstJudgeArticles(
     items.push({
       article,
       source: 'judge_worst',
+      score: Number(row.score ?? 0),
+      reason: typeof reasons.overall === 'string' ? reasons.overall : null,
+    })
+  }
+  return items
+}
+
+async function loadRecentJudgeArticles(
+  supabase: SupabaseClient,
+  now: Date,
+  excludeIds: Set<string>,
+  limit: number,
+): Promise<QualityFeedbackItem[]> {
+  if (limit <= 0) return []
+  const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  const { data, error } = await supabase
+    .from('article_quality_scores')
+    .select('article_id, score, reasons, created_at')
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(80)
+  if (error || !data?.length) return []
+
+  const selectedIds = new Set(excludeIds)
+  const rows = []
+  for (const row of data ?? []) {
+    const articleId = String(row.article_id ?? '')
+    if (!articleId || selectedIds.has(articleId)) continue
+    selectedIds.add(articleId)
+    rows.push(row)
+    if (rows.length >= limit) break
+  }
+
+  const articles = await loadArticlesByIds(supabase, rows.map((row) => String(row.article_id)))
+  const byId = new Map(articles.map((article) => [article.id, article]))
+  const items: QualityFeedbackItem[] = []
+  for (const row of rows) {
+    const article = byId.get(String(row.article_id))
+    if (!article) continue
+    const reasons = (row.reasons ?? {}) as Record<string, unknown>
+    items.push({
+      article,
+      source: 'judge_recent',
       score: Number(row.score ?? 0),
       reason: typeof reasons.overall === 'string' ? reasons.overall : null,
     })
