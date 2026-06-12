@@ -10,6 +10,7 @@ import { resolve } from 'path'
 config({ path: resolve(process.cwd(), '.env.local') })
 
 import { getServerClient } from '../lib/supabase'
+import { getEnrichBacklogSnapshot } from '../lib/enrich-backlog'
 import { fireAlert, resolveAlert } from './alerts'
 
 const BACKLOG_ALERT_THRESHOLD = 50  // articles
@@ -27,28 +28,21 @@ async function checkBacklog(): Promise<void> {
   const botToken = process.env.TELEGRAM_BOT_TOKEN
   const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID
 
-  // Count pending articles
-  const { count: pendingCount } = await supabase
-    .from('articles')
-    .select('*', { count: 'exact', head: true })
-    .in('enrich_status', ['pending', 'retry_wait'])
+  const backlog = await getEnrichBacklogSnapshot(supabase)
+  const count = backlog.actionableCount
+  const oldestAgeHours = (backlog.oldestActionableAgeMinutes ?? 0) / 60
+  const parkedSummary = backlog.parkedBySource
+    .slice(0, 3)
+    .map((row) => `${row.source}: ${row.count}`)
+    .join(', ')
 
-  // Oldest pending article
-  const { data: oldest } = await supabase
-    .from('articles')
-    .select('created_at, original_title')
-    .eq('enrich_status', 'pending')
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle()
-
-  const count = pendingCount ?? 0
-  const oldestAgeHours = oldest
-    ? (Date.now() - new Date(oldest.created_at as string).getTime()) / 3_600_000
-    : 0
-
-  log(`Pending/retry_wait: ${count} статей`)
-  if (oldest) log(`Самая старая pending: ${Math.round(oldestAgeHours)}h — "${String(oldest.original_title).slice(0, 60)}"`)
+  log(`Pending/retry_wait due: ${backlog.totalDueCount}; actionable now: ${count}`)
+  if (backlog.parkedBySourceCapCount > 0) {
+    log(`Source-cap parked: ${backlog.parkedBySourceCapCount}${parkedSummary ? ` (${parkedSummary})` : ''}`)
+  }
+  if (backlog.oldestActionableAgeMinutes !== null) {
+    log(`Самая старая actionable pending: ${Math.round(oldestAgeHours)}h`)
+  }
 
   const shouldAlert = count >= BACKLOG_ALERT_THRESHOLD || oldestAgeHours > BACKLOG_AGE_ALERT_HOURS
 
@@ -57,12 +51,18 @@ async function checkBacklog(): Promise<void> {
       supabase,
       alertType: 'backlog_high',
       severity: oldestAgeHours > BACKLOG_AGE_ALERT_HOURS * 2 ? 'critical' : 'warning',
-      message: `Enrich backlog: ${count} статей ожидают. Самая старая: ${Math.round(oldestAgeHours)}h назад.`,
-      payload: { pendingCount: count, oldestAgeHours: Math.round(oldestAgeHours) },
+      message: `Enrich backlog: ${count} actionable статей ожидают. Самая старая: ${Math.round(oldestAgeHours)}h назад.`,
+      payload: {
+        actionableCount: count,
+        totalDueCount: backlog.totalDueCount,
+        parkedBySourceCapCount: backlog.parkedBySourceCapCount,
+        parkedBySource: backlog.parkedBySource,
+        oldestAgeHours: Math.round(oldestAgeHours),
+      },
       botToken,
       adminChatId,
     })
-    log(`⚠️ Backlog alert fired (${count} pending, oldest ${Math.round(oldestAgeHours)}h)`)
+    log(`⚠️ Backlog alert fired (${count} actionable, oldest ${Math.round(oldestAgeHours)}h)`)
   } else if (count < BACKLOG_ALERT_THRESHOLD / 2) {
     await resolveAlert(supabase, 'backlog_high')
   }

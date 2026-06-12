@@ -214,7 +214,9 @@ validator failures и reviewer rejects по-прежнему создают об
   live-публикаций с одного `source_name` за MSK-день (опубликованное сегодня + клеймы батча).
   Кандидаты сверх квоты остаются `pending` и подбираются в спокойный день. Триггер: 2026-06-08/09
   Habr AI занял 39% потока публикаций; кэп действует на оба enrich-пути (routing и batch),
-  так как оба клеймят через `claimBatch`. Тесты: `tests/node/source-daily-cap.test.ts`.
+  так как оба клеймят через `claimBatch`. Health/backlog-monitor считают красной очередью
+  только actionable pending/retry_wait; source-capped pending не шумит как инцидент.
+  Тесты: `tests/node/source-daily-cap.test.ts`, `tests/node/enrich-backlog.test.ts`.
 
 ### Scoring formula (Wave 1, 2026-05-22)
 

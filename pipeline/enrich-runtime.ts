@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ArticleAttemptStage } from '../lib/supabase'
+import { getEnrichBacklogSnapshot } from '../lib/enrich-backlog'
 import { WORKER_ID } from './claims'
 import type { UsageTotals } from './llm-usage'
 import { ZERO_USAGE_TOTALS } from './llm-usage'
@@ -61,16 +62,7 @@ export function log(msg: string): void {
 }
 
 export async function getOldestPendingAgeMinutes(supabase: SupabaseClient): Promise<number | null> {
-  const { data: oldestPending } = await supabase
-    .from('articles')
-    .select('created_at')
-    .eq('enrich_status', 'pending')
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle()
-
-  if (!oldestPending?.created_at) return null
-  return Math.round((Date.now() - new Date(oldestPending.created_at).getTime()) / 60_000)
+  return (await getEnrichBacklogSnapshot(supabase)).oldestActionableAgeMinutes
 }
 
 export async function createEnrichRun(

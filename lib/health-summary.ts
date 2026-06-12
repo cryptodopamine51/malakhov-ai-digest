@@ -8,6 +8,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { getEnrichBacklogSnapshot } from './enrich-backlog'
 import { getMoscowDateKey } from './utils'
 
 const MSK_OFFSET_MS = 3 * 60 * 60 * 1000
@@ -92,7 +93,7 @@ export async function getHealthSummary(supabase: SupabaseClient): Promise<Health
     digestRowsRes,
     alertsCountRes,
     batchesCountRes,
-    oldestPendingRes,
+    enrichBacklog,
     publishedTodayRes,
     rejectedRunsRes,
     costTodayRes,
@@ -130,13 +131,7 @@ export async function getHealthSummary(supabase: SupabaseClient): Promise<Health
       .from('anthropic_batches')
       .select('*', { count: 'exact', head: true })
       .eq('processing_status', 'in_progress'),
-    supabase
-      .from('articles')
-      .select('created_at')
-      .in('enrich_status', ['pending', 'retry_wait', 'processing'])
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle(),
+    getEnrichBacklogSnapshot(supabase, now),
     supabase
       .from('articles')
       .select('*', { count: 'exact', head: true })
@@ -163,10 +158,6 @@ export async function getHealthSummary(supabase: SupabaseClient): Promise<Health
       .limit(5),
   ])
 
-  const oldestPendingAgeMinutes = oldestPendingRes.data?.created_at
-    ? Math.round((now.getTime() - new Date(oldestPendingRes.data.created_at as string).getTime()) / 60_000)
-    : null
-
   const rejectedBreakdownMerged: Record<string, number> = {}
   for (const row of rejectedRunsRes.data ?? []) {
     mergeBreakdownPrefix(rejectedBreakdownMerged, (row as { rejected_breakdown?: Record<string, unknown> | null }).rejected_breakdown ?? null)
@@ -190,7 +181,7 @@ export async function getHealthSummary(supabase: SupabaseClient): Promise<Health
     digest,
     alerts_open: alertsCountRes.count ?? 0,
     batches_open: batchesCountRes.count ?? 0,
-    oldest_pending_age_minutes: oldestPendingAgeMinutes,
+    oldest_pending_age_minutes: enrichBacklog.oldestActionableAgeMinutes,
     articles_published_today: publishedTodayRes.count ?? 0,
     articles_rejected_today_by_reason: rejectedBreakdownMerged,
     cost_today_usd: Math.round(costToday * 1_000_000) / 1_000_000,
