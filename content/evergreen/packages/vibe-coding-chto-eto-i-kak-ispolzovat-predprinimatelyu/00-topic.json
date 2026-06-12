@@ -1,0 +1,24 @@
+{
+  "id": 19,
+  "status": "planned",
+  "cluster": "AI coding / vibe coding",
+  "title": "Vibe coding: что это и как использовать предпринимателю",
+  "primaryKeyword": "vibe coding",
+  "supportingKeywords": [
+    "вайб кодинг что это",
+    "vibe coding для предпринимателя",
+    "разработка с ИИ без программиста",
+    "AI coding для бизнеса"
+  ],
+  "intent": "informational",
+  "audience": [
+    "предприниматель",
+    "продакт",
+    "основатель стартапа",
+    "маркетолог"
+  ],
+  "targetSlug": "vibe-coding-chto-eto-i-kak-ispolzovat-predprinimatelyu",
+  "priority": "high",
+  "cta": "ai_product_build_audit",
+  "notes": "Писать для бизнеса: что можно собрать, где риски качества, где нужен инженер и ревью."
+}

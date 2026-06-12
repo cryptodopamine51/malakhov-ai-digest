@@ -1,0 +1,25 @@
+{
+  "id": 35,
+  "status": "planned",
+  "cluster": "Доступ к ИИ из России",
+  "title": "Perplexity в России: как пользоваться и оплатить Pro",
+  "primaryKeyword": "оплатить perplexity",
+  "supportingKeywords": [
+    "perplexity в россии",
+    "perplexity pro из россии",
+    "как пользоваться perplexity",
+    "perplexity на русском",
+    "perplexity бесплатно или pro"
+  ],
+  "intent": "practical",
+  "audience": [
+    "аналитик",
+    "маркетолог",
+    "разработчик",
+    "предприниматель"
+  ],
+  "targetSlug": "perplexity-v-rossii-kak-polzovatsya-i-oplatit-pro",
+  "priority": "high",
+  "cta": "telegram_digest",
+  "notes": "Вордстат 2026-06-11: «оплатить perplexity» 1 429 показов/мес — последний пункт money-шорт-листа B6 (п.6). Покрыть: доступ без VPN, бесплатный план vs Pro, способы оплаты из России (посредники, виртуальные карты, промокоды), связка с гайдом id=33. Реф-ссылки добавить после одобрения партнёрок."
+}
