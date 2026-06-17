@@ -22,7 +22,8 @@
 
 ## Images
 
-- [ ] Cover WebP exists at `/public/images/guides/{{slug}}/cover.webp`.
+- [ ] Cover canonical WebP exists at the path declared in `08-metadata.json`.
+- [ ] Every local guide image has `-480.webp` and `-768.webp` siblings.
 - [ ] Cover has alt and caption in metadata.
 - [ ] Inline images have alt and captions.
 - [ ] Image files are local or approved external assets.
@@ -36,7 +37,7 @@
 
 ## Indexation
 
-- [ ] `noindex: true` removed once `cover.webp` is in `public/images/guides/{{slug}}/` and `evergreen:check` is green.
+- [ ] `noindex: true` removed once guide images and responsive variants are in `public/images/guides/{{slug}}/` and `evergreen:check` is green.
 - [ ] `npx tsx scripts/indexnow-batch.ts --apply` queued for post-deploy ping.
 
 ## Technical

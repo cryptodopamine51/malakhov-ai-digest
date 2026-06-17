@@ -17,6 +17,7 @@
     "evergreen:check": "tsx scripts/evergreen-check.ts",
     "evergreen:next": "tsx scripts/evergreen-next.ts",
     "images:prep": "tsx scripts/images-prep.ts",
+    "images:audit": "tsx scripts/images-audit.ts",
     "ingest": "tsx pipeline/ingest.ts",
     "enrich": "tsx pipeline/enricher.ts",
     "enrich-submit-batch": "tsx pipeline/enrich-submit-batch.ts",

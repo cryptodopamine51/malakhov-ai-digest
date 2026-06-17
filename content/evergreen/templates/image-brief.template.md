@@ -25,8 +25,9 @@
    - Сначала ищет PNG с именем, совпадающим с одним из meta-slot stem'ов (точный матч → точный slot).
    - Оставшиеся PNG с random-именами маппит на оставшиеся slot'ы по алфавитному порядку имени PNG vs declared meta order (cover первый, дальше inline в порядке `inlineImagesByHeading`). В логах рядом с каждым slot'ом печатается `renamed ← <random.png>`.
    - Финальные WebP именуются по meta stem'у — SEO-имена соблюдены автоматически.
-   - Качество: cover q=90, inline q=88, effort=6, smartSubsample=false (full 4:4:4 chroma — критично для графики с тонкими линиями и текстовыми метафорами).
-4. `npm run evergreen:check -- --slug={{slug}}` проверяет наличие файлов и плотность cover (≥ 50 KB).
+   - Качество canonical: cover q=88, inline q=88, effort=6, smartSubsample=false (full 4:4:4 chroma — критично для графики с тонкими линиями и текстовыми метафорами).
+   - Рядом с canonical WebP скрипт генерирует responsive variants `-480.webp` (q72) и `-768.webp` (q78); canonical URL в metadata не меняется.
+4. `npm run evergreen:check -- --slug={{slug}}` проверяет наличие файлов, responsive variants и budgets (cover ≥ 50 KB, 480w ≤ 35 KB, 768w ≤ 70 KB).
 
 ## Visual Direction
 

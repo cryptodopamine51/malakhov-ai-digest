@@ -38,9 +38,6 @@ import { getPublicReadClient, type Article } from '../../../../lib/supabase'
 import { sanitizeArticleImagesForRender, sanitizeArticleMedia, isArticleImagesStorageUrl } from '../../../../lib/media-sanitizer'
 import { r2VariantSrcSet } from '../../../../lib/image-variants'
 
-// Dormant by default. См. lib/image-variants.ts — включается после backfill вариантов.
-const R2_VARIANTS_ENABLED = process.env.NEXT_PUBLIC_R2_IMAGE_VARIANTS === 'on'
-
 export const revalidate = 3600
 const SKIP_RECOMMENDATIONS_DURING_BUILD = process.env.npm_lifecycle_event === 'build'
 
@@ -591,7 +588,7 @@ export default async function CategoryArticlePage({
         {sanitizedMedia.coverImageUrl && !isSvgUrl(sanitizedMedia.coverImageUrl) && (!SOURCES_WITH_TEXT_COVERS.has(article.source_name) || isArticleImagesStorageUrl(sanitizedMedia.coverImageUrl)) && (
           <div className="relative mb-10 w-full overflow-hidden rounded border border-line" style={{ maxHeight: 630 }}>
             {(() => {
-              const heroSrcSet = R2_VARIANTS_ENABLED ? r2VariantSrcSet(sanitizedMedia.coverImageUrl) : null
+              const heroSrcSet = r2VariantSrcSet(sanitizedMedia.coverImageUrl)
               if (heroSrcSet) {
                 // LCP-обложка из R2 с готовыми вариантами → нативный <img srcset>, минуя /_next/image.
                 return (

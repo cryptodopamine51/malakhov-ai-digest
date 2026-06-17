@@ -31,21 +31,21 @@
     "из-чего-состоит-ии-агент-четыре-обязательных-части": {
       "src": "/images/guides/ii-agenty-dlya-biznesa-chto-eto-i-gde-primenyat/ii-agenty-biznes-komponenty.webp",
       "width": 1200,
-      "height": 800,
+      "height": 675,
       "alt": "Четыре обязательные части ИИ-агента: модель, инструменты, память, контроль",
       "caption": "Рабочий ИИ-агент собирается из четырёх частей: модель с инструкцией, инструменты, память и ограничения с контролем."
     },
     "где-ии-агенты-применяются-в-бизнесе": {
       "src": "/images/guides/ii-agenty-dlya-biznesa-chto-eto-i-gde-primenyat/ii-agenty-biznes-scenarii.webp",
       "width": 1200,
-      "height": 800,
+      "height": 675,
       "alt": "Карта сценариев применения ИИ-агентов по эффекту и риску",
       "caption": "Безопасное стартовое поле — «зелёные» сценарии: квалификация заявок, поддержка по базе знаний, подготовка КП, разбор звонков."
     },
     "вывод-malakhov-ai": {
       "src": "/images/guides/ii-agenty-dlya-biznesa-chto-eto-i-gde-primenyat/ii-agenty-biznes-itog.webp",
       "width": 1200,
-      "height": 800,
+      "height": 675,
       "alt": "Порядок запуска первого ИИ-агента в бизнесе",
       "caption": "Один процесс → одна метрика → уровень автономности 1–2 → контроль 4–8 недель → рост автономности по статистике."
     }

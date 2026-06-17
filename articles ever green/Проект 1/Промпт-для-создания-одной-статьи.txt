@@ -80,7 +80,7 @@
    — `telegram-personal` → `@iddopamine` (личный Telegram).
    Запрещено обещать чеклисты, PDF, гайды на почту, бесплатные шаблоны и любые lead-magnet артефакты, которых физически нет. Дефолтный final-CTA набор — `DEFAULT_FINAL_CTA_CARDS` в `app/guides/[slug]/page.tsx`. Override через `inlineCtas`/`ctaCards` в meta — допустим, но интент и action должны указывать на одну из трёх поверхностей выше.
 9. Метаданные включают `verifiedAt` (ISO-date), `caseSourcing` (`public` / `anonymized` / `editorial` — опционально). Cover и inline images перечислены с alt и caption.
-10. Картинки готовятся ТОЛЬКО через подписку ChatGPT (Plus/Pro/Codex). Image API любого вендора не используется. Cover 1200×675 WebP (quality 90), inline 1200×800 (или 1200×1200 квадрат, quality 88), effort 6, smartSubsample=false (полное 4:4:4 chroma). Локальные SVG-диаграммы допустимы для матриц/roadmap/калькуляторов.
+10. Картинки готовятся ТОЛЬКО через подписку ChatGPT (Plus/Pro/Codex). Image API любого вендора не используется. Cover 1200×675 WebP (quality 88), inline 1200×800 (или 1200×1200 квадрат, quality 88), effort 6, smartSubsample=false (полное 4:4:4 chroma). `npm run images:prep` также создаёт `-480.webp` и `-768.webp` variants. Локальные SVG-диаграммы допустимы для матриц/roadmap/калькуляторов.
 
    **SEO-convention для filename'ов** (отражается в `08-metadata.json::cover.src` и `inlineImagesByHeading[*].src` ДО генерации PNG):
    — Cover: `<slug>-cover.webp` (или `<primary-keyword>-<short-modifier>.webp` если slug длиннее ~40 символов).

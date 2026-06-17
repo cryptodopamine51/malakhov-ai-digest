@@ -1,22 +1,26 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import sharp from 'sharp'
 
 import {
   COVER_HEIGHT,
   COVER_WIDTH,
   COVER_WEBP_QUALITY,
+  GUIDE_IMAGE_VARIANT_WIDTHS,
   INLINE_HEIGHT,
   INLINE_WIDTH,
   INLINE_WEBP_QUALITY,
   SQUARE_SIDE,
   WEBP_EFFORT,
   buildMetaSlots,
+  convertPlan,
   indexMetaByFilename,
   planFiles,
   resolveDimensions,
+  writeResponsiveVariants,
 } from '../../scripts/images-prep'
 
 test('resolveDimensions: cover always returns the canonical 1200x675', () => {
@@ -104,6 +108,51 @@ test('WebP quality constants reflect the 2026-05-22 quality bump', () => {
   assert.ok(COVER_WEBP_QUALITY >= 88, `cover quality should be ≥ 88, got ${COVER_WEBP_QUALITY}`)
   assert.ok(INLINE_WEBP_QUALITY >= 85, `inline quality should be ≥ 85, got ${INLINE_WEBP_QUALITY}`)
   assert.ok(WEBP_EFFORT >= 4, `effort should be ≥ 4, got ${WEBP_EFFORT}`)
+})
+
+test('writeResponsiveVariants: writes -480 and -768 siblings with expected dimensions', async () => {
+  const { tmp, rawDir, outDir } = makeTempDirs()
+  try {
+    const rawPath = join(rawDir, 'source.png')
+    const outPath = join(outDir, 'demo-cover.webp')
+    await sharp({
+      create: {
+        width: 1600,
+        height: 900,
+        channels: 3,
+        background: '#2266aa',
+      },
+    })
+      .png()
+      .toFile(rawPath)
+
+    const plan = {
+      rawPath,
+      outPath,
+      width: 1200,
+      height: 675,
+      fit: 'cover' as const,
+      role: 'cover' as const,
+      filename: 'source.png',
+      outStem: 'demo-cover',
+      mapped: false,
+    }
+    await convertPlan(plan)
+    const variants = await writeResponsiveVariants(outPath, plan)
+
+    assert.deepEqual(
+      variants.map((variant) => variant.width),
+      Array.from(GUIDE_IMAGE_VARIANT_WIDTHS),
+    )
+    for (const variant of variants) {
+      assert.equal(existsSync(variant.outputPath), true)
+      const metadata = await sharp(variant.outputPath).metadata()
+      assert.equal(metadata.width, variant.width)
+      assert.equal(metadata.height, Math.round((675 / 1200) * variant.width))
+    }
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
 })
 
 // --- planFiles smart matching ---

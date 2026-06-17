@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
-import Image from 'next/image'
 import Link from 'next/link'
 import { getAllGuides, getGuideAbsoluteUrl } from '../../lib/guides'
+import ResponsiveLocalImage from '../../src/components/ResponsiveLocalImage'
 
 export const revalidate = 86400
 
@@ -42,7 +42,7 @@ export default function GuidesPage() {
             href={guide.path}
             className="group overflow-hidden rounded border border-line bg-base transition-colors hover:border-accent"
           >
-            <Image
+            <ResponsiveLocalImage
               src={guide.cover.src}
               alt={guide.cover.alt}
               width={guide.cover.width}

@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import Image from 'next/image'
 import { getHotStoryOfTheDay, getRecentHeadlines, getArticlesFeed } from '../lib/articles'
 import { getAllGuides } from '../lib/guides'
 import { SITE_URL, absoluteUrl } from '../lib/site'
@@ -8,6 +7,7 @@ import { getMoscowDateKey, shiftMoscowDateKey, pluralize } from '../lib/utils'
 import ArticleCard from '../src/components/ArticleCard'
 import HomeFeedList from '../src/components/HomeFeedList'
 import PulseList from '../src/components/PulseList'
+import ResponsiveLocalImage from '../src/components/ResponsiveLocalImage'
 import TopicTabs from '../src/components/TopicTabs'
 
 export const revalidate = 300
@@ -85,7 +85,7 @@ export default async function HomePage() {
             </Link>
           </div>
           <Link href={featuredGuide.path} className="block border-t border-line md:border-l md:border-t-0">
-            <Image
+            <ResponsiveLocalImage
               src={featuredGuide.cover.src}
               alt={featuredGuide.cover.alt}
               width={featuredGuide.cover.width}

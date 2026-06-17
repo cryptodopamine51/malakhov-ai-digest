@@ -1,6 +1,12 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import sharp from 'sharp'
+import {
+  GUIDE_IMAGE_VARIANT_WIDTHS,
+  localImageVariantPathFor,
+  variantHeightFor,
+} from '../lib/local-image-variants'
 
 type Topic = {
   id: number
@@ -43,10 +49,17 @@ type GuideMetadata = {
   ctaCards?: unknown
 }
 
-// Lowered 2026-05-22 from 80 KB → 50 KB after images:prep quality bump
-// (cover q=90 + effort=6 + smartSubsample=false typically produces 50–90 KB
-// for ChatGPT-generated 1200×675 illustrations — well under the old 80 KB heuristic).
+// Lowered 2026-05-22 from 80 KB → 50 KB after images:prep quality bump.
+// Current cover q=88 + effort=6 + smartSubsample=false typically produces 50–100 KB
+// for ChatGPT-generated 1200×675 illustrations — well under the old 80 KB heuristic.
 const COVER_MIN_BYTES = 50 * 1024
+const GUIDE_VARIANT_MAX_BYTES: Record<number, number> = {
+  480: 35 * 1024,
+  768: 70 * 1024,
+}
+const COVER_MAX_BYTES = 140 * 1024
+const INLINE_SOFT_MAX_BYTES = 180 * 1024
+const INLINE_HARD_MAX_BYTES = 220 * 1024
 const VERIFIED_MAX_AGE_DAYS = 180
 const NOINDEX_MAX_AGE_DAYS = 14
 const VALID_CASE_SOURCING = new Set(['public', 'anonymized', 'editorial'])
@@ -351,6 +364,115 @@ function checkLocalImageExists(image: Record<string, unknown>, label: string, er
   }
 }
 
+export async function readWebpDimensions(path: string): Promise<{ width: number; height: number }> {
+  const metadata = await sharp(path).metadata()
+  if (!metadata.width || !metadata.height) {
+    throw new Error(`Could not read WebP dimensions: ${path}`)
+  }
+  return { width: metadata.width, height: metadata.height }
+}
+
+function imageDimensionLabel(width: number, height: number): string {
+  return `${width}×${height}`
+}
+
+function checkFileSize(
+  path: string,
+  label: string,
+  maxBytes: number,
+  errors: string[],
+  warnings?: string[],
+  soft = false,
+) {
+  const size = statSync(path).size
+  if (size <= maxBytes) return
+  const message = `${label} is ${(size / 1024).toFixed(1)} KB (> ${(maxBytes / 1024).toFixed(0)} KB)`
+  if (soft && warnings) warnings.push(message)
+  else errors.push(message)
+}
+
+export async function checkLocalGuideImageResponsiveVariants(
+  image: Record<string, unknown>,
+  label: string,
+  role: 'cover' | 'inline',
+  errors: string[],
+  warnings: string[],
+) {
+  if (typeof image.src !== 'string' || !image.src.startsWith('/images/guides/') || !/\.webp$/i.test(image.src)) {
+    return
+  }
+  if (typeof image.width !== 'number' || typeof image.height !== 'number') return
+
+  const canonicalPath = join(root, 'public', image.src)
+  if (!existsSync(canonicalPath)) return
+
+  try {
+    const canonicalDimensions = await readWebpDimensions(canonicalPath)
+    if (canonicalDimensions.width !== image.width || canonicalDimensions.height !== image.height) {
+      errors.push(
+        `${label} dimensions are ${imageDimensionLabel(canonicalDimensions.width, canonicalDimensions.height)}, expected ${imageDimensionLabel(image.width, image.height)}`,
+      )
+    }
+  } catch (error) {
+    errors.push(`${label} dimensions could not be read: ${error instanceof Error ? error.message : String(error)}`)
+  }
+
+  if (role === 'cover') {
+    checkFileSize(canonicalPath, `${label} canonical`, COVER_MAX_BYTES, errors)
+  } else {
+    checkFileSize(canonicalPath, `${label} canonical`, INLINE_SOFT_MAX_BYTES, errors, warnings, true)
+    checkFileSize(canonicalPath, `${label} canonical`, INLINE_HARD_MAX_BYTES, errors)
+  }
+
+  for (const width of GUIDE_IMAGE_VARIANT_WIDTHS) {
+    const variantSrc = localImageVariantPathFor(image.src, width)
+    const variantPath = join(root, 'public', variantSrc)
+    const variantLabel = `${label} ${width}w variant`
+    if (!existsSync(variantPath)) {
+      errors.push(`${variantLabel} is missing: public${variantSrc}`)
+      continue
+    }
+
+    checkFileSize(
+      variantPath,
+      variantLabel,
+      GUIDE_VARIANT_MAX_BYTES[width] ?? 70 * 1024,
+      errors,
+    )
+
+    try {
+      const dimensions = await readWebpDimensions(variantPath)
+      const expectedHeight = variantHeightFor(width, image.width, image.height)
+      if (dimensions.width !== width || dimensions.height !== expectedHeight) {
+        errors.push(
+          `${variantLabel} dimensions are ${imageDimensionLabel(dimensions.width, dimensions.height)}, expected ${imageDimensionLabel(width, expectedHeight)}`,
+        )
+      }
+    } catch (error) {
+      errors.push(`${variantLabel} dimensions could not be read: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+}
+
+async function checkMetadataGuideImages(metadata: GuideMetadata | null, label: string, errors: string[], warnings: string[]) {
+  if (!metadata) return
+  if (isRecord(metadata.cover)) {
+    await checkLocalGuideImageResponsiveVariants(metadata.cover, `${label} cover`, 'cover', errors, warnings)
+  }
+  if (isRecord(metadata.inlineImagesByHeading)) {
+    for (const [heading, image] of Object.entries(metadata.inlineImagesByHeading)) {
+      if (!isRecord(image)) continue
+      await checkLocalGuideImageResponsiveVariants(
+        image,
+        `${label} inline image for ${heading}`,
+        'inline',
+        errors,
+        warnings,
+      )
+    }
+  }
+}
+
 function markdownExpectsFaq(markdown: string): boolean {
   return /^##\s+FAQ\s*$/im.test(markdown) || /^##\s+Частые вопросы\s*$/im.test(markdown)
 }
@@ -464,7 +586,7 @@ function checkGuideLinks(slugs: string[], errors: string[]) {
   }
 }
 
-function main() {
+async function main() {
   const slug = getArgValue('--slug')
   if (!slug) {
     throw new Error('Usage: npm run evergreen:check -- --slug=<slug>')
@@ -505,6 +627,7 @@ function main() {
       const packageMetadataRaw = readFileSync(packageMetadataPath, 'utf8')
       packageMetadata = validateMetadata(JSON.parse(packageMetadataRaw), '08-metadata.json', errors, warnings)
       checkEditorialStyle(packageMetadataRaw, '08-metadata.json', errors)
+      await checkMetadataGuideImages(packageMetadata, '08-metadata.json', errors, warnings)
     } catch (error) {
       errors.push(`08-metadata.json is invalid JSON: ${error instanceof Error ? error.message : String(error)}`)
     }
@@ -546,6 +669,12 @@ function main() {
         warnings,
       )
       checkEditorialStyle(productionMetadataRaw, `content/guides/meta/${slug}.json`, errors)
+      await checkMetadataGuideImages(
+        productionMetadata,
+        `content/guides/meta/${slug}.json`,
+        errors,
+        warnings,
+      )
     } catch (error) {
       errors.push(
         `content/guides/meta/${slug}.json is invalid JSON: ${
@@ -641,10 +770,8 @@ const isDirectInvocation = (() => {
 })()
 
 if (isDirectInvocation) {
-  try {
-    main()
-  } catch (error) {
+  main().catch((error) => {
     console.error(error instanceof Error ? error.message : error)
     process.exit(1)
-  }
+  })
 }

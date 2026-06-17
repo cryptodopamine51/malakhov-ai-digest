@@ -319,12 +319,16 @@ the owner generates any PNG:
      `inlineImagesByHeading` order). Each rename is surfaced in the log as
      `renamed ← <random.png>`.
    The script then resizes (1200×675 cover, 1200×800 inline rect, 1200×1200 inline square) and
-   writes WebP using `sharp` with **cover quality 90, inline quality 88, effort 6,
+   writes canonical WebP using `sharp` with **cover quality 88, inline quality 88, effort 6,
    smartSubsample=false** (full 4:4:4 chroma — important for photorealistic editorial images and
    graphics with thin lines / text-like detail). Quality bumped 2026-05-22 from previous q=82 which produced
-   ~30 KB WebP outputs with visible compression artifacts. A PNG larger than 5 MB raises a warn.
-4. `npm run evergreen:check -- --slug=<slug>` enforces metadata, cover size (≥ 50 KB) and image
-   presence.
+   ~30 KB WebP outputs with visible compression artifacts; cover quality moved to q88 on
+   2026-06-17 with visual QA required before deploy. A PNG larger than 5 MB raises a warn.
+   Alongside canonical `name.webp`, `images:prep` writes responsive siblings `name-480.webp`
+   (q72) and `name-768.webp` (q78). The canonical URL in metadata stays unchanged.
+4. `npm run evergreen:check -- --slug=<slug>` enforces metadata, cover size (≥ 50 KB), image
+   presence, responsive variants and budgets: 480w ≤ 35 KB, 768w ≤ 70 KB, cover ≤ 140 KB,
+   inline warn > 180 KB and hard fail > 220 KB.
 
 ChatGPT-generated evergreen images should look like photorealistic editorial photography by default:
 real scenes, real materials, natural light, no isometric/vector/3D-render style. Local SVG / Canvas

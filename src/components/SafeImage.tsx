@@ -8,10 +8,6 @@ type SafeImageProps = Omit<ImageProps, 'onError'> & {
   fallbackClassName?: string
 }
 
-// Dormant by default. Включается только после полного backfill вариантов в R2
-// (scripts/backfill-cover-variants.ts) — иначе srcset 404-ит на -400/-800.
-const VARIANTS_ENABLED = process.env.NEXT_PUBLIC_R2_IMAGE_VARIANTS === 'on'
-
 export default function SafeImage({ fallbackClassName, className, ...props }: SafeImageProps) {
   const [failed, setFailed] = useState(false)
 
@@ -27,7 +23,7 @@ export default function SafeImage({ fallbackClassName, className, ...props }: Sa
 
   // R2-обложка с готовыми вариантами → нативный <img srcset>, минуя /_next/image.
   const srcSet =
-    VARIANTS_ENABLED && typeof props.src === 'string' ? r2VariantSrcSet(props.src) : null
+    typeof props.src === 'string' ? r2VariantSrcSet(props.src) : null
 
   if (srcSet) {
     const positionClass = props.fill ? 'absolute inset-0 h-full w-full' : ''

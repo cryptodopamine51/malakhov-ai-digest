@@ -1,6 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { basename, extname, join } from 'node:path'
+import { basename, join } from 'node:path'
 import sharp from 'sharp'
+import {
+  GUIDE_IMAGE_VARIANT_WIDTHS,
+  localImageVariantPathFor,
+  variantHeightFor,
+} from '../lib/local-image-variants'
 
 type ImageMeta = {
   src: string
@@ -36,8 +41,12 @@ const SQUARE_SIDE = 1200
 // Quality bumped 2026-05-22: previous quality=82 produced ~30 KB WebP for 1200×800
 // ChatGPT illustrations and showed visible artifacts. Cover is the OG/social image and
 // stays at the higher end; inline diagrams are slightly leaner.
-const COVER_WEBP_QUALITY = 90
+const COVER_WEBP_QUALITY = 88
 const INLINE_WEBP_QUALITY = 88
+const GUIDE_IMAGE_VARIANT_QUALITY: Record<number, number> = {
+  480: 72,
+  768: 78,
+}
 // effort 6 spends more CPU at convert time for better compression at the same quality.
 const WEBP_EFFORT = 6
 const PNG_WARN_SIZE = 5 * 1024 * 1024
@@ -50,6 +59,14 @@ type MetaSlot = {
   role: 'cover' | 'inline'
   /** Stable order: cover first, then inline images in the order they appear in metadata. */
   order: number
+}
+
+type ResponsiveVariantResult = {
+  width: number
+  height: number
+  outputPath: string
+  outputBytes: number
+  quality: number
 }
 
 function getArgValue(name: string): string | undefined {
@@ -218,7 +235,7 @@ function planFiles(
 function buildPlans(slug: string, metadata: GuideMetadata): Plan[] {
   const rawDir = join(root, 'content', 'evergreen', 'packages', slug, 'raw-images')
   if (!existsSync(rawDir)) {
-    throw new Error(`raw-images directory not found: ${rawDir}`)
+    return []
   }
 
   const outDir = join(root, 'public', 'images', 'guides', slug)
@@ -240,6 +257,39 @@ function resolveDimensions(
   return { width: INLINE_WIDTH, height: INLINE_HEIGHT }
 }
 
+function variantOutputPathFor(outPath: string, width: number): string {
+  return localImageVariantPathFor(outPath, width)
+}
+
+function variantQuality(width: number): number {
+  return GUIDE_IMAGE_VARIANT_QUALITY[width] ?? 78
+}
+
+export async function writeResponsiveVariants(inputPath: string, plan: Pick<Plan, 'outPath' | 'width' | 'height' | 'fit'>): Promise<ResponsiveVariantResult[]> {
+  const results: ResponsiveVariantResult[] = []
+  for (const width of GUIDE_IMAGE_VARIANT_WIDTHS) {
+    const height = variantHeightFor(width, plan.width, plan.height)
+    const outputPath = variantOutputPathFor(plan.outPath, width)
+    const quality = variantQuality(width)
+    await sharp(inputPath)
+      .resize(width, height, { fit: plan.fit, position: 'attention' })
+      .webp({
+        quality,
+        effort: WEBP_EFFORT,
+        smartSubsample: false,
+      })
+      .toFile(outputPath)
+    results.push({
+      width,
+      height,
+      outputPath,
+      outputBytes: statSync(outputPath).size,
+      quality,
+    })
+  }
+  return results
+}
+
 export async function convertPlan(plan: Plan): Promise<{ inputBytes: number; outputBytes: number }> {
   const inputBytes = statSync(plan.rawPath).size
   const quality = plan.role === 'cover' ? COVER_WEBP_QUALITY : INLINE_WEBP_QUALITY
@@ -258,37 +308,76 @@ export async function convertPlan(plan: Plan): Promise<{ inputBytes: number; out
   return { inputBytes, outputBytes }
 }
 
+function plansFromMetadata(slug: string, metadata: GuideMetadata): Pick<Plan, 'outPath' | 'width' | 'height' | 'fit' | 'role' | 'outStem'>[] {
+  const outDir = join(root, 'public', 'images', 'guides', slug)
+  return buildMetaSlots(slug, metadata).map((slot) => ({
+    outPath: join(outDir, `${slot.stem}.webp`),
+    width: slot.width,
+    height: slot.height,
+    fit: 'cover' as const,
+    role: slot.role,
+    outStem: slot.stem,
+  }))
+}
+
+async function generateVariantsForMetadata(slug: string, metadata: GuideMetadata): Promise<{ count: number; totalBytes: number }> {
+  let count = 0
+  let totalBytes = 0
+  for (const plan of plansFromMetadata(slug, metadata)) {
+    if (!existsSync(plan.outPath)) {
+      console.warn(
+        `  warn: canonical ${plan.outStem}.webp is missing; cannot generate responsive variants.`,
+      )
+      continue
+    }
+    const variants = await writeResponsiveVariants(plan.outPath, plan)
+    count += variants.length
+    totalBytes += variants.reduce((sum, variant) => sum + variant.outputBytes, 0)
+    const summary = variants
+      .map((variant) => {
+        const outputKb = (variant.outputBytes / 1024).toFixed(0)
+        return `${variant.width}w ${outputKb} KB q=${variant.quality}`
+      })
+      .join(', ')
+    console.log(`  variants ${plan.outStem}: ${summary}`)
+  }
+  return { count, totalBytes }
+}
+
 export async function prepareSlug(slug: string): Promise<void> {
   const metadata = readMetadata(slug)
   const plans = buildPlans(slug, metadata)
 
-  if (plans.length === 0) {
-    console.log(`images:prep: no PNG files to convert in raw-images for slug=${slug}`)
-    return
-  }
-
   let totalOut = 0
   let renamed = 0
-  for (const plan of plans) {
-    const { inputBytes, outputBytes } = await convertPlan(plan)
-    totalOut += outputBytes
-    const inputKb = (inputBytes / 1024).toFixed(0)
-    const outputKb = (outputBytes / 1024).toFixed(0)
-    const quality = plan.role === 'cover' ? COVER_WEBP_QUALITY : INLINE_WEBP_QUALITY
-    const renameNote = plan.mapped ? ` (renamed ← ${plan.filename})` : ''
-    if (plan.mapped) renamed += 1
-    console.log(
-      `images:prep ${plan.role.padEnd(6)} ${plan.outStem}.webp${renameNote} ` +
-        `(in ${inputKb} KB → ${outputKb} KB, ${plan.width}×${plan.height}, q=${quality}, effort=${WEBP_EFFORT})`,
-    )
-    if (inputBytes > PNG_WARN_SIZE) {
-      console.warn(
-        `  warn: input PNG ${plan.filename} is ${inputKb} KB (> ${PNG_WARN_SIZE / 1024} KB); likely ChatGPT source without compression`,
+  if (plans.length === 0) {
+    console.log(`images:prep: no PNG files to convert in raw-images for slug=${slug}; generating variants from existing canonical WebP files`)
+  } else {
+    for (const plan of plans) {
+      const { inputBytes, outputBytes } = await convertPlan(plan)
+      totalOut += outputBytes
+      const inputKb = (inputBytes / 1024).toFixed(0)
+      const outputKb = (outputBytes / 1024).toFixed(0)
+      const quality = plan.role === 'cover' ? COVER_WEBP_QUALITY : INLINE_WEBP_QUALITY
+      const renameNote = plan.mapped ? ` (renamed ← ${plan.filename})` : ''
+      if (plan.mapped) renamed += 1
+      console.log(
+        `images:prep ${plan.role.padEnd(6)} ${plan.outStem}.webp${renameNote} ` +
+          `(in ${inputKb} KB → ${outputKb} KB, ${plan.width}×${plan.height}, q=${quality}, effort=${WEBP_EFFORT})`,
       )
+      if (inputBytes > PNG_WARN_SIZE) {
+        console.warn(
+          `  warn: input PNG ${plan.filename} is ${inputKb} KB (> ${PNG_WARN_SIZE / 1024} KB); likely ChatGPT source without compression`,
+        )
+      }
     }
   }
+
+  const variants = await generateVariantsForMetadata(slug, metadata)
   console.log(
-    `images:prep ok: slug=${slug} files=${plans.length} renamed=${renamed} totalOutput=${(totalOut / 1024).toFixed(0)} KB`,
+    `images:prep ok: slug=${slug} files=${plans.length} renamed=${renamed} ` +
+      `canonicalOutput=${(totalOut / 1024).toFixed(0)} KB variants=${variants.count} ` +
+      `variantOutput=${(variants.totalBytes / 1024).toFixed(0)} KB`,
   )
 }
 
@@ -326,5 +415,9 @@ export {
   COVER_WEBP_QUALITY,
   INLINE_WEBP_QUALITY,
   WEBP_EFFORT,
+  GUIDE_IMAGE_VARIANT_WIDTHS,
+  GUIDE_IMAGE_VARIANT_QUALITY,
+  variantOutputPathFor,
+  variantQuality,
 }
 export type { Plan, GuideMetadata, MetaSlot }

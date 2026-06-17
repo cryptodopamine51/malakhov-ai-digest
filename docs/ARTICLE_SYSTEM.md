@@ -443,16 +443,44 @@ Production fallback backfill пишет обработанные WebP в **Cloud
 - `scripts/backfill-cover-variants.ts` — генерит варианты для всех уже существующих
   R2-обложек (base не трогает; `--skip-existing` пропускает готовые).
 - Рендер: `src/components/SafeImage.tsx` (карточки, `fill`) и hero на странице статьи
-  (`app/categories/[category]/[slug]/page.tsx`) при включённой фиче отдают нативный
-  `<img srcset>` для R2-обложек, иначе — обычный `next/image`.
+  (`app/categories/[category]/[slug]/page.tsx`) всегда отдают нативный `<img srcset>` для R2 WebP
+  обложек. Non-R2 внешние обложки остаются на обычном `next/image`.
 
-Фича **включена в production с 2026-05-29** (`NEXT_PUBLIC_R2_IMAGE_VARIANTS=on`). Полный backfill
+Фича **включена в production с 2026-05-29**, с 2026-06-17 без env-флага. Полный backfill
 прогнан (489 R2-обложек: generated=481, skipped=8, failed=0) → инвариант закрыт: у каждой
-R2-обложки есть `-400`/`-800`. Инвариант остаётся в силе: пока флаг включён, отсутствие варианта =
+R2-обложки есть `-400`/`-800`. Инвариант остаётся в силе: отсутствие варианта =
 404 на выбранный браузером кандидат, поэтому новые cover-аплоады обязаны идти через
 `uploadWebpWithVariants` (forward-path уже подключён). Порядок включения/отката — в
 `docs/OPERATIONS.md` (секция «Responsive cover variants»). Внешние (не-R2) обложки по-прежнему идут
 через `next/image` (`unoptimized`).
+
+#### Responsive local guide images (static variants, активна с 2026-06-17)
+
+Evergreen guide images лежат в `public/images/guides/<slug>/` и не проходят через Vercel image
+optimizer (`images.unoptimized=true`). Для мобильных/VPN пользователей `scripts/images-prep.ts`
+теперь генерирует рядом с canonical WebP (`name.webp`, обычно 1200w) два static sibling-файла:
+`name-480.webp` и `name-768.webp`.
+
+- `lib/local-image-variants.ts` — pure helper: `GUIDE_IMAGE_VARIANT_WIDTHS=[480,768]`,
+  `localImageVariantPathFor`, `localGuideImageSrcSet`, `variantHeightFor`.
+- `scripts/images-prep.ts` — сохраняет canonical URL, пишет variants через `sharp` (`480w q72`,
+  `768w q78`, `effort=6`, `smartSubsample=false`). Если raw PNG есть, сначала пересобирается
+  canonical; если raw нет, variants backfill строится из существующего canonical WebP.
+- Рендер: `src/components/ResponsiveLocalImage.tsx` отдаёт native `<picture>`/`<img srcset>` для
+  guide cover и inline images (`app/guides/[slug]/page.tsx`), guide listing (`app/guides/page.tsx`)
+  и featured guide на главной (`app/page.tsx`). `src` остаётся canonical `name.webp`. Для
+  `max-width: 768px` `<source>` содержит только `480w/768w`, чтобы high-DPR телефоны не выбирали
+  canonical 1200w; desktop fallback `<img>` содержит `480/768/1200`.
+- `scripts/evergreen-check.ts` валидирует canonical и variants: наличие `-480/-768`, dimensions
+  и aspect ratio, budgets `480w <= 35 KB`, `768w <= 70 KB`, cover `<= 140 KB`, inline warn
+  `> 180 KB` и hard fail `> 220 KB`.
+- `next.config.mjs` отдаёт `/images/guides/:path*` с `Cache-Control: public, max-age=604800,
+  stale-while-revalidate=2592000`; `immutable` пока не используется, потому что image workflow
+  может перезаписывать тот же filename.
+
+Backfill 2026-06-17: для всех published guides с local images добавлены `-480/-768`. `npm run
+images:audit -- --no-live` после backfill показал `missing variants: none`; mobile-768 суммарный
+вес published guide images теперь примерно 22–124 KB на guide вместо 70–524 KB canonical.
 
 Homepage-priority AI cover mode (`scripts/generate-ai-covers.ts --homepage`) выбирает только две
 видимые позиции главной: `getHotStoryOfTheDay()` и первый featured item в «Все новости» после
@@ -704,14 +732,14 @@ Broad RSS feeds допускаются только с keyword filters:
 - Image pipeline для evergreen: `09-image-brief.md` готовит prompts/filenames; владелец
   генерирует PNG через подписку ChatGPT (Plus/Pro/Codex) — image API не используется — и кладёт
   файлы в `content/evergreen/packages/<slug>/raw-images/<filename>.png`; `npm run images:prep --
-  --slug=<slug>` (`scripts/images-prep.ts`) ресайзит и конвертирует в WebP (cover 1200×675,
-  inline rect 1200×800, square 1200×1200; cover q=90, inline q=88, effort=6,
-  smartSubsample=false) и кладёт в
-  `public/images/guides/<slug>/<filename>.webp`. `npm run evergreen:check -- --slug=<slug>`
+  --slug=<slug>` (`scripts/images-prep.ts`) ресайзит и конвертирует в canonical WebP (cover
+  1200×675, inline rect 1200×800, square 1200×1200; cover q=88, inline q=88, effort=6,
+  smartSubsample=false), кладёт в `public/images/guides/<slug>/<filename>.webp` и рядом пишет
+  responsive siblings `-480.webp` / `-768.webp`. `npm run evergreen:check -- --slug=<slug>`
   проверяет meta-схему (`verifiedAt`, `caseSourcing`, CTA cap), lead anchor, counter-strategy
   H2, case block, ≥ 2 inline `/guides|/categories|/russia` ссылок, редакционные запреты
   (`не X, а Y`, `proof of concept`, `production`, `no-code`, `AI-сигналы` и т.п.) в финальном
-  markdown/metadata, cover ≥ 50 KB и `noindex` старше 14 дней.
+  markdown/metadata, cover ≥ 50 KB, variants/budgets и `noindex` старше 14 дней.
 - Archive и source pages используют те же article records.
 - Article pages (`app/categories/[category]/[slug]/page.tsx`) SSG/ISR-ятся с `revalidate=3600`.
   Related/recommendation cards намеренно пропускаются во время `npm run build`

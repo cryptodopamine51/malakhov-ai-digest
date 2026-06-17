@@ -1,13 +1,18 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import sharp from 'sharp'
 
 import {
+  checkLocalGuideImageResponsiveVariants,
   countInlineInternalLinks,
   findEditorialStyleIssues,
   gitFirstTouchTimestamp,
   hasCaseBlock,
   hasCounterStrategy,
   leadHasAnchor,
+  readWebpDimensions,
 } from '../../scripts/evergreen-check'
 
 test('leadHasAnchor: passes when first 700 chars after H1 contain a number', () => {
@@ -94,4 +99,116 @@ test('findEditorialStyleIssues: catches banned evergreen wording in body text', 
 test('findEditorialStyleIssues: ignores forbidden words inside source URLs', () => {
   const md = 'Источник: https://example.com/abandoned-after-proof-of-concept-by-end-of-2025'
   assert.deepEqual(findEditorialStyleIssues(md), [])
+})
+
+test('readWebpDimensions: reads dimensions from a WebP file', async () => {
+  const dir = join(process.cwd(), 'public', 'images', 'guides', '__test-evergreen-dimensions')
+  const path = join(dir, 'sample.webp')
+  try {
+    mkdirSync(dir, { recursive: true })
+    await sharp({
+      create: {
+        width: 32,
+        height: 18,
+        channels: 3,
+        background: '#334455',
+      },
+    })
+      .webp()
+      .toFile(path)
+
+    assert.deepEqual(await readWebpDimensions(path), { width: 32, height: 18 })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('checkLocalGuideImageResponsiveVariants: fails when variants are missing', async () => {
+  const slug = '__test-evergreen-missing-variants'
+  const dir = join(process.cwd(), 'public', 'images', 'guides', slug)
+  const canonical = join(dir, 'cover.webp')
+  try {
+    mkdirSync(dir, { recursive: true })
+    await sharp({
+      create: {
+        width: 1200,
+        height: 675,
+        channels: 3,
+        background: '#112233',
+      },
+    })
+      .webp({ quality: 72 })
+      .toFile(canonical)
+
+    const errors: string[] = []
+    const warnings: string[] = []
+    await checkLocalGuideImageResponsiveVariants(
+      {
+        src: `/images/guides/${slug}/cover.webp`,
+        width: 1200,
+        height: 675,
+      },
+      'test cover',
+      'cover',
+      errors,
+      warnings,
+    )
+
+    assert.equal(warnings.length, 0)
+    assert.ok(errors.some((error) => error.includes('480w variant is missing')))
+    assert.ok(errors.some((error) => error.includes('768w variant is missing')))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('checkLocalGuideImageResponsiveVariants: fails oversized variants', async () => {
+  const slug = '__test-evergreen-oversized-variant'
+  const dir = join(process.cwd(), 'public', 'images', 'guides', slug)
+  const canonical = join(dir, 'cover.webp')
+  const variant480 = join(dir, 'cover-480.webp')
+  const variant768 = join(dir, 'cover-768.webp')
+  try {
+    mkdirSync(dir, { recursive: true })
+    await sharp({
+      create: {
+        width: 1200,
+        height: 675,
+        channels: 3,
+        background: '#112233',
+      },
+    })
+      .webp({ quality: 72 })
+      .toFile(canonical)
+    await sharp({
+      create: {
+        width: 480,
+        height: 270,
+        channels: 3,
+        background: '#112233',
+      },
+    })
+      .webp({ quality: 72 })
+      .toFile(variant480)
+    writeFileSync(variant768, Buffer.alloc(80 * 1024, 1))
+
+    assert.equal(existsSync(variant480), true)
+    const errors: string[] = []
+    const warnings: string[] = []
+    await checkLocalGuideImageResponsiveVariants(
+      {
+        src: `/images/guides/${slug}/cover.webp`,
+        width: 1200,
+        height: 675,
+      },
+      'test cover',
+      'cover',
+      errors,
+      warnings,
+    )
+
+    assert.ok(errors.some((error) => error.includes('768w variant is 80.0 KB')))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })

@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
-import Image from 'next/image'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import {
@@ -28,6 +27,7 @@ import AuthorCard from '../../../src/components/AuthorCard'
 import ArticleRecommendations from '../../../src/components/ArticleRecommendations'
 import { GuideBackToTop, GuideDesktopToc, GuideMobileToc } from '../../../src/components/GuideScrollTools'
 import GuideTrackedLink from '../../../src/components/GuideTrackedLink'
+import ResponsiveLocalImage from '../../../src/components/ResponsiveLocalImage'
 import { guideArticleStyles } from '../../../src/components/guideArticleStyles'
 
 export const revalidate = 86400
@@ -175,7 +175,7 @@ export default async function GuideArticlePage({
         </header>
 
         <figure className={guideArticleStyles.cover}>
-          <Image
+          <ResponsiveLocalImage
             src={guide.cover.src}
             alt={guide.cover.alt}
             width={guide.cover.width}
@@ -386,7 +386,7 @@ function MarkdownTable({ table }: { table: TableBlock }) {
 function GuideImageFigure({ image }: { image: GuideImage }) {
   return (
     <figure className={guideArticleStyles.mediaFigure}>
-      <Image
+      <ResponsiveLocalImage
         src={image.src}
         alt={image.alt}
         width={image.width}

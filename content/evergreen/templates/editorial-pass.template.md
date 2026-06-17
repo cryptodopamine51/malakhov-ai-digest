@@ -42,7 +42,7 @@
 - [ ] **Внутренние ссылки.** ≥ 2 контекстуальных `/guides`, `/categories`, `/russia` ссылки в теле, не считая related. Не ссылаемся на ещё не опубликованные гайды.
 - [ ] **CTA cap.** ≤ 2 inline-CTA + 1 final-CTA блок с 3 карточками. CTA указывают только на реальные поверхности: Telegram-дайджест (`@malakhovaidigest`), форма заявки (`malakhovai.ru/contacts`), личный Telegram (`@iddopamine`). Запрещено обещать чеклисты, PDF, гайды на почту и другие lead-magnet, которых нет.
 - [ ] **JSON-LD.** `author = Person` (`/about#person`), есть `wordCount`, `articleSection`, `keywords`, `inLanguage: 'ru-RU'`. FAQPage эмитируется только при visible FAQ.
-- [ ] **Картинки.** Cover ≥ 50 KB, готовится через подписку ChatGPT или approved local workflow (не через image API). Inline могут быть локальными SVG для матриц/roadmap. Quality: cover q=90, inline q=88, effort=6, smartSubsample=false. Все alt описательные, captions раскрывают зачем.
+- [ ] **Картинки.** Cover ≥ 50 KB, готовится через подписку ChatGPT или approved local workflow (не через image API). Inline могут быть локальными SVG для матриц/roadmap. Quality: cover q=88, inline q=88, effort=6, smartSubsample=false. `images:prep` создаёт `-480/-768` variants. Все alt описательные, captions раскрывают зачем.
 - [ ] **SEO filename convention.** Cover = `<slug>-cover.webp`; inline = `<slug-short>-<section-keyword>.webp` (ASCII, lowercase, hyphens, ≤ 60 символов). Generic `cover.webp`/`image1.webp` запрещены. Random ChatGPT-имена в `raw-images/` авто-переименовываются `npm run images:prep`.
 - [ ] **Запрещённые приёмы убраны.** Нет ссылок на будущие гайды, выдуманных цифр/тарифов/кейсов, инфобиз-клише, FAQPage без visible FAQ, дублирующего markdown TOC при наличии sticky aside.
 
