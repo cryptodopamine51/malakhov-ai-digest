@@ -14,12 +14,12 @@ export const SITE_SAME_AS: string[] = [SITE_TELEGRAM_URL]
 
 // Two distinct Telegram destinations — never conflate them in CTAs:
 //   - SITE_TELEGRAM_URL / TELEGRAM_CHANNEL_URL → @malakhovaidigest (content channel)
-//   - PERSONAL_TELEGRAM_URL → @malakhovai (owner's personal account, brand/sales)
+//   - PERSONAL_TELEGRAM_URL → @iddopamine (owner's personal account, brand/sales)
 // Both read from env with safe production fallbacks.
 export const TELEGRAM_CHANNEL_URL =
   process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL ?? SITE_TELEGRAM_URL
 export const PERSONAL_TELEGRAM_URL =
-  process.env.NEXT_PUBLIC_PERSONAL_TELEGRAM_URL ?? 'https://t.me/malakhovai'
+  process.env.NEXT_PUBLIC_PERSONAL_TELEGRAM_URL ?? 'https://t.me/iddopamine'
 
 // Owner's services live on the separate landing malakhovai.ru. The news domain
 // surfaces them via the indexable /services page, which links onward here.

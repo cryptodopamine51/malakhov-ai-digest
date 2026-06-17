@@ -6,6 +6,7 @@ import type { Metadata } from 'next'
 import { getArticleBySlug, getArticleRecommendations, resolveAnchorLinks } from '../../../../lib/articles'
 import { getArticlePath, toPublicArticleSlug } from '../../../../lib/article-slugs'
 import { getGuideBridgeForArticle } from '../../../../lib/guide-bridge'
+import { findGuideInlineLinks, type GuideInlineLink } from '../../../../lib/guide-inline-links'
 import { getCategoryMeta } from '../../../../lib/category-meta'
 import { isKnownCategory, DEFAULT_CATEGORY } from '../../../../lib/categories'
 import { selectInlineImageSlots } from '../../../../lib/article-media-placement'
@@ -61,13 +62,24 @@ function isSvgUrl(value: string | null): boolean {
   }
 }
 
-function renderBodyWithAnchors(body: string, anchors: AnchorLink[]): ReactNode[] {
+function renderBodyWithAnchors(
+  body: string,
+  anchors: AnchorLink[],
+  guideLinks: GuideInlineLink[] = [],
+): ReactNode[] {
   const paragraphs = body.split('\n\n').filter(Boolean)
   const usedAnchors = new Set<string>()
 
+  // Article link_anchors keep priority; guide links fill paragraphs that did
+  // not get an article anchor.
+  const candidates: { anchor: string; href: string }[] = [
+    ...anchors.map((a) => ({ anchor: a.anchor, href: getArticlePath(a.slug, a.primaryCategory) })),
+    ...guideLinks.map((g) => ({ anchor: g.anchor, href: g.href })),
+  ]
+
   return paragraphs.map((para, i) => {
-    let assigned: AnchorLink | undefined
-    for (const a of anchors) {
+    let assigned: { anchor: string; href: string } | undefined
+    for (const a of candidates) {
       if (!usedAnchors.has(a.anchor) && para.includes(a.anchor)) {
         assigned = a
         usedAnchors.add(a.anchor)
@@ -84,7 +96,7 @@ function renderBodyWithAnchors(body: string, anchors: AnchorLink[]): ReactNode[]
       <p key={i} className="mb-5">
         {before}
         <Link
-          href={getArticlePath(assigned.slug, assigned.primaryCategory)}
+          href={assigned.href}
           className="text-accent underline decoration-accent/40 hover:decoration-accent transition-colors"
         >
           {assigned.anchor}
@@ -458,10 +470,9 @@ export default async function CategoryArticlePage({
   const title = article.ru_title ?? article.original_title
   const sanitizedMedia = sanitizeArticleForRender(article)
   const time = formatRelativeTime(article.pub_date ?? article.created_at)
-  const bodyParagraphs = renderBodyWithAnchors(
-    article.editorial_body ?? article.ru_text ?? '',
-    anchorLinks
-  )
+  const bodyText = article.editorial_body ?? article.ru_text ?? ''
+  const guideInlineLinks = findGuideInlineLinks(bodyText)
+  const bodyParagraphs = renderBodyWithAnchors(bodyText, anchorLinks, guideInlineLinks)
   const inlineTables = selectInlineTables(article.article_tables)
   const inlineImages = sanitizedMedia.inlineImages
   const primaryVideo = inlineVideos[0] ?? null

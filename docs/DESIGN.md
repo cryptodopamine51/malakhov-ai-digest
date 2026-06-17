@@ -296,7 +296,7 @@ featured-вариант `ArticleCard` + источник данных `getHotSto
 `src/components/AuthorCard.tsx` — единый компонент авторства/воронки, общий для гайдов и
 новостей. Server-компонент без client-JS.
 - Состав: круглый портрет (`/about/editor.jpg`, 72×72), имя со ссылкой на `/about`,
-  строка-роль, две кнопки — **личный Telegram** (`PERSONAL_TELEGRAM_URL` → `@malakhovai`) и
+  строка-роль, две кнопки — **личный Telegram** (`PERSONAL_TELEGRAM_URL` → `@iddopamine`) и
   **Консультация**.
 - Контейнер: `rounded border border-line bg-surface p-5`, на мобиле колонкой, на `sm+` —
   фото слева, текст справа.
