@@ -25,14 +25,12 @@ test('leadHasAnchor: fails when lead is generic prose without anchor', () => {
   assert.equal(leadHasAnchor(md), false)
 })
 
-test('hasCaseBlock: detects H3 with "Кейс" prefix', () => {
+test('hasCaseBlock: detects H2/H3 with "Кейс" prefix', () => {
   const md = `# Title\n\n## Section\n\n### Кейс: AI-бот поддержки\n\nСитуация. Компания...`
   assert.equal(hasCaseBlock(md), true)
-})
 
-test('hasCaseBlock: detects "Редакционный пример" marker', () => {
-  const md = `# Title\n\nКакой-то текст. Редакционный пример: AI-агент в продажах.`
-  assert.equal(hasCaseBlock(md), true)
+  const h2 = `# Title\n\n## Кейс: AI-бот поддержки\n\nСитуация. Компания...`
+  assert.equal(hasCaseBlock(h2), true)
 })
 
 test('hasCaseBlock: returns false when no case markers present', () => {

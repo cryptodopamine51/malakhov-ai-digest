@@ -388,8 +388,7 @@ export function leadHasAnchor(markdown: string): boolean {
 }
 
 export function hasCaseBlock(markdown: string): boolean {
-  if (/^###\s+(Кейс|Сценарий|Ситуация|Мини-кейс)/im.test(markdown)) return true
-  return /Редакционный пример/i.test(markdown)
+  return /^#{2,3}\s+(Кейс|Сценарий|Ситуация|Мини-кейс)/im.test(markdown)
 }
 
 export function hasCounterStrategy(markdown: string): boolean {
@@ -574,7 +573,7 @@ function main() {
     }
     if (!hasCaseBlock(productionMarkdown)) {
       warnings.push(
-        `content/guides/${slug}.md has no case block (H3 starting with "Кейс/Сценарий/Ситуация/Мини-кейс" or "Редакционный пример" marker)`,
+        `content/guides/${slug}.md has no case block (H2/H3 starting with "Кейс/Сценарий/Ситуация/Мини-кейс")`,
       )
     }
     if (!hasCounterStrategy(productionMarkdown)) {

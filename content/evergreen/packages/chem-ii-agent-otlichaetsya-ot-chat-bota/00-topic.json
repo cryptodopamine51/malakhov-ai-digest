@@ -1,0 +1,24 @@
+{
+  "id": 8,
+  "status": "planned",
+  "cluster": "ИИ-агенты",
+  "title": "Чем ИИ-агент отличается от чат-бота",
+  "primaryKeyword": "чем ИИ агент отличается от чат бота",
+  "supportingKeywords": [
+    "ИИ агент и чат бот разница",
+    "AI agent vs chatbot",
+    "что умеет ИИ агент",
+    "чат бот или ИИ агент"
+  ],
+  "intent": "informational",
+  "audience": [
+    "предприниматель",
+    "продакт",
+    "маркетолог",
+    "руководитель поддержки"
+  ],
+  "targetSlug": "chem-ii-agent-otlichaetsya-ot-chat-bota",
+  "priority": "medium",
+  "cta": "agent_workflow_audit",
+  "notes": "Нужна понятная сравнительная таблица: диалог, инструменты, память, действия, права, логи, риски."
+}

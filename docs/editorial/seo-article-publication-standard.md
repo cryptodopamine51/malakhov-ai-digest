@@ -150,10 +150,12 @@ Beyond the news-article value rules, every evergreen guide must hit the followin
   table. Template: situation → data → formula → result → takeaway. The example is rendered as
   Markdown text/list/table; do **not** build an interactive React calculator client component for
   evergreen guides. Owner decision 2026-05-22: keep guides as static pages, no client-only widgets.
-- **Case block.** At least one H3 starting with «Кейс / Сценарий / Ситуация / Мини-кейс», or an
-  inline paragraph marked «Редакционный пример». Editorial cases must carry that marker
-  explicitly. Source hierarchy: public (McKinsey/BCG/Gartner/Habr/vc.ru/«Яков и Партнёры»/IDC/НИУ ВШЭ)
-  → anonymized → editorial example.
+- **Case block.** At least one H2/H3 starting with «Кейс / Сценарий / Ситуация / Мини-кейс».
+  Editorial/synthetic cases should read as anonymized sector scenarios in the published guide:
+  no visible service note like «Редакционный пример», no source-note under the case, and no
+  unsupported claim that the case is ours or a client case. Keep sourcing rationale in package
+  source notes, not in the published guide. Source hierarchy: public
+  (McKinsey/BCG/Gartner/Habr/vc.ru/«Яков и Партнёры»/IDC/НИУ ВШЭ) → anonymized → editorial example.
 - **Counter-strategy.** A dedicated H2 «Когда не стоит / не окупится / не подходит / когда не / Ошибки внедрения»
   with 3–5 concrete criteria. Generic «когда нет бюджета» is not enough — name the constraint
   (no process repeatability, no result owner, no SLA, regulator boundary, monthly process churn).
@@ -318,15 +320,16 @@ the owner generates any PNG:
      `renamed ← <random.png>`.
    The script then resizes (1200×675 cover, 1200×800 inline rect, 1200×1200 inline square) and
    writes WebP using `sharp` with **cover quality 90, inline quality 88, effort 6,
-   smartSubsample=false** (full 4:4:4 chroma — important for graphic illustrations with thin
-   lines and text-like detail). Quality bumped 2026-05-22 from previous q=82 which produced
+   smartSubsample=false** (full 4:4:4 chroma — important for photorealistic editorial images and
+   graphics with thin lines / text-like detail). Quality bumped 2026-05-22 from previous q=82 which produced
    ~30 KB WebP outputs with visible compression artifacts. A PNG larger than 5 MB raises a warn.
 4. `npm run evergreen:check -- --slug=<slug>` enforces metadata, cover size (≥ 50 KB) and image
    presence.
 
-Local SVG / Canvas diagrams are allowed as inline replacements for matrices, 30/60/90 roadmaps,
-pilot-vs-production comparisons and calculator visualisations. Covers always come from ChatGPT,
-never from SVG.
+ChatGPT-generated evergreen images should look like photorealistic editorial photography by default:
+real scenes, real materials, natural light, no isometric/vector/3D-render style. Local SVG / Canvas
+diagrams are allowed as inline replacements for matrices, 30/60/90 roadmaps, pilot-vs-production
+comparisons and calculator visualisations. Covers always come from ChatGPT, never from SVG.
 
 Cover fallback chain (news articles, computed at render time):
 
@@ -402,8 +405,9 @@ Consciously excluded:
 - **Коммерсант** — strong outlet but very few AI-specific cases; ad-hoc only.
 
 Hierarchy when a fact is needed but no source exists in the white-list: drop the number and either
-(a) reframe the claim qualitatively, (b) use an editorial example with the explicit marker
-«Редакционный пример», or (c) leave the section without the fake-precision claim.
+(a) reframe the claim qualitatively, (b) use a neutral anonymized/editorial scenario without
+fake precision or unsupported ownership claims, or (c) leave the section without the fake-precision
+claim. Keep the sourcing rationale in internal notes rather than a visible published disclaimer.
 
 ## 13. AI-generated content rules
 
@@ -564,7 +568,7 @@ Evergreen/manual article is publishable only when:
 - content exists in `content/guides/<slug>.md`;
 - lead has a factual anchor in the first sentence;
 - the body has at least one expanded numerical worked example (for numerical intents);
-- the body has at least one case block (public source / anonymized / editorial example with marker);
+- the body has at least one case block (public source / anonymized / editorial scenario without visible service marker);
 - the body has a counter-strategy H2 («когда не стоит / не окупится / Ошибки внедрения»);
 - ≥ 2 inline internal links to `/guides`, `/categories`, `/russia` in the body;
 - ≤ 2 inline-CTAs + 1 final CTA-block (3 cards);

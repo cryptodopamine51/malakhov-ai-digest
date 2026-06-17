@@ -33,7 +33,7 @@ If this is an update package, update the existing guide. Do not create a duplica
   soon as the owner generates the cover, runs `npm run images:prep`, and `evergreen:check` is
   green — set `noindex: false` and submit IndexNow. No multi-day review window.
 - CTAs may only point to: `telegram-digest` (`@malakhovaidigest`), `contacts`
-  (`malakhovai.ru/contacts`), `telegram-personal` (`@malakhovai`). Never promise a checklist /
+  (`malakhovai.ru/contacts`), `telegram-personal` (`@iddopamine`). Never promise a checklist /
   PDF / email guide that does not actually exist.
 
 ## Checks
