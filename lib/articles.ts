@@ -140,6 +140,28 @@ export async function getArticlesByCategory(
   return articles
 }
 
+// Card lists (home feed, category pages, /api/feed) serialize their articles
+// into client-component props, so full rows (editorial_body, original_text,
+// ru_text can be tens of KB each) inflate the page HTML to ~500 KB. Cards only
+// need text as sanitizer context, and sanitizeArticleMedia reads at most the
+// first 900 chars of originalText — truncating to 1000 is behavior-identical.
+// Inline media arrays are never used by cards (ArticleCard passes
+// articleImages: null), so they are dropped entirely.
+const CARD_CONTEXT_TEXT_LIMIT = 1000
+
+export function trimArticleForCard(article: Article): Article {
+  return {
+    ...article,
+    original_text: article.original_text?.slice(0, CARD_CONTEXT_TEXT_LIMIT) ?? null,
+    editorial_body: article.editorial_body?.slice(0, CARD_CONTEXT_TEXT_LIMIT) ?? null,
+    ru_text: article.ru_text?.slice(0, CARD_CONTEXT_TEXT_LIMIT) ?? null,
+    article_images: null,
+    article_tables: null,
+    article_videos: null,
+    link_anchors: null,
+  }
+}
+
 export async function getArticlesByCategoryPage(
   categorySlug: string,
   page = 1,
@@ -169,7 +191,7 @@ export async function getArticlesByCategoryPage(
   }
 
   return {
-    articles: (data ?? []) as Article[],
+    articles: ((data ?? []) as Article[]).map(trimArticleForCard),
     total: count ?? 0,
   }
 }
@@ -298,7 +320,7 @@ export async function getRecentHeadlines(limit = 8, excludeIds: string[] = []): 
     return []
   }
 
-  return (data ?? []) as Article[]
+  return ((data ?? []) as Article[]).map(trimArticleForCard)
 }
 
 /**
@@ -424,7 +446,7 @@ export async function getArticlesFeed(
   }
 
   return {
-    articles: (data ?? []) as Article[],
+    articles: ((data ?? []) as Article[]).map(trimArticleForCard),
     total: total ?? 0,
   }
 }
