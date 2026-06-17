@@ -36,7 +36,7 @@ export async function recoverStuck(
     .select('id, attempt_count, processing_by, claim_token, lease_expires_at, original_title, current_batch_item_id')
     .eq('enrich_status', 'processing')
     .is('current_batch_item_id', null)
-    .lte('lease_expires_at', now)
+    .or(`lease_expires_at.is.null,lease_expires_at.lte.${now},processing_by.is.null`)
     .limit(100)
 
   if (selectError) {
@@ -62,7 +62,7 @@ export async function recoverStuck(
     // Articles that have already exhausted retries get failed, not recycled.
     const targetStatus = attemptCount >= RETRY_POLICY.maxAttempts ? 'failed' : 'retry_wait'
 
-    const { error } = await supabase
+    let updateQuery = supabase
       .from('articles')
       .update({
         enrich_status: targetStatus,
@@ -77,7 +77,12 @@ export async function recoverStuck(
       })
       .eq('id', article.id)
       .eq('enrich_status', 'processing')
-      .eq('claim_token', article.claim_token ?? '')
+
+    updateQuery = article.claim_token
+      ? updateQuery.eq('claim_token', article.claim_token)
+      : updateQuery.is('claim_token', null)
+
+    const { error } = await updateQuery
 
     if (!error) {
       recovered++

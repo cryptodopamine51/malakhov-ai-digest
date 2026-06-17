@@ -9,7 +9,10 @@ interface MockCall {
   payload?: Record<string, unknown>
 }
 
-function mockSupabase(stuckCount: number): { client: { from: (table: string) => Record<string, unknown> }; calls: MockCall[] } {
+function mockSupabase(
+  stuckCount: number,
+  overrides: Record<string, unknown> = {},
+): { client: { from: (table: string) => Record<string, unknown> }; calls: MockCall[] } {
   const calls: MockCall[] = []
   const stuck = Array.from({ length: stuckCount }, (_, index) => ({
     id: `article-${index + 1}`,
@@ -19,6 +22,7 @@ function mockSupabase(stuckCount: number): { client: { from: (table: string) => 
     lease_expires_at: '2026-05-02T09:00:00.000Z',
     original_title: `Article ${index + 1}`,
     current_batch_item_id: null,
+    ...overrides,
   }))
 
   return {
@@ -41,9 +45,22 @@ function mockSupabase(stuckCount: number): { client: { from: (table: string) => 
           calls.push({ table, op: 'insert', payload })
           return { error: null }
         }
-        builder.eq = () => builder
-        builder.is = () => builder
-        builder.lte = () => builder
+        builder.eq = (column: string, value: unknown) => {
+          calls.push({ table, op: 'filter:eq', payload: { column, value } })
+          return builder
+        }
+        builder.is = (column: string, value: unknown) => {
+          calls.push({ table, op: 'filter:is', payload: { column, value } })
+          return builder
+        }
+        builder.or = (expression: string) => {
+          calls.push({ table, op: 'filter:or', payload: { expression } })
+          return builder
+        }
+        builder.lte = (column: string, value: unknown) => {
+          calls.push({ table, op: 'filter:lte', payload: { column, value } })
+          return builder
+        }
         builder.limit = () => builder
         builder.order = () => builder
         builder.maybeSingle = async () => ({ data: null, error: null })
@@ -94,4 +111,36 @@ test('recoverStuck does not fire spike alert at three recovered articles', async
   assert.deepEqual(result, { scanned: 3, recovered: 3 })
   const alertInsert = supabase.calls.find((call) => call.table === 'pipeline_alerts' && call.op === 'insert')
   assert.equal(alertInsert, undefined)
+})
+
+test('recoverStuck recovers processing rows with null lease and null claim token', async () => {
+  const supabase = mockSupabase(1, {
+    processing_by: null,
+    claim_token: null,
+    lease_expires_at: null,
+  })
+
+  const result = await recoverStuck(supabase.client as never)
+
+  assert.deepEqual(result, { scanned: 1, recovered: 1 })
+  assert.ok(
+    supabase.calls.some((call) =>
+      call.table === 'articles' &&
+      call.op === 'filter:or' &&
+      String(call.payload?.expression).includes('lease_expires_at.is.null') &&
+      String(call.payload?.expression).includes('processing_by.is.null')
+    ),
+    'expected null lease/worker rows to be selected as stuck',
+  )
+  assert.ok(
+    supabase.calls.some((call) =>
+      call.table === 'articles' &&
+      call.op === 'filter:is' &&
+      call.payload?.column === 'claim_token' &&
+      call.payload?.value === null
+    ),
+    'expected null claim token update guard',
+  )
+  const articleUpdate = supabase.calls.find((call) => call.table === 'articles' && call.op === 'update')
+  assert.equal(articleUpdate?.payload?.last_error, 'lease expired (was held by unknown)')
 })

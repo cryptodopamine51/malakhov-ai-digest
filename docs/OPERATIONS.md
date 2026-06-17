@@ -874,7 +874,8 @@ npm run editorial:routing -- --mode=cheap --limit=3
 
 Recovery разделён отдельно:
 
-- `recover-stuck` обслуживает только pre-submit article lease;
+- `recover-stuck` обслуживает только pre-submit article lease, включая аварийные
+  `processing`-строки без `lease_expires_at`/`processing_by`/`claim_token`;
 - `recover-batch-stuck` обслуживает stuck polling и apply states уже после batch submit.
 
 Operational правило:
