@@ -887,6 +887,7 @@ function getFixPromptDecision(summary: OpsSummary): { show: boolean; reason: str
 
 function isPersistentFixAlert(alert: OpsAlertRow, generatedAt: string): boolean {
   if (alert.severity === 'critical') return true
+  if (alert.severity === 'info') return false
   if (alert.occurrence_count >= FIX_PROMPT_MIN_OCCURRENCES) return true
   const ageMs = new Date(generatedAt).getTime() - new Date(alert.first_seen_at).getTime()
   return ageMs >= FIX_PROMPT_MIN_ALERT_AGE_HOURS * 60 * 60 * 1000

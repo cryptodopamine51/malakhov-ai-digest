@@ -468,6 +468,29 @@ test('formatOpsSummaryForTelegram adds copyable prompt for persistent yellow sta
   assert.ok(text.length < 4096)
 })
 
+test('formatOpsSummaryForTelegram does not show fix prompt for persistent info alerts', () => {
+  const summary = baseSummary({
+    openAlerts: [{
+      alert_type: 'claude_parse_failed',
+      severity: 'info',
+      entity_key: 'batch-1',
+      message: 'terminal validation failed',
+      occurrence_count: 5,
+      first_seen_at: '2026-05-11T10:00:00.000Z',
+      last_seen_at: '2026-05-11T17:00:00.000Z',
+    }],
+    alertGroups: [{ key: 'claude_parse_failed', severity: 'info', count: 1 }],
+  })
+  summary.status = evaluateOpsStatus(summary)
+
+  const text = formatOpsSummaryForTelegram(summary)
+  assert.equal(summary.status.level, 'green')
+  assert.equal(shouldShowFixPrompt(summary), false)
+  assert.match(text, /^🟢 <b>Отчет за день/)
+  assert.match(text, /Ничего не делать\./)
+  assert.doesNotMatch(text, /Есть готовый промпт для Codex/)
+})
+
 test('formatOpsSummaryForTelegram explains red critical failures', () => {
   const summary = baseSummary({
     openAlerts: [{
