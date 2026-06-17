@@ -20,6 +20,8 @@ function makeBuilder(table: MockTable): AnyBuilder {
     eq() { return builder },
     in() { return builder },
     gte() { return builder },
+    or() { return builder },
+    is() { return builder },
     order() { return builder },
     limit() { return builder },
     async maybeSingle() {

@@ -30,6 +30,7 @@
     "quality:judge": "tsx scripts/run-quality-judge.ts",
     "quality:feedback": "tsx scripts/send-quality-feedback.ts",
     "tg-feedback:set-webhook": "tsx scripts/set-tg-feedback-webhook.ts",
+    "tg-channel-post:backup": "tsx scripts/run-tg-channel-post-backup.ts",
     "cost:guard": "tsx pipeline/cost-guard.ts",
     "editorial:routing": "tsx scripts/run-editorial-routing.ts",
     "routing:lab": "tsx scripts/model-routing-lab.ts",

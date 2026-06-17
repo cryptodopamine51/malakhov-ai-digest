@@ -4,7 +4,7 @@ import {
   isAuthorizedFeedbackUser,
   parseFeedbackCallbackData,
   upsertArticleFeedback,
-  withFeedbackConfirmation,
+  withFeedbackConfirmationForArticle,
 } from '../../../lib/article-feedback'
 
 export const runtime = 'nodejs'
@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic'
 interface TelegramCallbackQuery {
   id: string
   data?: string
-  from?: { id?: number }
+  from?: { id?: number; username?: string }
   message?: {
     message_id?: number
     chat?: { id?: number }
@@ -42,6 +42,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const callback = update?.callback_query
   const parsed = parseFeedbackCallbackData(callback?.data)
   const fromId = callback?.from?.id
+  const fromUsername = callback?.from?.username
 
   if (!callback?.id || !parsed) {
     return NextResponse.json({ ok: true, skipped: 'not_feedback_callback' })
@@ -52,12 +53,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: false, error: 'TELEGRAM_BOT_TOKEN missing' }, { status: 500 })
   }
 
-  if (!isAuthorizedFeedbackUser(fromId)) {
+  const chatId = callback.message?.chat?.id ?? null
+  if (!isAuthorizedFeedbackUser(fromId, fromUsername, chatId)) {
     await answerCallbackQuery(botToken, callback.id, 'Недостаточно прав')
     return NextResponse.json({ ok: true, skipped: 'forbidden_user' })
   }
 
-  const chatId = callback.message?.chat?.id ?? null
   const messageId = callback.message?.message_id ?? null
   await upsertArticleFeedback({
     supabase: getServerClient(),
@@ -66,11 +67,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     telegramChatId: chatId,
     telegramMessageId: messageId,
     telegramUserId: fromId!,
-    metadata: { callback_id: callback.id },
+    metadata: { callback_id: callback.id, username: fromUsername ?? null },
   })
 
   await answerCallbackQuery(botToken, callback.id, `Оценено: ${ratingShort(parsed.rating)}`)
-  await editFeedbackMessage(botToken, callback, parsed.rating)
+  await editFeedbackMessage(botToken, callback, parsed.articleId, parsed.rating)
 
   return NextResponse.json({ ok: true })
 }
@@ -90,6 +91,7 @@ async function answerCallbackQuery(botToken: string, callbackQueryId: string, te
 async function editFeedbackMessage(
   botToken: string,
   callback: TelegramCallbackQuery,
+  articleId: string,
   rating: 0 | 1 | 2,
 ): Promise<void> {
   const chatId = callback.message?.chat?.id
@@ -106,8 +108,7 @@ async function editFeedbackMessage(
       body: JSON.stringify({
         chat_id: chatId,
         message_id: messageId,
-        caption: withFeedbackConfirmation(caption, rating),
-        parse_mode: 'HTML',
+        caption: withFeedbackConfirmationForArticle(caption, articleId, rating, replyMarkup),
         reply_markup: replyMarkup,
       }),
     }).catch(() => null)
@@ -121,8 +122,7 @@ async function editFeedbackMessage(
       body: JSON.stringify({
         chat_id: chatId,
         message_id: messageId,
-        text: withFeedbackConfirmation(text, rating),
-        parse_mode: 'HTML',
+        text: withFeedbackConfirmationForArticle(text, articleId, rating, replyMarkup),
         disable_web_page_preview: false,
         reply_markup: replyMarkup,
       }),

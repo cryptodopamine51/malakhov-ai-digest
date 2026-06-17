@@ -56,3 +56,11 @@ test('publish-verify rotates live samples and ignores stale sample failures', ()
   assert.match(src, /\.neq\('result_status',\s*'ok'\)/)
   assert.match(src, /\.gt\('started_at',\s*since\)/)
 })
+
+test('publish-verify skips pre-live checks when publish verify secret is missing', () => {
+  const src = source()
+
+  assert.match(src, /PUBLISH_VERIFY_SECRET missing; pre-live verify skipped/)
+  assert.match(src, /newCandidates = \[\]/)
+  assert.match(src, /legacyCandidates = \[\]/)
+})

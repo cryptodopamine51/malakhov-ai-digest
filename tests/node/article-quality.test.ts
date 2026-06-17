@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  buildOwnerFeedbackBatchMessage,
   buildQualityJudgePrompt,
   inferWriterPath,
   parseQualityJudgeJson,
@@ -48,6 +49,7 @@ test('buildQualityJudgePrompt contains source and candidate article', () => {
   const prompt = buildQualityJudgePrompt(article)
 
   assert.match(prompt.user, /Source grounding/)
+  assert.match(prompt.user, /Write every reasons\.\* value in Russian/)
   assert.match(prompt.user, /OpenAI releases new model/)
   assert.match(prompt.user, /Candidate article:/)
   assert.match(prompt.user, /Return JSON exactly/)
@@ -58,4 +60,82 @@ test('inferWriterPath maps editorial model to stable buckets', () => {
   assert.equal(inferWriterPath({ editorial_model: 'claude-sonnet-4-6' }), 'premium')
   assert.equal(inferWriterPath({ editorial_model: 'claude-haiku-4-5' }), 'haiku-fallback')
   assert.equal(inferWriterPath({ editorial_model: null }), 'unknown')
+})
+
+test('buildOwnerFeedbackBatchMessage creates one numbered Telegram message', () => {
+  const message = buildOwnerFeedbackBatchMessage([
+    { article, source: 'channel_post', reason: null, score: 4 },
+  ])
+
+  assert.match(message.text, /Оценка статей/)
+  assert.match(message.text, /1\. \[канал 4\/5\] OpenAI News: OpenAI выпустила новую модель/)
+  assert.equal(message.replyMarkup.inline_keyboard.length, 1)
+  assert.deepEqual(message.replyMarkup.inline_keyboard[0]?.map((button) => button.callback_data), [
+    `af:${article.id}:2`,
+    `af:${article.id}:1`,
+    `af:${article.id}:0`,
+  ])
+})
+
+test('buildOwnerFeedbackBatchMessage trims weak reasons without dangling tail words', () => {
+  const message = buildOwnerFeedbackBatchMessage([
+    {
+      article,
+      source: 'judge_worst',
+      reason: 'Статья хорошо передаёт суть источника с конкретными фактами, но содержит необоснованное добавление и слегка романтизированный тон в финальном абзаце.',
+      score: 3,
+    },
+  ])
+
+  assert.match(message.text, /1\. \[слабая 3\/5\] OpenAI News:/)
+  assert.match(message.text, /проблема: содержит необоснованное добавление/)
+  assert.doesNotMatch(message.text, /Статья хорошо передаёт/)
+  assert.doesNotMatch(message.text, /\s[вксои]…/u)
+})
+
+test('buildOwnerFeedbackBatchMessage falls back from dangling truncated titles', () => {
+  const message = buildOwnerFeedbackBatchMessage([
+    {
+      article: {
+        ...article,
+        source_name: 'Habr AI',
+        ru_title: 'Claude пишет 80% кода Anthropic, PyPI заблокировали в России, GitHub захлёбывается от',
+        card_teaser: 'Claude пишет 80% кода Anthropic, PyPI пропал в России, GitHub тонет в ИИ-PR — главное за неделю',
+      },
+      source: 'channel_post',
+      reason: 'Хорошая статья',
+      score: 4,
+    },
+  ])
+
+  assert.match(message.text, /GitHub тонет в ИИ-PR/)
+  assert.doesNotMatch(message.text, /захлёбывается от\n/)
+})
+
+test('buildOwnerFeedbackBatchMessage keeps source label compact and never prints empty source', () => {
+  const message = buildOwnerFeedbackBatchMessage([
+    {
+      article: {
+        ...article,
+        source_name: '',
+      },
+      source: 'judge_recent',
+      reason: null,
+      score: 5,
+    },
+    {
+      article: {
+        ...article,
+        id: '22222222-2222-4222-8222-222222222222',
+        source_name: 'Very Long Editorial Source Name With Extra Words',
+      },
+      source: 'judge_recent',
+      reason: null,
+      score: 4,
+    },
+  ])
+
+  assert.match(message.text, /1\. \[контроль 5\/5\] Источник:/)
+  assert.match(message.text, /2\. \[контроль 4\/5\] Very Long Editorial Source Name…:/)
+  assert.doesNotMatch(message.text, /null:/)
 })

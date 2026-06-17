@@ -22,6 +22,13 @@ operator page. Он использует `SUPABASE_SERVICE_KEY` через `getA
 требует `HEALTH_TOKEN` в query/header и без валидного токена отдаёт 404 через `notFound()`.
 `robots.txt` запрещает `/internal/`.
 
+`app/internal/articles/[slug]` — server-only endpoint для pre-live проверки publish pipeline.
+Он принимает только `HEAD`/`GET` с `x-publish-verify-secret: $PUBLISH_VERIFY_SECRET`,
+читает Supabase через server client и подтверждает, что статья уже находится в одном из
+verifyable статусов (`publish_ready`, `verifying`, `live`, `verification_failed`). Endpoint
+не рендерит публичную страницу и нужен, чтобы `pipeline/publish-verify.ts` не проверял
+pre-live материалы через публичный article route.
+
 ### 2. Pipeline
 
 - `pipeline/ingest.ts` создаёт или обновляет сырьевые записи статей.

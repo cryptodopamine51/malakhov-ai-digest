@@ -371,6 +371,43 @@ test('formatOpsSummaryForTelegram separates calendar day and rolling publication
   assert.doesNotMatch(text, /За 6ч опубликовано: 16/)
 })
 
+test('Codex prompt uses today Telegram state instead of presenting latest previous day as today', () => {
+  const summary = baseSummary({
+    generatedAt: '2026-06-16T20:46:00.000Z',
+    reportKind: 'manual',
+    mskDateKey: '2026-06-16',
+    telegramToday: null,
+    latestTelegram: {
+      delivery_date: '2026-06-15',
+      expected_slots: 5,
+      success_count: 4,
+      failed_count: 0,
+      skipped_count: 0,
+      planned_count: 1,
+      status: 'partial_success',
+      latest_sent_at: '2026-06-15T18:00:03.000Z',
+      latest_error: null,
+    },
+    openAlerts: [{
+      alert_type: 'tg_channel_posts_missing',
+      severity: 'critical',
+      entity_key: 'day:2026-06-16',
+      message: 'Telegram channel posts: 0 успешных доставок при 4 ожидаемых слотах.',
+      occurrence_count: 2,
+      first_seen_at: '2026-06-16T13:00:00.000Z',
+      last_seen_at: '2026-06-16T17:00:00.000Z',
+    }],
+    alertGroups: [{ key: 'tg_channel_posts_missing', severity: 'critical', count: 1 }],
+  })
+  summary.status = evaluateOpsStatus(summary)
+
+  const text = formatOpsSummaryForTelegram(summary)
+
+  assert.match(text, /Telegram: сегодня нет данных/)
+  assert.match(text, /Telegram: сегодня нет данных; последний день 2026-06-15: частично отправлено 4\/5/)
+  assert.doesNotMatch(text, /Telegram: частично отправлено 4\/5 слотов, последний в 21:00\n/)
+})
+
 test('formatOpsSummaryForTelegram keeps transient yellow status compact without prompt', () => {
   const summary = baseSummary({
     health: {
@@ -404,7 +441,7 @@ test('formatOpsSummaryForTelegram keeps transient yellow status compact without 
   assert.ok(text.length < 4096)
 })
 
-test('formatOpsSummaryForTelegram adds expandable prompt for persistent yellow status', () => {
+test('formatOpsSummaryForTelegram adds copyable prompt for persistent yellow status', () => {
   const summary = baseSummary({
     openAlerts: [{
       alert_type: 'claude_parse_failed',
@@ -423,10 +460,10 @@ test('formatOpsSummaryForTelegram adds expandable prompt for persistent yellow s
   assert.equal(shouldShowFixPrompt(summary), true)
   assert.match(text, /есть проблема, которую стоит разобрать системно/)
   assert.match(text, /🛠 <b>Есть готовый промпт для Codex<\/b>/)
-  assert.match(text, /<blockquote expandable>/)
+  assert.match(text, /<pre><code>/)
   assert.match(text, /Разбери и исправь production-проблему Malakhov AI Digest\./)
   assert.match(text, /validation failed &lt;unsafe&gt;/)
-  assert.doesNotMatch(text, /<pre>/)
+  assert.doesNotMatch(text, /<blockquote expandable>/)
   assert.doesNotMatch(text, /validation failed <unsafe>/)
   assert.ok(text.length < 4096)
 })
@@ -451,7 +488,7 @@ test('formatOpsSummaryForTelegram explains red critical failures', () => {
   assert.match(text, /есть критическая проблема/)
   assert.match(text, /критическая ошибка публикации/)
   assert.match(text, /article returned 500 &lt;bad&gt;/)
-  assert.match(text, /<blockquote expandable>/)
+  assert.match(text, /<pre><code>/)
   assert.match(text, /Фокус: Publication \/ live verification/)
   assert.match(text, /Не трогай unrelated changes\./)
 })

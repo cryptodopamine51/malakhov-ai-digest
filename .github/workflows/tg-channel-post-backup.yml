@@ -1,0 +1,56 @@
+name: Telegram Channel Post Backup
+
+on:
+  schedule:
+    # Backup 5 minutes after the primary Supabase pg_cron slot times.
+    - cron: '35 6 * * *'
+    - cron: '35 9 * * *'
+    - cron: '35 12 * * *'
+    - cron: '35 15 * * *'
+    - cron: '5 18 * * *'
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: 'Optional slot 1..5; empty uses current Moscow time'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telegram-channel-post-delivery
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Telegram channel post backup
+        run: npm run tg-channel-post:backup
+        env:
+          GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule }}
+          TG_CHANNEL_POST_SLOT: ${{ github.event.inputs.slot }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          NEXT_PUBLIC_SITE_URL: https://news.malakhovai.ru
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_BASE_URL: https://api.deepseek.com
+          DEEPSEEK_TELEGRAM_CAPTION_MODEL: deepseek-v4-flash
+          DEEPSEEK_TELEGRAM_CAPTION_DAILY_BUDGET_USD: '0.05'

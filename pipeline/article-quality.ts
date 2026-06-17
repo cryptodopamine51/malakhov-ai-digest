@@ -1,7 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { Message } from '@anthropic-ai/sdk/resources/messages/messages'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Article } from '../lib/supabase'
 import { getArticleUrl } from '../lib/article-slugs'
 import { readSiteUrlFromEnv, SITE_URL } from '../lib/site'
 import { getMoscowDateKey, shiftMoscowDateKey, truncate } from '../lib/utils'
@@ -13,6 +12,10 @@ export const DEFAULT_QUALITY_JUDGE_MODEL = 'claude-haiku-4-5'
 const CHANNEL_SAMPLE_SIZE = 5
 const RANDOM_SAMPLE_SIZE = 5
 const OWNER_FEEDBACK_MAX_MESSAGES = 8
+
+interface TelegramInlineKeyboardMarkup {
+  inline_keyboard: Array<Array<{ text: string; callback_data: string }>>
+}
 
 export interface QualityJudgeArticle {
   id: string
@@ -48,8 +51,13 @@ export interface QualityJudgeResult {
 export interface QualityFeedbackItem {
   article: QualityJudgeArticle
   reason: string | null
-  source: 'channel_post' | 'judge_worst'
+  source: 'channel_post' | 'judge_worst' | 'judge_recent'
   score?: number | null
+}
+
+export interface OwnerFeedbackBatchMessage {
+  text: string
+  replyMarkup: TelegramInlineKeyboardMarkup
 }
 
 export function inferWriterPath(article: Pick<QualityJudgeArticle, 'editorial_model'>): string {
@@ -91,6 +99,7 @@ export function buildQualityJudgePrompt(article: QualityJudgeArticle): { system:
       '3. Banned phrases/style: no hype, no bureaucratic filler, no generic AI cliches.',
       '4. Useful context: explains why the story matters without inventing data.',
       '5. Overall usefulness for a Russian AI-news reader.',
+      'Write every reasons.* value in Russian.',
       '',
       `Source: ${article.source_name}`,
       `Original title: ${article.original_title}`,
@@ -180,31 +189,82 @@ export async function loadOwnerFeedbackItems(
   const sampleDate = shiftMoscowDateKey(getMoscowDateKey(now), -1)
   const channelIds = await loadYesterdayChannelArticleIds(supabase, sampleDate)
   const channelArticles = await loadArticlesByIds(supabase, channelIds.slice(0, CHANNEL_SAMPLE_SIZE))
-  const items: QualityFeedbackItem[] = channelArticles.map((article) => ({
-    article,
-    reason: null,
-    source: 'channel_post',
-  }))
+  const channelScores = await loadLatestJudgeScores(supabase, channelArticles.map((article) => article.id), now)
+  const items: QualityFeedbackItem[] = channelArticles.map((article) => {
+    const score = channelScores.get(article.id)
+    return {
+      article,
+      reason: score?.reason ?? null,
+      source: 'channel_post',
+      score: score?.score ?? null,
+    }
+  })
   const seen = new Set(items.map((item) => item.article.id))
   const worst = await loadWorstJudgeArticles(supabase, now, seen, OWNER_FEEDBACK_MAX_MESSAGES - items.length)
   items.push(...worst)
+  for (const item of worst) seen.add(item.article.id)
+  const recent = await loadRecentJudgeArticles(supabase, now, seen, OWNER_FEEDBACK_MAX_MESSAGES - items.length)
+  items.push(...recent)
   return items.slice(0, OWNER_FEEDBACK_MAX_MESSAGES)
 }
 
 export function buildOwnerFeedbackCaption(item: QualityFeedbackItem): string {
-  const title = item.article.ru_title ?? item.article.original_title
+  const title = feedbackTitle(item.article)
   const siteUrl = readSiteUrlFromEnv(process.env.NEXT_PUBLIC_SITE_URL) || SITE_URL
   const url = item.article.slug
     ? getArticleUrl(siteUrl, item.article.slug, item.article.primary_category)
     : null
   const lines = [
     `<b>${escapeHtml(title)}</b>`,
-    item.source === 'judge_worst' && item.reason
-      ? `judge считает слабой: ${escapeHtml(item.reason)}`
+    item.source === 'judge_worst' && item.reason && (item.score ?? 5) <= 3
+      ? `judge: ${item.score}/5 — ${escapeHtml(item.reason)}`
       : null,
     url ? `<a href="${escapeHtml(url)}">Открыть статью</a>` : null,
   ].filter(Boolean)
   return lines.join('\n\n')
+}
+
+export function buildOwnerFeedbackBatchMessage(items: QualityFeedbackItem[]): OwnerFeedbackBatchMessage {
+  const deliverable = items.filter((item) => item.article.id)
+  const siteUrl = readSiteUrlFromEnv(process.env.NEXT_PUBLIC_SITE_URL) || SITE_URL
+  const lines = [
+    'Оценка статей',
+    '',
+    'Нажмите оценку в строке статьи:',
+    '',
+  ]
+  const keyboard: TelegramInlineKeyboardMarkup['inline_keyboard'] = []
+
+  deliverable.forEach((item, index) => {
+    const number = index + 1
+    const title = truncateAtWordBoundary(feedbackTitle(item.article), 140)
+    const url = item.article.slug
+      ? getArticleUrl(siteUrl, item.article.slug, item.article.primary_category)
+      : null
+    const marker = feedbackSourceMarker(item)
+    const score = typeof item.score === 'number' && Number.isFinite(item.score)
+      ? ` ${item.score}/5`
+      : ''
+
+    lines.push(`${number}. [${marker}${score}] ${feedbackSourceName(item.article.source_name)}: ${title}`)
+    if (item.reason && ((item.score ?? 5) <= 3 || item.source === 'judge_worst')) {
+      const reason = feedbackReason(item.reason)
+      if (reason) lines.push(`   проблема: ${reason}`)
+    }
+    if (url) lines.push(`   ${url}`)
+    if (index < deliverable.length - 1) lines.push('')
+
+    keyboard.push([
+      { text: `${number} 🔥`, callback_data: `af:${item.article.id}:2` },
+      { text: `${number} 👌`, callback_data: `af:${item.article.id}:1` },
+      { text: `${number} 👎`, callback_data: `af:${item.article.id}:0` },
+    ])
+  })
+
+  return {
+    text: lines.join('\n'),
+    replyMarkup: { inline_keyboard: keyboard },
+  }
 }
 
 export async function sendOwnerFeedbackBatch(params: {
@@ -215,22 +275,17 @@ export async function sendOwnerFeedbackBatch(params: {
   dryRun?: boolean
 }): Promise<{ sent: number; skipped: number }> {
   const items = await loadOwnerFeedbackItems(params.supabase, params.now)
-  let sent = 0
-  let skipped = 0
-  for (const item of items) {
-    if (!item.article.id) {
-      skipped++
-      continue
-    }
-    if (params.dryRun) {
-      console.log(buildOwnerFeedbackCaption(item))
-      sent++
-      continue
-    }
-    await sendOwnerFeedbackItem(params.botToken, params.adminChatId, item)
-    sent++
+  const deliverable = items.filter((item) => item.article.id)
+  const skipped = items.length - deliverable.length
+  if (!deliverable.length) return { sent: 0, skipped }
+
+  const message = buildOwnerFeedbackBatchMessage(deliverable)
+  if (params.dryRun) {
+    console.log(message.text)
+    return { sent: deliverable.length, skipped }
   }
-  return { sent, skipped }
+  await sendOwnerFeedbackBatchMessage(params.botToken, params.adminChatId, message)
+  return { sent: deliverable.length, skipped }
 }
 
 async function judgeArticle(params: {
@@ -334,6 +389,34 @@ async function loadArticlesByIds(supabase: SupabaseClient, ids: string[]): Promi
   return ids.map((id) => byId.get(id)).filter((article): article is QualityJudgeArticle => Boolean(article))
 }
 
+async function loadLatestJudgeScores(
+  supabase: SupabaseClient,
+  articleIds: string[],
+  now: Date,
+): Promise<Map<string, { score: number; reason: string | null }>> {
+  if (!articleIds.length) return new Map()
+  const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  const { data, error } = await supabase
+    .from('article_quality_scores')
+    .select('article_id, score, reasons, created_at')
+    .in('article_id', articleIds)
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+  if (error || !data?.length) return new Map()
+
+  const scores = new Map<string, { score: number; reason: string | null }>()
+  for (const row of data) {
+    const articleId = String(row.article_id ?? '')
+    if (!articleId || scores.has(articleId)) continue
+    const reasons = (row.reasons ?? {}) as Record<string, unknown>
+    scores.set(articleId, {
+      score: Number(row.score ?? 0),
+      reason: typeof reasons.overall === 'string' ? reasons.overall : null,
+    })
+  }
+  return scores
+}
+
 async function loadRandomPublishedArticles(
   supabase: SupabaseClient,
   sampleDate: string,
@@ -381,14 +464,23 @@ async function loadWorstJudgeArticles(
     .from('article_quality_scores')
     .select('article_id, score, reasons, created_at')
     .gte('created_at', since)
-    .order('score', { ascending: true })
     .order('created_at', { ascending: false })
-    .limit(20)
+    .limit(40)
   if (error || !data?.length) return []
 
-  const rows = (data ?? [])
-    .filter((row) => !excludeIds.has(String(row.article_id)))
-    .slice(0, limit)
+  const selectedIds = new Set(excludeIds)
+  const rows = []
+  for (const row of data ?? []) {
+    const articleId = String(row.article_id ?? '')
+    if (!articleId || selectedIds.has(articleId)) continue
+    selectedIds.add(articleId)
+    if (Number(row.score ?? 0) > 3) continue
+    rows.push(row)
+  }
+  rows.sort((a, b) => Number(a.score ?? 0) - Number(b.score ?? 0))
+  if (rows.length > limit) {
+    rows.length = limit
+  }
   const articles = await loadArticlesByIds(supabase, rows.map((row) => String(row.article_id)))
   const byId = new Map(articles.map((article) => [article.id, article]))
   const items: QualityFeedbackItem[] = []
@@ -406,40 +498,62 @@ async function loadWorstJudgeArticles(
   return items
 }
 
-async function sendOwnerFeedbackItem(botToken: string, chatId: string, item: QualityFeedbackItem): Promise<void> {
-  const caption = buildOwnerFeedbackCaption(item)
-  const replyMarkup = {
-    inline_keyboard: [[
-      { text: '🔥 сильная', callback_data: `af:${item.article.id}:2` },
-      { text: '👌 норм', callback_data: `af:${item.article.id}:1` },
-      { text: '👎 слабая', callback_data: `af:${item.article.id}:0` },
-    ]],
+async function loadRecentJudgeArticles(
+  supabase: SupabaseClient,
+  now: Date,
+  excludeIds: Set<string>,
+  limit: number,
+): Promise<QualityFeedbackItem[]> {
+  if (limit <= 0) return []
+  const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  const { data, error } = await supabase
+    .from('article_quality_scores')
+    .select('article_id, score, reasons, created_at')
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(80)
+  if (error || !data?.length) return []
+
+  const selectedIds = new Set(excludeIds)
+  const rows = []
+  for (const row of data ?? []) {
+    const articleId = String(row.article_id ?? '')
+    if (!articleId || selectedIds.has(articleId)) continue
+    selectedIds.add(articleId)
+    rows.push(row)
+    if (rows.length >= limit) break
   }
 
-  if (item.article.cover_image_url) {
-    const photoRes = await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        photo: item.article.cover_image_url,
-        caption,
-        parse_mode: 'HTML',
-        reply_markup: replyMarkup,
-      }),
+  const articles = await loadArticlesByIds(supabase, rows.map((row) => String(row.article_id)))
+  const byId = new Map(articles.map((article) => [article.id, article]))
+  const items: QualityFeedbackItem[] = []
+  for (const row of rows) {
+    const article = byId.get(String(row.article_id))
+    if (!article) continue
+    const reasons = (row.reasons ?? {}) as Record<string, unknown>
+    items.push({
+      article,
+      source: 'judge_recent',
+      score: Number(row.score ?? 0),
+      reason: typeof reasons.overall === 'string' ? reasons.overall : null,
     })
-    if (photoRes.ok) return
   }
+  return items
+}
 
+async function sendOwnerFeedbackBatchMessage(
+  botToken: string,
+  chatId: string,
+  message: OwnerFeedbackBatchMessage,
+): Promise<void> {
   const messageRes = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       chat_id: chatId,
-      text: caption,
-      parse_mode: 'HTML',
-      disable_web_page_preview: false,
-      reply_markup: replyMarkup,
+      text: message.text,
+      disable_web_page_preview: true,
+      reply_markup: message.replyMarkup,
     }),
   })
   if (!messageRes.ok) {
@@ -468,6 +582,116 @@ function hashString(value: string): number {
     hash = Math.imul(hash, 16777619)
   }
   return hash >>> 0
+}
+
+function feedbackTitle(article: QualityJudgeArticle): string {
+  const title = normalizeFeedbackTitle(article.ru_title)
+  if (title && !looksTruncatedFeedbackTitle(title)) return title
+
+  return normalizeFeedbackTitle(article.card_teaser)
+    || normalizeFeedbackTitle(article.tg_teaser)
+    || normalizeFeedbackTitle(article.original_title)
+    || 'Без заголовка'
+}
+
+function feedbackSourceMarker(item: QualityFeedbackItem): string {
+  if (item.source === 'channel_post') return 'канал'
+  if (item.source === 'judge_worst') return 'слабая'
+  return 'контроль'
+}
+
+function feedbackSourceName(value: string | null | undefined): string {
+  const normalized = (value ?? '').replace(/\s+/g, ' ').trim()
+  return truncateAtWordBoundary(normalized || 'Источник', 36)
+}
+
+function feedbackReason(value: string): string {
+  const normalized = value
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[-•]\s*/u, '')
+    .replace(/^проблема:\s*/iu, '')
+  if (!normalized) return ''
+
+  const contrast = normalized.match(/(?:^|[\s,;:—-])(?:но|однако|при этом)\s+(.+)$/iu)?.[1]?.trim()
+  const focused = contrast && contrast.length >= 18 ? contrast : normalized
+  return truncateAtWordBoundary(trimDanglingTail(focused.replace(/[.。]+$/u, '')), 130)
+}
+
+function normalizeFeedbackTitle(value: string | null | undefined): string {
+  return (value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[.。]+$/u, '')
+}
+
+function looksTruncatedFeedbackTitle(value: string): boolean {
+  const lastWord = value
+    .split(/\s+/u)
+    .pop()
+    ?.toLowerCase()
+    .replace(/[,:;!?…]+$/u, '')
+  if (!lastWord) return false
+
+  return new Set([
+    'а',
+    'без',
+    'в',
+    'для',
+    'и',
+    'или',
+    'из',
+    'к',
+    'на',
+    'над',
+    'о',
+    'об',
+    'от',
+    'по',
+    'под',
+    'при',
+    'про',
+    'с',
+    'у',
+    'about',
+    'against',
+    'and',
+    'as',
+    'by',
+    'for',
+    'from',
+    'in',
+    'of',
+    'on',
+    'or',
+    'over',
+    'the',
+    'to',
+    'under',
+    'with',
+  ]).has(lastWord)
+}
+
+function trimDanglingTail(value: string): string {
+  let words = value.trim().split(/\s+/u)
+  while (words.length > 1 && looksTruncatedFeedbackTitle(words.join(' '))) {
+    words = words.slice(0, -1)
+  }
+  return words.join(' ').replace(/[,:;—-]+$/u, '').trimEnd()
+}
+
+function truncateAtWordBoundary(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value
+  const sliced = value.slice(0, maxLength - 1).trimEnd()
+  const boundary = Math.max(
+    sliced.lastIndexOf(' '),
+    sliced.lastIndexOf('—'),
+    sliced.lastIndexOf('-'),
+  )
+  const cut = boundary >= Math.floor(maxLength * 0.65)
+    ? sliced.slice(0, boundary)
+    : sliced
+  return `${trimDanglingTail(cut)}…`
 }
 
 function escapeHtml(value: string): string {

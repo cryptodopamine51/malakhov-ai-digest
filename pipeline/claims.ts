@@ -1,7 +1,10 @@
 import { randomUUID } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Article } from '../lib/supabase'
+import { applySourceDailyCap, SOURCE_DAILY_PUBLISH_CAP } from '../lib/source-cap'
 import { leaseExpiresAt } from './types'
+
+export { applySourceDailyCap, SOURCE_DAILY_PUBLISH_CAP }
 
 export const WORKER_ID = process.env.GITHUB_RUN_ID
   ? `gh-${process.env.GITHUB_RUN_ID}`
@@ -18,47 +21,12 @@ export const WORKER_ID = process.env.GITHUB_RUN_ID
  * подобраны в день с меньшим потоком. 30-дневный средний темп Habr (~10/день)
  * примерно равен кэпу, поэтому бэклог не накапливается, а сглаживаются пики.
  */
-export const SOURCE_DAILY_PUBLISH_CAP = Math.max(
-  1,
-  Number(process.env.SOURCE_DAILY_PUBLISH_CAP ?? '10') || 10,
-)
-
 const MSK_OFFSET_MS = 3 * 60 * 60 * 1000
 
 function startOfMskDayUtcIso(now: Date = new Date()): string {
   const msk = new Date(now.getTime() + MSK_OFFSET_MS)
   msk.setUTCHours(0, 0, 0, 0)
   return new Date(msk.getTime() - MSK_OFFSET_MS).toISOString()
-}
-
-/**
- * Pure-фильтр: пропускает кандидатов, пока (уже опубликовано сегодня + уже
- * пропущено в этом батче) по их source_name не упирается в cap. Возвращает
- * кандидатов в исходном порядке.
- */
-export function applySourceDailyCap<T extends { source_name: string | null }>(
-  candidates: T[],
-  publishedTodayBySource: Map<string, number>,
-  cap: number = SOURCE_DAILY_PUBLISH_CAP,
-): { allowed: T[]; skippedBySource: Map<string, number> } {
-  const running = new Map<string, number>(publishedTodayBySource)
-  const allowed: T[] = []
-  const skippedBySource = new Map<string, number>()
-  for (const candidate of candidates) {
-    const source = candidate.source_name ?? ''
-    if (!source) {
-      allowed.push(candidate)
-      continue
-    }
-    const used = running.get(source) ?? 0
-    if (used >= cap) {
-      skippedBySource.set(source, (skippedBySource.get(source) ?? 0) + 1)
-      continue
-    }
-    running.set(source, used + 1)
-    allowed.push(candidate)
-  }
-  return { allowed, skippedBySource }
 }
 
 async function loadPublishedTodayBySource(supabase: SupabaseClient): Promise<Map<string, number>> {

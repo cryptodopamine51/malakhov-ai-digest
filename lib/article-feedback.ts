@@ -21,15 +21,72 @@ export function feedbackRatingLabel(rating: 0 | 1 | 2): string {
   return '👎 слабая'
 }
 
-export function isAuthorizedFeedbackUser(fromId: number | null | undefined, env: NodeJS.ProcessEnv = process.env): boolean {
-  const ownerId = env.TELEGRAM_OWNER_USER_ID ?? env.TELEGRAM_ADMIN_CHAT_ID
-  if (!ownerId || typeof fromId !== 'number') return false
-  return String(fromId) === String(ownerId)
+export function normalizeTelegramUsername(value: string | null | undefined): string | null {
+  const normalized = value?.trim().replace(/^@/, '').toLowerCase()
+  return normalized || null
+}
+
+export function isAuthorizedFeedbackUser(
+  fromId: number | null | undefined,
+  fromUsername?: string | null,
+  messageChatId?: number | null,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (env.TELEGRAM_OWNER_USER_ID && typeof fromId === 'number' && String(fromId) === String(env.TELEGRAM_OWNER_USER_ID)) return true
+
+  const ownerUsername = normalizeTelegramUsername(env.TELEGRAM_OWNER_USERNAME)
+  const callbackUsername = normalizeTelegramUsername(fromUsername)
+  if (ownerUsername && callbackUsername && ownerUsername === callbackUsername) return true
+
+  if (env.TELEGRAM_ADMIN_CHAT_ID && typeof messageChatId === 'number') {
+    return String(messageChatId) === String(env.TELEGRAM_ADMIN_CHAT_ID)
+  }
+  return false
 }
 
 export function withFeedbackConfirmation(text: string, rating: 0 | 1 | 2): string {
   const clean = text.replace(/\n\n✓ оценено: .+$/u, '').trimEnd()
   return `${clean}\n\n✓ оценено: ${feedbackRatingLabel(rating)}`
+}
+
+export function withFeedbackConfirmationForArticle(
+  text: string,
+  articleId: string,
+  rating: 0 | 1 | 2,
+  replyMarkup?: unknown,
+): string {
+  const index = feedbackButtonIndex(replyMarkup, articleId)
+  if (!index) return withFeedbackConfirmation(text, rating)
+
+  const prefix = `${index}. `
+  const label = feedbackRatingLabel(rating)
+  const statusPattern = /\s+—\s+✓\s+(?:🔥 сильная|👌 норм|👎 слабая)$/u
+  let replaced = false
+  const lines = text.trimEnd().split('\n').map((line) => {
+    if (!line.startsWith(prefix)) return line
+    replaced = true
+    return `${line.replace(statusPattern, '')} — ✓ ${label}`
+  })
+
+  return replaced ? lines.join('\n') : withFeedbackConfirmation(text, rating)
+}
+
+function feedbackButtonIndex(replyMarkup: unknown, articleId: string): number | null {
+  if (!replyMarkup || typeof replyMarkup !== 'object') return null
+  const rows = (replyMarkup as { inline_keyboard?: unknown }).inline_keyboard
+  if (!Array.isArray(rows)) return null
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index]
+    if (!Array.isArray(row)) continue
+    const hasArticleButton = row.some((button) => (
+      button
+      && typeof button === 'object'
+      && typeof (button as { callback_data?: unknown }).callback_data === 'string'
+      && parseFeedbackCallbackData((button as { callback_data: string }).callback_data)?.articleId === articleId
+    ))
+    if (hasArticleButton) return index + 1
+  }
+  return null
 }
 
 export async function upsertArticleFeedback(params: {
