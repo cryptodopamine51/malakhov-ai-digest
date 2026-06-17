@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Генератор отмазок</title>
+    <meta
+      name="description"
+      content="Одностраничный генератор убедительных, креативных и дерзких отмазок с рейтингом правдоподобности."
+    />
+    <meta name="theme-color" content="#171717" />
+    <meta property="og:title" content="Генератор отмазок" />
+    <meta
+      property="og:description"
+      content="Выберите ситуацию, уровень смелости и получите готовую отмазку с рейтингом правдоподобности."
+    />
+    <meta property="og:type" content="website" />
+    <link rel="preload" href="./assets/office-freak-hero.webp?v=office-freak-v1" as="image" />
+    <link rel="stylesheet" href="./assets/styles.css?v=office-freak-v1" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="hero" aria-labelledby="page-title">
+        <div class="hero-copy">
+          <h1 id="page-title">Генератор отмазок</h1>
+          <p class="hero-note">
+            Когда объяснение нужно сейчас, а совесть уже вышла из чата. Выбери рабочий
+            провал - сервис соберет сообщение от дипломатичного до опасно честного.
+          </p>
+        </div>
+
+        <div class="hero-stamp" aria-hidden="true">
+          <span>Риск</span>
+          <strong id="hero-risk">средний</strong>
+        </div>
+      </section>
+
+      <section class="workspace" aria-label="Генератор">
+        <form class="control-panel" id="excuse-form">
+          <fieldset class="situation-group">
+            <legend>Ситуация</legend>
+            <div class="situation-grid">
+              <label class="situation-option">
+                <input type="radio" name="situation" value="work" checked />
+                <span>
+                  <strong>Опоздал на работу</strong>
+                  <small>Пробки, метро, утренний хаос</small>
+                </span>
+              </label>
+              <label class="situation-option">
+                <input type="radio" name="situation" value="deadline" />
+                <span>
+                  <strong>Сорвал дедлайн</strong>
+                  <small>Срок ушел, лицо держим</small>
+                </span>
+              </label>
+              <label class="situation-option">
+                <input type="radio" name="situation" value="meeting" />
+                <span>
+                  <strong>Пропустил встречу</strong>
+                  <small>Календарь предал первым</small>
+                </span>
+              </label>
+              <label class="situation-option">
+                <input type="radio" name="situation" value="chat" />
+                <span>
+                  <strong>Не ответил в чате</strong>
+                  <small>Сообщение утонуло в потоке</small>
+                </span>
+              </label>
+            </div>
+          </fieldset>
+
+          <div class="control-grid">
+            <label class="field">
+              <span>Тон</span>
+              <select id="tone" name="tone">
+                <option value="calm">Спокойно и по делу</option>
+                <option value="warm">С раскаянием</option>
+                <option value="creative">Креативно</option>
+                <option value="dramatic">Драматично</option>
+              </select>
+            </label>
+
+            <label class="field boldness-field">
+              <span>Смелость: <output id="boldness-label" for="boldness">креативно</output></span>
+              <input id="boldness" name="boldness" type="range" min="1" max="5" value="3" />
+            </label>
+          </div>
+
+          <div class="button-row">
+            <button class="primary-action" type="submit">
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <path d="M12 3v4m0 10v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M3 12h4m10 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83" />
+              </svg>
+              Сгенерировать
+            </button>
+            <button class="secondary-action" id="surprise-button" type="button">
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <path d="M3 12a9 9 0 0 1 15.31-6.39L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.31 6.39L3 16m0 5v-5h5" />
+              </svg>
+              Еще вариант
+            </button>
+          </div>
+        </form>
+
+        <section class="result-card" aria-labelledby="result-title">
+          <div class="visual-panel">
+            <img
+              src="./assets/office-freak-hero.webp?v=office-freak-v1"
+              width="1693"
+              height="929"
+              alt="Деловой человек в костюме с красным клоунским носом в офисе"
+            />
+          </div>
+
+          <div class="result-content">
+            <div class="result-topline">
+              <p id="scenario-label">Для работы</p>
+              <div class="score-wrap">
+                <span class="score-label">Рейтинг правдоподобности</span>
+                <div class="score-badge" aria-label="Рейтинг правдоподобности">
+                  <span id="score-value">87</span><span>/100</span>
+                </div>
+              </div>
+            </div>
+
+            <h2 id="result-title">Готовая отмазка</h2>
+            <p class="excuse-text" id="excuse-text" aria-live="polite"></p>
+
+            <div class="score-meter" aria-hidden="true">
+              <span id="score-fill"></span>
+            </div>
+            <p class="score-caption" id="score-caption"></p>
+
+            <div class="result-actions">
+              <button class="copy-action" id="copy-button" type="button">
+                <svg aria-hidden="true" viewBox="0 0 24 24">
+                  <path d="M8 8h10v12H8z" />
+                  <path d="M6 16H4V4h12v2" />
+                </svg>
+                Скопировать и отправить боссу
+              </button>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./assets/app.js?v=office-freak-v1" defer></script>
+  </body>
+</html>
