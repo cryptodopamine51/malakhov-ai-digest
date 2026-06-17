@@ -131,6 +131,7 @@ test('buildDeepSeekEditorialRepairPrompt scopes repair to validator errors', () 
   })
 
   assert.match(prompt.system, /Исправь только перечисленные ошибки/)
+  assert.match(prompt.system, /убери неподтверждённый год/)
   assert.match(prompt.user, /галлюцинация прошедшего года: 2025/)
   assert.match(prompt.user, /JSON статьи:/)
   assert.match(prompt.user, /Apple готовит Siri/)
