@@ -47,6 +47,8 @@ type GuideMetadata = {
 // (cover q=90 + effort=6 + smartSubsample=false typically produces 50–90 KB
 // for ChatGPT-generated 1200×675 illustrations — well under the old 80 KB heuristic).
 const COVER_MIN_BYTES = 50 * 1024
+const COVER_MAX_BYTES = 450 * 1024
+const INLINE_MAX_BYTES = 600 * 1024
 const VERIFIED_MAX_AGE_DAYS = 180
 const NOINDEX_MAX_AGE_DAYS = 14
 const VALID_CASE_SOURCING = new Set(['public', 'anonymized', 'editorial'])
@@ -205,8 +207,8 @@ function validateMetadata(value: unknown, label: string, errors: string[], warni
   if (!isRecord(metadata.cover)) {
     errors.push(`${label} cover must be an object`)
   } else {
-    validateImage(metadata.cover, `${label} cover`, errors, warnings)
-    checkLocalImageExists(metadata.cover, `${label} cover`, errors)
+    validateImage(metadata.cover, `${label} cover`, 'cover', errors, warnings)
+    checkLocalImageExists(metadata.cover, `${label} cover`, 'cover', errors)
   }
 
   if (metadata.inlineImagesByHeading !== undefined && !isRecord(metadata.inlineImagesByHeading)) {
@@ -218,8 +220,8 @@ function validateMetadata(value: unknown, label: string, errors: string[], warni
       if (!isRecord(image)) {
         errors.push(`${label} inline image for ${heading} must be an object`)
       } else {
-        validateImage(image, `${label} inline image for ${heading}`, errors, warnings)
-        checkLocalImageExists(image, `${label} inline image for ${heading}`, errors)
+        validateImage(image, `${label} inline image for ${heading}`, 'inline', errors, warnings)
+        checkLocalImageExists(image, `${label} inline image for ${heading}`, 'inline', errors)
       }
     }
   }
@@ -324,6 +326,7 @@ export function isGenericImageFilename(src: string): boolean {
 function validateImage(
   image: Record<string, unknown>,
   label: string,
+  role: 'cover' | 'inline',
   errors: string[],
   warnings?: string[],
 ) {
@@ -333,6 +336,10 @@ function validateImage(
     warnings.push(
       `${label} src uses generic filename "${image.src.split('/').pop()}" — SEO convention requires descriptive <slug-short>-<section>.webp`,
     )
+  } else if (image.src.startsWith('/images/') && !image.src.toLowerCase().endsWith('.webp')) {
+    errors.push(`${label} src must point to a WebP file, got: ${image.src}`)
+  } else if (role === 'cover' && !image.src.toLowerCase().endsWith('-cover.webp')) {
+    warnings?.push(`${label} cover filename should end with "-cover.webp" for SEO clarity`)
   }
   if (typeof image.alt !== 'string' || image.alt.trim().length === 0) {
     errors.push(`${label} alt must be non-empty`)
@@ -340,15 +347,95 @@ function validateImage(
   if (typeof image.caption !== 'string' || image.caption.trim().length === 0) {
     errors.push(`${label} caption must be non-empty`)
   }
+  if (!Number.isInteger(image.width) || Number(image.width) <= 0) {
+    errors.push(`${label} width must be a positive integer`)
+  }
+  if (!Number.isInteger(image.height) || Number(image.height) <= 0) {
+    errors.push(`${label} height must be a positive integer`)
+  }
 }
 
-function checkLocalImageExists(image: Record<string, unknown>, label: string, errors: string[]) {
+function checkLocalImageExists(
+  image: Record<string, unknown>,
+  label: string,
+  role: 'cover' | 'inline',
+  errors: string[],
+) {
   if (typeof image.src !== 'string' || !image.src.startsWith('/images/')) return
 
   const imagePath = join(root, 'public', image.src)
   if (!existsSync(imagePath)) {
     errors.push(`${label} points to missing local image: public${image.src}`)
+    return
   }
+
+  const size = statSync(imagePath).size
+  const maxBytes = role === 'cover' ? COVER_MAX_BYTES : INLINE_MAX_BYTES
+  if (size > maxBytes) {
+    errors.push(
+      `${label} is ${(size / 1024).toFixed(0)} KB (> ${(maxBytes / 1024).toFixed(0)} KB); resize/recompress via images:prep`,
+    )
+  }
+
+  if (image.src.toLowerCase().endsWith('.webp')) {
+    const actual = readWebpDimensions(imagePath)
+    if (!actual) {
+      errors.push(`${label} dimensions could not be read from WebP: public${image.src}`)
+      return
+    }
+    if (
+      Number.isInteger(image.width) &&
+      Number.isInteger(image.height) &&
+      (actual.width !== image.width || actual.height !== image.height)
+    ) {
+      errors.push(
+        `${label} metadata dimensions ${image.width}×${image.height} do not match actual ${actual.width}×${actual.height}`,
+      )
+    }
+  }
+}
+
+export function readWebpDimensions(path: string): { width: number; height: number } | null {
+  const buffer = readFileSync(path)
+  if (
+    buffer.length < 30 ||
+    buffer.toString('ascii', 0, 4) !== 'RIFF' ||
+    buffer.toString('ascii', 8, 12) !== 'WEBP'
+  ) {
+    return null
+  }
+
+  const chunkType = buffer.toString('ascii', 12, 16)
+  if (chunkType === 'VP8 ') {
+    if (buffer.length < 30) return null
+    if (buffer[23] !== 0x9d || buffer[24] !== 0x01 || buffer[25] !== 0x2a) return null
+    return {
+      width: buffer.readUInt16LE(26) & 0x3fff,
+      height: buffer.readUInt16LE(28) & 0x3fff,
+    }
+  }
+
+  if (chunkType === 'VP8L') {
+    if (buffer.length < 25 || buffer[20] !== 0x2f) return null
+    const b1 = buffer[21]
+    const b2 = buffer[22]
+    const b3 = buffer[23]
+    const b4 = buffer[24]
+    return {
+      width: 1 + (((b2 & 0x3f) << 8) | b1),
+      height: 1 + (((b4 & 0x0f) << 10) | (b3 << 2) | ((b2 & 0xc0) >> 6)),
+    }
+  }
+
+  if (chunkType === 'VP8X') {
+    if (buffer.length < 30) return null
+    return {
+      width: 1 + buffer.readUIntLE(24, 3),
+      height: 1 + buffer.readUIntLE(27, 3),
+    }
+  }
+
+  return null
 }
 
 function markdownExpectsFaq(markdown: string): boolean {

@@ -25,7 +25,6 @@ import TopicBadge from '../../../../src/components/TopicBadge'
 import ArticleRecommendations from '../../../../src/components/ArticleRecommendations'
 import ArticleSectionNav from '../../../../src/components/ArticleSectionNav'
 import ReadingProgress from '../../../../src/components/ReadingProgress'
-import TelegramCTA from '../../../../src/components/TelegramCTA'
 import {
   EditorialEntityGrid,
   EditorialStatGrid,
@@ -769,22 +768,16 @@ export default async function CategoryArticlePage({
               </Link>
             )}
 
-            <section className="my-8 rounded border border-accent/40 bg-accent/5 p-5">
-              <p className="text-base font-semibold text-ink">Внедряю ИИ в бизнес — обсудим задачу</p>
-              <p className="mt-1 text-sm leading-relaxed text-muted">
-                Аудит, пилотные проекты, полное внедрение. Начинаем с консультации.
-              </p>
-              <Link
-                href={`/services?utm_source=news_malakhovai_ru&utm_medium=article_cta&utm_campaign=ai_consultation&utm_content=${article.primary_category}`}
-                className="mt-4 inline-flex rounded border border-ink px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-ink hover:text-[var(--base)]"
-              >
-                Перейти к услугам
-              </Link>
-            </section>
-
-            <TelegramCTA />
-
-            <AuthorCard className="my-8" />
+            <AuthorCard
+              className="my-8"
+              ctaContext={{
+                medium: 'article_author_card',
+                campaign: `article_${article.primary_category}`,
+                content: article.slug ?? slug,
+                articleSlug: article.slug ?? slug,
+                articleTitle: title,
+              }}
+            />
 
           </div>
         </div>

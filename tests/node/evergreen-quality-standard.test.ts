@@ -1,5 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import sharp from 'sharp'
 
 import {
   countInlineInternalLinks,
@@ -8,6 +12,7 @@ import {
   hasCaseBlock,
   hasCounterStrategy,
   leadHasAnchor,
+  readWebpDimensions,
 } from '../../scripts/evergreen-check'
 
 test('leadHasAnchor: passes when first 700 chars after H1 contain a number', () => {
@@ -96,4 +101,23 @@ test('findEditorialStyleIssues: catches banned evergreen wording in body text', 
 test('findEditorialStyleIssues: ignores forbidden words inside source URLs', () => {
   const md = 'Источник: https://example.com/abandoned-after-proof-of-concept-by-end-of-2025'
   assert.deepEqual(findEditorialStyleIssues(md), [])
+})
+
+test('readWebpDimensions: reads actual WebP canvas size', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'evergreen-webp-test-'))
+  const file = join(tmp, 'sample.webp')
+  try {
+    await sharp({
+      create: {
+        width: 64,
+        height: 32,
+        channels: 3,
+        background: '#ffffff',
+      },
+    }).webp().toFile(file)
+
+    assert.deepEqual(readWebpDimensions(file), { width: 64, height: 32 })
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
 })

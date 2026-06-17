@@ -55,55 +55,71 @@ export default async function HomePage() {
   ])
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 md:py-10 lg:py-12">
-      <section className="mb-6 rounded border border-line bg-base px-6 py-9 md:px-8 md:py-11 lg:px-10 lg:py-12">
-        <h1 className="font-serif text-4xl font-bold leading-none text-ink sm:text-5xl md:text-6xl">
-          Malakhov AI Дайджест
-        </h1>
-        <p className="mt-7 max-w-3xl border border-line border-l-[3px] border-l-accent bg-surface px-4 py-3 text-[15px] font-semibold leading-relaxed text-ink shadow-[0_1px_0_var(--line)] md:text-base lg:text-[17px]">
-          Ежедневная редакционная лента об ИИ: ключевые релизы, исследования, продукты и
-          индустриальные сдвиги без визуального шума.
-        </p>
-      </section>
-      <TopicTabs className="mb-12" />
-
-      {featuredGuide && (
-        <section className="mb-12 overflow-hidden rounded border border-line bg-base md:grid md:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="p-6 md:p-7">
-            <p className="mb-2 text-[12px] font-semibold uppercase text-accent">Гайд для бизнеса</p>
-            <h2 className="max-w-2xl font-serif text-2xl font-bold leading-tight text-ink md:text-3xl">
-              {featuredGuide.seoTitle}
-            </h2>
-            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted md:text-[15px]">
-              Пошаговая рамка: выбрать первый AI-проект, подготовить данные, посчитать экономику и не застрять на демо.
-            </p>
-            <Link
-              href={featuredGuide.path}
-              className="mt-5 inline-flex rounded border border-ink px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-ink hover:text-[var(--base)]"
-            >
-              Читать гайд
-            </Link>
+    <div className="mx-auto max-w-6xl px-4 py-6 md:py-8 lg:py-10">
+      <section className="mb-7 border-b border-line pb-8 lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:items-end lg:gap-10">
+        <div>
+          <p className="mb-4 text-[12px] font-semibold uppercase tracking-[0.14em] text-accent">
+            Ежедневная редакционная лента
+          </p>
+          <h1 className="max-w-4xl font-serif text-[42px] font-extrabold leading-[0.95] text-ink sm:text-[56px] lg:text-[68px]">
+            AI-новости на русском без визуального шума
+          </h1>
+          <p className="mt-5 max-w-2xl text-[17px] font-medium leading-relaxed text-hero-muted md:text-[19px]">
+            Релизы моделей, исследования, сделки, российский рынок и инструменты для работы
+            с ИИ — в одном спокойном редакционном потоке.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-x-6 gap-y-3 border-t border-line pt-5 text-sm text-muted">
+            {total > 0 && (
+              <span className="font-semibold text-ink">
+                {total} {pluralize(total, 'материал', 'материала', 'материалов')}
+              </span>
+            )}
+            <span>обновление каждые несколько часов</span>
+            <span>новости, гайды и контекст</span>
           </div>
-          <Link href={featuredGuide.path} className="block border-t border-line md:border-l md:border-t-0">
-            <Image
-              src={featuredGuide.cover.src}
-              alt={featuredGuide.cover.alt}
-              width={featuredGuide.cover.width}
-              height={featuredGuide.cover.height}
-              sizes="(max-width: 768px) 100vw, 320px"
-              className="h-full min-h-[180px] w-full object-cover"
-            />
-          </Link>
-        </section>
-      )}
+        </div>
+
+        {featuredGuide && (
+          <aside className="mt-8 border-t border-line pt-6 lg:mt-0 lg:border-l lg:border-t-0 lg:pl-8">
+            <Link href={featuredGuide.path} className="group block">
+              <p className="mb-3 text-[12px] font-semibold uppercase tracking-[0.12em] text-accent">
+                Практический гайд
+              </p>
+              <div className="relative mb-4 aspect-[16/10] overflow-hidden border border-line bg-surface">
+                <Image
+                  src={featuredGuide.cover.src}
+                  alt={featuredGuide.cover.alt}
+                  width={featuredGuide.cover.width}
+                  height={featuredGuide.cover.height}
+                  sizes="(max-width: 1024px) 100vw, 360px"
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                />
+              </div>
+              <h2 className="font-serif text-[22px] font-bold leading-tight text-ink transition-colors group-hover:text-accent">
+                {featuredGuide.seoTitle}
+              </h2>
+              <p className="mt-3 text-sm leading-relaxed text-muted">
+                Выбор первого AI-проекта, подготовка данных, экономика и запуск без лишних демо.
+              </p>
+            </Link>
+          </aside>
+        )}
+      </section>
+      <TopicTabs className="mb-10" />
 
       {hotStory && (
         <section className="mb-12 grid grid-cols-1 gap-8 lg:grid-cols-5 lg:gap-10">
-          <div className="lg:col-span-2 lg:order-1">
+          <div className="lg:col-span-2">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-accent">
+              Пульс
+            </p>
             <h2 className="mb-4 font-serif text-2xl font-bold text-ink">Свежие заголовки</h2>
             <PulseList articles={headlines} pageSize={HEADLINES_PAGE_SIZE} />
           </div>
-          <div className="lg:col-span-3 lg:order-2">
+          <div className="lg:col-span-3">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-accent">
+              Редакционный выбор
+            </p>
             <h2 className="mb-4 font-serif text-2xl font-bold text-ink">Главное сегодня</h2>
             <ArticleCard article={hotStory} variant="featured" />
           </div>

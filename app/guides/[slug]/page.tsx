@@ -202,13 +202,16 @@ export default async function GuideArticlePage({
               personalTelegramUrl={PERSONAL_TELEGRAM_URL}
               contactsUrl={CONTACTS_URL}
             />
-            <FinalGuideCta
-              guide={guide}
-              digestTelegramUrl={DIGEST_TELEGRAM_URL}
-              personalTelegramUrl={PERSONAL_TELEGRAM_URL}
-              contactsUrl={CONTACTS_URL}
+            <AuthorCard
+              className="mt-12"
+              ctaContext={{
+                medium: 'guide_author_card',
+                campaign: `guide_${guide.slug}`,
+                content: 'guide_end',
+                guideSlug: guide.slug,
+                guideTitle: guide.title,
+              }}
             />
-            <AuthorCard className="mt-12" />
             <RelatedLinks guide={guide} />
             <RelatedGuideArticles articles={relatedArticles} />
           </div>
@@ -447,79 +450,6 @@ function GuideCta({
       >
         {cta.action}
       </GuideTrackedLink>
-    </section>
-  )
-}
-
-const DEFAULT_FINAL_CTA_CARDS: GuideCtaConfig[] = [
-  {
-    title: 'AI-новости в Telegram',
-    text: 'Ежедневный короткий дайджест: релизы, инструменты, кейсы внедрения ИИ в бизнес.',
-    action: 'Подписаться на дайджест',
-    href: 'telegram-digest',
-    intent: 'daily_ai_news_digest',
-  },
-  {
-    title: 'Архитектурный разбор ИИ',
-    text: 'Разберите процессы, данные, риски и экономику до старта разработки.',
-    action: 'Оставить заявку',
-    href: 'contacts',
-    intent: 'architecture_review',
-  },
-  {
-    title: 'Личный разговор',
-    text: 'Обсудим внедрение ИИ в вашу компанию — без презентаций, по делу.',
-    action: 'Написать в Telegram',
-    href: 'telegram-personal',
-    intent: 'personal_consultation',
-  },
-]
-
-function FinalGuideCta({
-  guide,
-  digestTelegramUrl,
-  personalTelegramUrl,
-  contactsUrl,
-}: {
-  guide: Guide
-  digestTelegramUrl: string
-  personalTelegramUrl: string
-  contactsUrl: string
-}) {
-  const items = guide.ctaCards?.length ? guide.ctaCards : DEFAULT_FINAL_CTA_CARDS
-
-  return (
-    <section className={guideArticleStyles.endSection}>
-      <p className="mb-2 text-[12px] font-semibold uppercase text-accent">Дальше</p>
-      <h2 className="font-serif text-[26px] font-bold text-ink">Что можно сделать после чтения</h2>
-      <div className="mt-5 grid gap-4 md:grid-cols-3">
-        {items.map((item) => {
-          const href = resolveCtaHref(item.href, guide, item, 'final', {
-            contactsUrl,
-            digestTelegramUrl,
-            personalTelegramUrl,
-          })
-          const isExternal = href.startsWith('http')
-          const tracking = buildCtaTracking(guide, item, 'final')
-          return (
-            <div key={item.title} className="rounded border border-line bg-base p-5">
-              <h3 className="text-base font-semibold text-ink">{item.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted">{item.text}</p>
-              <GuideTrackedLink
-                href={href}
-                target={isExternal ? '_blank' : undefined}
-                rel={isExternal ? 'noopener noreferrer' : undefined}
-                goal={tracking.goal}
-                metrikaId={METRIKA_ID}
-                params={tracking.params}
-                className="mt-4 inline-flex text-sm font-semibold text-accent hover:underline"
-              >
-                {item.action}
-              </GuideTrackedLink>
-            </div>
-          )
-        })}
-      </div>
     </section>
   )
 }

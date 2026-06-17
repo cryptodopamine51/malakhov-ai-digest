@@ -1,7 +1,7 @@
 {
   "slug": "lokalnye-nejroseti-kak-zapustit-ii-na-svoem-kompyutere",
   "path": "/guides/lokalnye-nejroseti-kak-zapustit-ii-na-svoem-kompyutere",
-  "noindex": true,
+  "noindex": false,
   "title": "Локальные нейросети 2026: как запустить ИИ на своём компьютере",
   "seoTitle": "Локальные нейросети 2026: запуск ИИ на своём ПК",
   "description": "Как запустить нейросеть на своём компьютере: Ollama и LM Studio, выбор модели, требования к железу, расчёт «потянет ли ПК» и когда локальный ИИ не нужен.",
