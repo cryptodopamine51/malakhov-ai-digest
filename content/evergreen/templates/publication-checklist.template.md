@@ -30,7 +30,7 @@
 
 ## CTAs
 
-- [ ] CTAs point only to real surfaces: `telegram-digest` (`@malakhovaidigest`), `contacts` (`malakhovai.ru/contacts`), `telegram-personal` (`@malakhovai`).
+- [ ] CTAs point only to real surfaces: `telegram-digest` (`@malakhovaidigest`), `contacts` (`malakhovai.ru/contacts`), `telegram-personal` (`@iddopamine`).
 - [ ] No CTA promises a checklist, PDF, email guide or any artifact that does not actually exist.
 - [ ] `inlineCtas` ≤ 2; `ctaCards` has exactly 3 entries (final block).
 

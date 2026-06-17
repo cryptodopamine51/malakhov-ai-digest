@@ -1,7 +1,7 @@
 {
   "slug": "chem-ii-agent-otlichaetsya-ot-chat-bota",
   "path": "/guides/chem-ii-agent-otlichaetsya-ot-chat-bota",
-  "noindex": true,
+  "noindex": false,
   "title": "Чем ИИ-агент отличается от чат-бота: разница на пальцах",
   "seoTitle": "Чем ИИ-агент отличается от чат-бота: сравнение",
   "description": "Чат-бот отвечает, ИИ-агент действует: сравнение по 8 признакам, сценарий возврата товара в трёх исполнениях, цены и когда агент не нужен.",
@@ -38,7 +38,7 @@
       "href": "/guides/ii-agenty-v-podderzhke-klientov"
     },
     {
-      "title": "ИИ-агенты в продажах",
+      "title": "ИИ для продаж",
       "description": "Квалификация лидов, follow-up, сводки звонков — сценарии и экономика.",
       "href": "/guides/ii-agenty-v-prodazhah"
     }
