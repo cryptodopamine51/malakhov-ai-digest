@@ -84,8 +84,10 @@ export async function createEnrichRun(
   return data?.id ?? 'unknown'
 }
 
-export function resolveRunStatus(metrics: Pick<EnrichRunMetrics, 'enrichedOk' | 'retryable' | 'failed'>): 'ok' | 'partial' | 'failed' {
-  if (metrics.failed > 0 && metrics.enrichedOk === 0) return 'failed'
+export function resolveRunStatus(metrics: Pick<EnrichRunMetrics, 'enrichedOk' | 'rejected' | 'retryable' | 'failed'>): 'ok' | 'partial' | 'failed' {
+  if (metrics.failed > 0 && metrics.enrichedOk === 0 && metrics.rejected === 0 && metrics.retryable === 0) {
+    return 'failed'
+  }
   if (metrics.failed > 0 || metrics.retryable > 0) return 'partial'
   return 'ok'
 }

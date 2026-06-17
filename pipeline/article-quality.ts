@@ -241,14 +241,15 @@ export function buildOwnerFeedbackBatchMessage(items: QualityFeedbackItem[]): Ow
     const url = item.article.slug
       ? getArticleUrl(siteUrl, item.article.slug, item.article.primary_category)
       : null
-    const marker = item.source === 'channel_post' ? 'канал' : 'judge'
+    const marker = feedbackSourceMarker(item)
     const score = typeof item.score === 'number' && Number.isFinite(item.score)
-      ? `, ${item.score}/5`
+      ? ` ${item.score}/5`
       : ''
 
-    lines.push(`${number}. [${marker}${score}] ${item.article.source_name}: ${title}`)
+    lines.push(`${number}. [${marker}${score}] ${feedbackSourceName(item.article.source_name)}: ${title}`)
     if (item.reason && ((item.score ?? 5) <= 3 || item.source === 'judge_worst')) {
-      lines.push(`   проблема: ${truncateAtWordBoundary(item.reason, 180)}`)
+      const reason = feedbackReason(item.reason)
+      if (reason) lines.push(`   проблема: ${reason}`)
     }
     if (url) lines.push(`   ${url}`)
     if (index < deliverable.length - 1) lines.push('')
@@ -593,6 +594,30 @@ function feedbackTitle(article: QualityJudgeArticle): string {
     || 'Без заголовка'
 }
 
+function feedbackSourceMarker(item: QualityFeedbackItem): string {
+  if (item.source === 'channel_post') return 'канал'
+  if (item.source === 'judge_worst') return 'слабая'
+  return 'контроль'
+}
+
+function feedbackSourceName(value: string | null | undefined): string {
+  const normalized = (value ?? '').replace(/\s+/g, ' ').trim()
+  return truncateAtWordBoundary(normalized || 'Источник', 36)
+}
+
+function feedbackReason(value: string): string {
+  const normalized = value
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[-•]\s*/u, '')
+    .replace(/^проблема:\s*/iu, '')
+  if (!normalized) return ''
+
+  const contrast = normalized.match(/(?:^|[\s,;:—-])(?:но|однако|при этом)\s+(.+)$/iu)?.[1]?.trim()
+  const focused = contrast && contrast.length >= 18 ? contrast : normalized
+  return truncateAtWordBoundary(trimDanglingTail(focused.replace(/[.。]+$/u, '')), 130)
+}
+
 function normalizeFeedbackTitle(value: string | null | undefined): string {
   return (value ?? '')
     .replace(/\s+/g, ' ')
@@ -647,6 +672,14 @@ function looksTruncatedFeedbackTitle(value: string): boolean {
   ]).has(lastWord)
 }
 
+function trimDanglingTail(value: string): string {
+  let words = value.trim().split(/\s+/u)
+  while (words.length > 1 && looksTruncatedFeedbackTitle(words.join(' '))) {
+    words = words.slice(0, -1)
+  }
+  return words.join(' ').replace(/[,:;—-]+$/u, '').trimEnd()
+}
+
 function truncateAtWordBoundary(value: string, maxLength: number): string {
   if (value.length <= maxLength) return value
   const sliced = value.slice(0, maxLength - 1).trimEnd()
@@ -656,9 +689,9 @@ function truncateAtWordBoundary(value: string, maxLength: number): string {
     sliced.lastIndexOf('-'),
   )
   const cut = boundary >= Math.floor(maxLength * 0.65)
-    ? sliced.slice(0, boundary).trimEnd().replace(/[,:;—-]+$/u, '')
+    ? sliced.slice(0, boundary)
     : sliced
-  return `${cut}…`
+  return `${trimDanglingTail(cut)}…`
 }
 
 function escapeHtml(value: string): string {

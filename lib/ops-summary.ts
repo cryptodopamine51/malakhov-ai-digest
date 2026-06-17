@@ -1107,7 +1107,7 @@ function formatGreenPathOverview(summary: OpsSummary): string[] {
 function formatCodexPromptBlock(summary: OpsSummary, reason: string): string[] {
   return [
     '🛠 <b>Есть готовый промпт для Codex</b>',
-    `<blockquote expandable>${escapeHtml(buildCodexPrompt(summary, reason))}</blockquote>`,
+    `<pre><code>${escapeHtml(buildCodexPrompt(summary, reason))}</code></pre>`,
   ]
 }
 
@@ -1150,13 +1150,23 @@ function buildGreenPathActions(summary: OpsSummary): string[] {
   return actions
 }
 
+function formatTelegramPromptFact(summary: OpsSummary): string {
+  if (summary.telegramToday) return stripTags(formatTelegramDelivery(summary.telegramToday))
+
+  const expectedToday = expectedTelegramSlots(new Date(summary.generatedAt))
+  if (expectedToday === 0) return 'сегодня слотов ещё не было'
+  if (!summary.latestTelegram) return 'сегодня нет данных'
+
+  return `сегодня нет данных; последний день ${summary.latestTelegram.delivery_date}: ${stripTags(formatTelegramDelivery(summary.latestTelegram))}`
+}
+
 function buildCodexPrompt(summary: OpsSummary, reason: string): string {
   const focus = resolveFixPromptFocus(summary)
   const facts = [
     `Сигнал: ${summary.status.emoji} ${summary.status.label}`,
     `Триггер промпта: ${reason}`,
     `Причины: ${summary.status.reasons.join('; ')}`,
-    `Telegram: ${stripTags(formatTelegramDelivery(summary.telegramToday ?? summary.latestTelegram))}`,
+    `Telegram: ${formatTelegramPromptFact(summary)}`,
     `Публикации: сегодня ${summary.articles.publishedTodayCount}, за 6ч ${summary.health.live_window_6h_count}`,
     `Очередь: pending ${count(summary.articles.currentQueue, 'pending')}, retry ${count(summary.articles.currentQueue, 'retry_wait')}, processing ${count(summary.articles.currentQueue, 'processing')}`,
     `Open batches: ${summary.health.batches_open}`,

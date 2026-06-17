@@ -18,10 +18,12 @@ export {
   buildChannelPostPlan,
   buildTelegramCaption,
   buildTelegramCaptionFromDeepSeekJson,
+  deliverDueChannelPostRows,
   deliverPlannedChannelPost,
   hasStaleYearHallucination,
   parseSlot,
   runChannelPost,
+  selectDueChannelPostRows,
   sendTelegramPhoto,
 } from './channel-post-core'
 export type {

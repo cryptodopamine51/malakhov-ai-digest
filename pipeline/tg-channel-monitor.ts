@@ -11,18 +11,20 @@
  *
  * Логика (всё по МСК):
  *  - слот считается «должен был выйти» через 30 минут после планового времени;
- *  - если должно было выйти ≥ 2 слотов (≈ с 13:00 МСК), а success-доставок ноль —
- *    fire critical (различаем: вообще нет строк = pg_cron мёртв; строки есть, но
- *    нет success = ломается отправка);
- *  - есть хотя бы один success — resolveAlert;
+ *  - если должно было выйти ≥ 2 слотов (≈ с 13:00 МСК), а success-доставок меньше
+ *    ожидаемого числа — fire critical (различаем: вообще нет строк = pg_cron мёртв;
+ *    строки есть, но нет success = ломается отправка; success есть, но меньше due =
+ *    missed slot/catch-up не сработал);
+ *  - success-доставок не меньше ожидаемого числа — resolveAlert;
  *  - раньше 13:00 МСК — noop (не шумим из-за одного слота).
  */
 
 import { config as loadEnv } from 'dotenv'
 import { resolve } from 'path'
 
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
+import { TG_CHANNEL_SLOT_TIMES_MSK_MINUTES } from '../lib/tg-channel-schedule'
 import { fireAlert, resolveAlert } from './alerts'
 
 loadEnv({ path: resolve(process.cwd(), '.env.local') })
@@ -30,22 +32,14 @@ loadEnv({ path: resolve(process.cwd(), '.env') })
 
 const MSK_OFFSET_MS = 3 * 60 * 60 * 1000
 const SLOT_GRACE_MINUTES = 30
-
-/** Плановые времена слотов в минутах от полуночи МСК (см. docs/OPERATIONS.md). */
-export const SLOT_TIMES_MSK_MINUTES = [
-  9 * 60 + 30, // 09:30
-  12 * 60 + 30, // 12:30
-  15 * 60 + 30, // 15:30
-  18 * 60 + 30, // 18:30
-  21 * 60, // 21:00
-] as const
+const TG_CHANNEL_ALERT_TYPE = 'tg_channel_posts_missing'
 
 export interface TgChannelDayRow {
   status: string
 }
 
 export type TgChannelDecision =
-  | { kind: 'fire'; reason: 'no_rows' | 'no_success'; dueSlots: number }
+  | { kind: 'fire'; reason: 'no_rows' | 'no_success' | 'partial_success'; dueSlots: number; successCount: number }
   | { kind: 'resolve'; successCount: number }
   | { kind: 'noop'; reason: 'too_early'; dueSlots: number }
 
@@ -56,15 +50,51 @@ export function mskDateKey(now: Date = new Date()): string {
 export function dueSlotCount(now: Date = new Date()): number {
   const msk = new Date(now.getTime() + MSK_OFFSET_MS)
   const minutesOfDay = msk.getUTCHours() * 60 + msk.getUTCMinutes()
-  return SLOT_TIMES_MSK_MINUTES.filter((slot) => slot + SLOT_GRACE_MINUTES <= minutesOfDay).length
+  return TG_CHANNEL_SLOT_TIMES_MSK_MINUTES.filter((slot) => slot + SLOT_GRACE_MINUTES <= minutesOfDay).length
 }
 
 export function decideTgChannelAlert(rows: TgChannelDayRow[], now: Date = new Date()): TgChannelDecision {
   const dueSlots = dueSlotCount(now)
   const successCount = rows.filter((row) => row.status === 'success').length
-  if (successCount > 0) return { kind: 'resolve', successCount }
+  if (successCount >= dueSlots && dueSlots > 0) return { kind: 'resolve', successCount }
+  if (successCount > 0 && dueSlots < 2) return { kind: 'resolve', successCount }
   if (dueSlots < 2) return { kind: 'noop', reason: 'too_early', dueSlots }
-  return { kind: 'fire', reason: rows.length === 0 ? 'no_rows' : 'no_success', dueSlots }
+  if (rows.length === 0) return { kind: 'fire', reason: 'no_rows', dueSlots, successCount }
+  if (successCount === 0) return { kind: 'fire', reason: 'no_success', dueSlots, successCount }
+  return { kind: 'fire', reason: 'partial_success', dueSlots, successCount }
+}
+
+export function isStaleTgChannelAlertEntity(entityKey: string | null | undefined, currentDeliveryDate: string): boolean {
+  const match = /^day:(\d{4}-\d{2}-\d{2})$/.exec(entityKey ?? '')
+  return Boolean(match && match[1] < currentDeliveryDate)
+}
+
+export async function resolveStaleTgChannelDayAlerts(
+  supabase: SupabaseClient,
+  currentDeliveryDate: string,
+): Promise<number> {
+  const { data, error } = await supabase
+    .from('pipeline_alerts')
+    .select('entity_key')
+    .eq('alert_type', TG_CHANNEL_ALERT_TYPE)
+    .eq('status', 'open')
+
+  if (error) {
+    console.error(`[tg-channel-monitor] stale alert query failed: ${error.message}`)
+    return 0
+  }
+
+  const staleEntityKeys = Array.from(new Set(
+    ((data ?? []) as Array<{ entity_key: string | null }>)
+      .map((row) => row.entity_key)
+      .filter((entityKey): entityKey is string => isStaleTgChannelAlertEntity(entityKey, currentDeliveryDate)),
+  ))
+
+  for (const entityKey of staleEntityKeys) {
+    await resolveAlert(supabase, TG_CHANNEL_ALERT_TYPE, entityKey)
+  }
+
+  return staleEntityKeys.length
 }
 
 async function main() {
@@ -82,23 +112,29 @@ async function main() {
 
   const decision = decideTgChannelAlert((data ?? []) as TgChannelDayRow[])
   console.log(`[tg-channel-monitor] ${deliveryDate}: ${JSON.stringify(decision)}`)
+  const staleResolved = await resolveStaleTgChannelDayAlerts(supabase, deliveryDate)
+  if (staleResolved > 0) {
+    console.log(`[tg-channel-monitor] resolved ${staleResolved} stale tg_channel_posts_missing day alert(s)`)
+  }
 
   if (decision.kind === 'fire') {
     const detail = decision.reason === 'no_rows'
       ? 'нет ни одной строки за день — pg_cron/pg_net не дёргает /api/cron/tg-channel-post (диагностика: docs/OPERATIONS.md → Cron-расписание Telegram channel posts)'
-      : 'строки плана есть, но ни одной success-доставки — ломается отправка (см. error_message в telegram_channel_posts)'
+      : decision.reason === 'no_success'
+        ? 'строки плана есть, но ни одной success-доставки — ломается отправка (см. error_message в telegram_channel_posts)'
+        : 'есть success-доставка, но меньше ожидаемых слотов — проверь missed planned slots и catch-up в bot/channel-post-core.ts'
     await fireAlert({
       supabase,
       alertType: 'tg_channel_posts_missing',
       severity: 'critical',
       entityKey: `day:${deliveryDate}`,
-      message: `Telegram channel posts: 0 успешных доставок при ${decision.dueSlots} ожидаемых слотах. ${detail}`,
-      payload: { deliveryDate, dueSlots: decision.dueSlots, reason: decision.reason },
+      message: `Telegram channel posts: ${decision.successCount} успешных доставок при ${decision.dueSlots} ожидаемых слотах. ${detail}`,
+      payload: { deliveryDate, dueSlots: decision.dueSlots, successCount: decision.successCount, reason: decision.reason },
       botToken: process.env.TELEGRAM_BOT_TOKEN,
       adminChatId: process.env.TELEGRAM_ADMIN_CHAT_ID,
     })
   } else if (decision.kind === 'resolve') {
-    await resolveAlert(supabase, 'tg_channel_posts_missing', `day:${deliveryDate}`)
+    await resolveAlert(supabase, TG_CHANNEL_ALERT_TYPE, `day:${deliveryDate}`)
   }
 }
 

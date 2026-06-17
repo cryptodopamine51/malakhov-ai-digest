@@ -6,8 +6,10 @@ import {
   buildChannelPostPlan,
   buildTelegramCaption,
   buildTelegramCaptionFromDeepSeekJson,
+  deliverDueChannelPostRows,
   deliverPlannedChannelPost,
   sendTelegramPhoto,
+  selectDueChannelPostRows,
   type ChannelPostCandidate,
   type TelegramChannelPostRow,
 } from '../../bot/channel-post'
@@ -198,8 +200,13 @@ type Operation = {
   filters: Array<[string, unknown]>
 }
 
-function createSupabaseMock(row: TelegramChannelPostRow) {
+function createSupabaseMock(inputRows: TelegramChannelPostRow | TelegramChannelPostRow[]) {
   const operations: Operation[] = []
+  const rows = Array.isArray(inputRows) ? [...inputRows] : [inputRows]
+
+  function filterValue(state: Operation, column: string): unknown {
+    return state.filters.find(([key]) => key === column)?.[1]
+  }
 
   return {
     operations,
@@ -225,10 +232,25 @@ function createSupabaseMock(row: TelegramChannelPostRow) {
         then(onFulfilled: (value: unknown) => unknown, onRejected?: (reason: unknown) => unknown) {
           const response = (() => {
             if (table === 'telegram_channel_posts' && state.payload.status === 'sending') {
-              return { data: [{ ...row, status: 'sending' }], error: null }
+              const id = filterValue(state, 'id')
+              const status = filterValue(state, 'status')
+              const row = rows.find((item) => item.id === id && item.status === status)
+              if (!row) return { data: [], error: null }
+              Object.assign(row, state.payload)
+              return { data: [{ ...row }], error: null }
+            }
+            if (table === 'telegram_channel_posts') {
+              const id = filterValue(state, 'id')
+              const row = rows.find((item) => item.id === id)
+              if (row) Object.assign(row, state.payload)
+              return { data: [], error: null }
             }
             if (table === 'articles') {
-              return { data: [{ id: row.article_id }], error: null }
+              const ids = filterValue(state, 'id')
+              return {
+                data: (Array.isArray(ids) ? ids : []).map((id) => ({ id })),
+                error: null,
+              }
             }
             return { data: [], error: null }
           })()
@@ -318,6 +340,139 @@ test('deliverPlannedChannelPost failure does not mark article tg_sent', async ()
   assert.equal(result.status, 'failed')
   assert.equal(supabase.operations.some((op) => op.table === 'telegram_channel_posts' && op.payload.status === 'failed_send'), true)
   assert.equal(supabase.operations.some((op) => op.table === 'articles'), false)
+})
+
+test('selectDueChannelPostRows includes missed planned slots before requested slot', () => {
+  const rows = [
+    plannedRow({ id: 'post-1', slot_no: 1, status: 'planned' }),
+    plannedRow({ id: 'post-2', slot_no: 2, status: 'success', telegram_message_id: 123 }),
+    plannedRow({ id: 'post-3', slot_no: 3, status: 'planned' }),
+  ]
+
+  assert.deepEqual(selectDueChannelPostRows(rows, 3).map((row) => row.slot_no), [1, 3])
+})
+
+test('selectDueChannelPostRows includes retryable failed_send slots before requested slot', () => {
+  const rows = [
+    plannedRow({ id: 'post-1', slot_no: 1, status: 'failed_send', error_message: 'Telegram timeout' }),
+    plannedRow({ id: 'post-2', slot_no: 2, status: 'success', telegram_message_id: 123 }),
+    plannedRow({ id: 'post-3', slot_no: 3, status: 'planned' }),
+  ]
+
+  assert.deepEqual(selectDueChannelPostRows(rows, 3).map((row) => row.slot_no), [1, 3])
+})
+
+test('selectDueChannelPostRows checks earlier missed slots even when requested slot already succeeded', () => {
+  const rows = [
+    plannedRow({ id: 'post-1', slot_no: 1, status: 'planned' }),
+    plannedRow({ id: 'post-2', slot_no: 2, status: 'success', telegram_message_id: 123 }),
+  ]
+
+  assert.deepEqual(selectDueChannelPostRows(rows, 2).map((row) => row.slot_no), [1, 2])
+})
+
+test('deliverDueChannelPostRows catches up missed planned slots before requested slot', async () => {
+  const rows = [
+    plannedRow({ id: 'post-1', slot_no: 1, article_id: 'article-1', article_url: 'https://news.example.com/article-1?utm_content=slot_1' }),
+    plannedRow({ id: 'post-2', slot_no: 2, article_id: 'article-2', article_url: 'https://news.example.com/article-2?utm_content=slot_2' }),
+  ]
+  const supabase = createSupabaseMock(rows)
+  const sentSlots: number[] = []
+
+  const result = await deliverDueChannelPostRows(
+    supabase as never,
+    rows,
+    2,
+    'bot-token',
+    async (_botToken, _channelId, _cover, _caption, articleUrlValue) => {
+      sentSlots.push(Number(new URL(articleUrlValue).searchParams.get('utm_content')?.replace('slot_', '')))
+      return { result: { message_id: 450 + sentSlots.length } }
+    },
+  )
+
+  assert.equal(result.status, 'success')
+  assert.equal(result.slot, 2)
+  assert.deepEqual(sentSlots, [1, 2])
+  assert.equal(
+    supabase.operations.filter((op) => op.table === 'telegram_channel_posts' && op.payload.status === 'success').length,
+    2,
+  )
+  assert.equal(
+    supabase.operations.filter((op) => op.table === 'articles' && op.payload.tg_sent === true).length,
+    2,
+  )
+})
+
+test('deliverDueChannelPostRows retries failed_send catch-up slots', async () => {
+  const rows = [
+    plannedRow({
+      id: 'post-1',
+      slot_no: 1,
+      status: 'failed_send',
+      article_id: 'article-1',
+      article_url: 'https://news.example.com/article-1?utm_content=slot_1',
+      failed_at: '2026-06-01T06:35:00.000Z',
+      error_message: 'Telegram timeout',
+    }),
+    plannedRow({ id: 'post-2', slot_no: 2, article_id: 'article-2', article_url: 'https://news.example.com/article-2?utm_content=slot_2' }),
+  ]
+  const supabase = createSupabaseMock(rows)
+  const sentSlots: number[] = []
+
+  const result = await deliverDueChannelPostRows(
+    supabase as never,
+    rows,
+    2,
+    'bot-token',
+    async (_botToken, _channelId, _cover, _caption, articleUrlValue) => {
+      sentSlots.push(Number(new URL(articleUrlValue).searchParams.get('utm_content')?.replace('slot_', '')))
+      return { result: { message_id: 550 + sentSlots.length } }
+    },
+  )
+
+  assert.equal(result.status, 'success')
+  assert.equal(result.slot, 2)
+  assert.deepEqual(sentSlots, [1, 2])
+  assert.equal(
+    supabase.operations.some((op) => (
+      op.table === 'telegram_channel_posts' &&
+      op.payload.status === 'sending' &&
+      op.filters.some(([column, value]) => column === 'status' && value === 'failed_send')
+    )),
+    true,
+  )
+})
+
+test('deliverDueChannelPostRows reports catch-up success when requested slot was already sent', async () => {
+  const rows = [
+    plannedRow({ id: 'post-1', slot_no: 1, article_id: 'article-1', article_url: 'https://news.example.com/article-1?utm_content=slot_1' }),
+    plannedRow({
+      id: 'post-2',
+      slot_no: 2,
+      status: 'success',
+      telegram_message_id: 123,
+      sent_at: '2026-06-01T09:30:00.000Z',
+      article_id: 'article-2',
+      article_url: 'https://news.example.com/article-2?utm_content=slot_2',
+    }),
+  ]
+  const supabase = createSupabaseMock(rows)
+  const sentSlots: number[] = []
+
+  const result = await deliverDueChannelPostRows(
+    supabase as never,
+    rows,
+    2,
+    'bot-token',
+    async (_botToken, _channelId, _cover, _caption, articleUrlValue) => {
+      sentSlots.push(Number(new URL(articleUrlValue).searchParams.get('utm_content')?.replace('slot_', '')))
+      return { result: { message_id: 650 + sentSlots.length } }
+    },
+  )
+
+  assert.equal(result.status, 'success')
+  assert.equal(result.slot, 1)
+  assert.deepEqual(sentSlots, [1])
 })
 
 test('sendTelegramPhoto uploads prefetched cover bytes instead of passing remote URL to Telegram', async () => {

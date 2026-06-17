@@ -146,6 +146,10 @@ function logError(message: string, error?: unknown): void {
   console.error(`[${new Date().toISOString().replace('T', ' ').slice(0, 19)}] ERROR: ${message}${detail ? ` — ${detail}` : ''}`)
 }
 
+function isDeliverableChannelPostRow(row: TelegramChannelPostRow): boolean {
+  return row.status === 'planned' || row.status === 'failed_send'
+}
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -1030,15 +1034,18 @@ async function claimSlot(
   supabase: ChannelPostSupabase,
   row: TelegramChannelPostRow,
 ): Promise<TelegramChannelPostRow | null> {
+  if (!isDeliverableChannelPostRow(row)) return null
+
   const { data, error } = await supabase
     .from('telegram_channel_posts')
     .update({
       status: 'sending',
       claimed_at: new Date().toISOString(),
+      failed_at: null,
       error_message: null,
     })
     .eq('id', row.id)
-    .eq('status', 'planned')
+    .eq('status', row.status)
     .select('*')
 
   if (error) throw new Error(`channel post claim failed: ${error.message}`)
@@ -1056,6 +1063,7 @@ async function finalizeSuccess(
       status: 'success',
       telegram_message_id: messageId,
       sent_at: new Date().toISOString(),
+      failed_at: null,
       error_message: null,
     })
     .eq('id', rowId)
@@ -1123,7 +1131,7 @@ export async function deliverPlannedChannelPost(
   }
   if (row.status === 'skipped_low_articles') return { status: 'skipped_low_articles', slot: row.slot_no }
   if (row.status === 'skipped_no_article') return { status: 'skipped_no_article', slot: row.slot_no }
-  if (row.status !== 'planned') return { status: 'skipped_already_claimed', slot: row.slot_no }
+  if (!isDeliverableChannelPostRow(row)) return { status: 'skipped_already_claimed', slot: row.slot_no }
   if (!row.article_id || !row.caption || !row.cover_image_url || !row.article_url) {
     return { status: 'skipped_no_article', slot: row.slot_no }
   }
@@ -1151,6 +1159,55 @@ export async function deliverPlannedChannelPost(
     })
     return { status: 'failed', slot: row.slot_no, error: err instanceof Error ? err.message : String(err) }
   }
+}
+
+export function selectDueChannelPostRows(
+  planRows: TelegramChannelPostRow[],
+  requestedSlot: number,
+): TelegramChannelPostRow[] {
+  const slot = parseSlot(requestedSlot)
+  if (!slot) return []
+
+  const sortedRows = [...planRows].sort((a, b) => a.slot_no - b.slot_no)
+  const currentRow = sortedRows.find((row) => row.slot_no === slot) ?? null
+  if (!currentRow) return []
+
+  const rows = sortedRows.filter((row) => row.slot_no <= slot && isDeliverableChannelPostRow(row))
+  if (!rows.some((row) => row.slot_no === slot)) rows.push(currentRow)
+  return rows
+}
+
+export async function deliverDueChannelPostRows(
+  supabase: ChannelPostSupabase,
+  planRows: TelegramChannelPostRow[],
+  requestedSlot: number,
+  botToken: string,
+  sendPhoto = sendTelegramPhoto,
+): Promise<ChannelPostResult> {
+  const slot = parseSlot(requestedSlot)
+  if (!slot) return { status: 'preflight_failed', reason: 'slot must be 1..5' }
+
+  const rows = selectDueChannelPostRows(planRows, slot)
+  if (rows.length === 0) return { status: 'skipped_no_plan', slot }
+
+  let requestedResult: ChannelPostResult | null = null
+  let firstFailure: ChannelPostResult | null = null
+  let firstSuccess: ChannelPostResult | null = null
+  let lastResult: ChannelPostResult | null = null
+
+  for (const row of rows) {
+    const result = await deliverPlannedChannelPost(supabase, row, botToken, sendPhoto)
+    const mode = row.slot_no === slot ? 'requested' : 'catchup'
+    log(`Telegram channel post slot=${row.slot_no} ${mode} result=${result.status}`)
+    if (row.slot_no === slot) requestedResult = result
+    if (result.status === 'failed' && !firstFailure) firstFailure = result
+    if (result.status === 'success' && !firstSuccess) firstSuccess = result
+    lastResult = result
+  }
+
+  if (firstFailure) return firstFailure
+  if (requestedResult && requestedResult.status !== 'skipped_already_sent') return requestedResult
+  return firstSuccess ?? requestedResult ?? lastResult ?? { status: 'skipped_no_plan', slot }
 }
 
 export async function runChannelPost(slotNo: number): Promise<ChannelPostResult> {
@@ -1184,12 +1241,7 @@ export async function runChannelPost(slotNo: number): Promise<ChannelPostResult>
     channelId,
     siteUrl,
   })
-  const row = planRows.find((item) => item.slot_no === slot) ?? null
-  if (!row) return { status: 'skipped_no_plan', slot }
-
-  const result = await deliverPlannedChannelPost(supabase, row, botToken)
-  log(`Telegram channel post slot=${slot} result=${result.status}`)
-  return result
+  return deliverDueChannelPostRows(supabase, planRows, slot, botToken)
 }
 
 export const _internals = {
@@ -1200,5 +1252,7 @@ export const _internals = {
   captionHash,
   articleUrl,
   inferTelegramPhotoContentType,
+  isDeliverableChannelPostRow,
+  selectDueChannelPostRows,
   telegramPhotoFilename,
 }

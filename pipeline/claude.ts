@@ -4,6 +4,7 @@ import { findStaleHallucinatedYears } from '../lib/year-sanitizer'
 import { writeLlmUsageLog } from './llm-usage'
 import { estimateTextCostUsd } from './model-pricing'
 import { detectRiskFlagsFromText } from './risk-flags'
+import { validateArticleTitle } from './title-quality'
 
 export const MODEL = 'claude-sonnet-4-6'
 export const MAX_TOKENS = 4000
@@ -68,7 +69,7 @@ const SYSTEM_PROMPT = `Ты — выпускающий редактор русс
 Сгенерируй строго JSON со следующими полями:
 
 {
-  "ru_title": string,            // до 90 символов, русский, без кликбейта и без точки в конце
+  "ru_title": string,            // 20–90 символов, русский, законченный заголовок; не обрывай на предлоге/союзе и не ставь точку в конце
   "lead": string,                 // 1–2 предложения, 200–360 символов, с фактом в первой фразе
   "summary": string[],            // 3–5 буллетов, каждый 60–180 символов, по одному факту в каждом
   "card_teaser": string,          // 1 строка, 80–140 символов, чтобы кликнули на карточку
@@ -456,7 +457,10 @@ export function validateEditorialDetailed(
   }
 
   if (typeof out.ru_title !== 'string') errors.push('ru_title не string')
-  else if (out.ru_title.length < 20 || out.ru_title.length > 90) errors.push(`ru_title длина ${out.ru_title.length}`)
+  else {
+    const titleValidation = validateArticleTitle(out.ru_title)
+    if (!titleValidation.ok && titleValidation.error) errors.push(titleValidation.error)
+  }
 
   if (typeof out.lead !== 'string') errors.push('lead не string')
   else {

@@ -3,6 +3,21 @@ import { getServerClient } from '../../../../lib/supabase'
 
 const VERIFYABLE_STATUSES = ['publish_ready', 'verifying', 'live', 'verification_failed'] as const
 
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
+type RouteContext = {
+  params: Promise<{ slug: string }>
+}
+
+export async function HEAD(request: NextRequest, context: RouteContext): Promise<NextResponse> {
+  return handleInternalArticleVerify(request, context)
+}
+
+export async function GET(request: NextRequest, context: RouteContext): Promise<NextResponse> {
+  return handleInternalArticleVerify(request, context)
+}
+
 function isAuthorized(request: NextRequest): boolean {
   const expected = process.env.PUBLISH_VERIFY_SECRET
   if (!expected) return false
@@ -13,8 +28,7 @@ function isAuthorized(request: NextRequest): boolean {
 }
 
 async function resolveArticle(slug: string) {
-  const supabase = getServerClient()
-  const { data, error } = await supabase
+  const { data, error } = await getServerClient()
     .from('articles')
     .select('id, slug, publish_status, verified_live')
     .eq('slug', slug)
@@ -23,49 +37,39 @@ async function resolveArticle(slug: string) {
     .in('publish_status', [...VERIFYABLE_STATUSES])
     .maybeSingle()
 
-  if (error) {
-    throw error
-  }
-
+  if (error) throw error
   return data
 }
 
-export async function GET(
-  request: NextRequest,
-  context: { params: Promise<{ slug: string }> },
-) {
+async function handleInternalArticleVerify(request: NextRequest, context: RouteContext): Promise<NextResponse> {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
 
-  const { slug } = await context.params
-  const article = await resolveArticle(slug)
-  if (!article) {
-    return NextResponse.json({ error: 'not_found' }, { status: 404 })
+  const { slug: rawSlug } = await context.params
+  const slug = decodeURIComponent(rawSlug ?? '').trim()
+  if (!slug) return NextResponse.json({ error: 'not_found' }, { status: 404 })
+
+  let article
+  try {
+    article = await resolveArticle(slug)
+  } catch {
+    return NextResponse.json({ error: 'article_lookup_failed' }, { status: 500 })
+  }
+  if (!article) return NextResponse.json({ error: 'not_found' }, { status: 404 })
+
+  if (request.method === 'GET') {
+    return NextResponse.json({
+      ok: true,
+      id: article.id,
+      slug: article.slug,
+      publish_status: article.publish_status,
+      verified_live: article.verified_live,
+    }, { headers: { 'Cache-Control': 'no-store' } })
   }
 
-  return NextResponse.json({
-    ok: true,
-    id: article.id,
-    slug: article.slug,
-    publish_status: article.publish_status,
-    verified_live: article.verified_live,
+  return new NextResponse(null, {
+    status: 200,
+    headers: { 'Cache-Control': 'no-store' },
   })
-}
-
-export async function HEAD(
-  request: NextRequest,
-  context: { params: Promise<{ slug: string }> },
-) {
-  if (!isAuthorized(request)) {
-    return new Response(null, { status: 401 })
-  }
-
-  const { slug } = await context.params
-  const article = await resolveArticle(slug)
-  if (!article) {
-    return new Response(null, { status: 404 })
-  }
-
-  return new Response(null, { status: 200 })
 }

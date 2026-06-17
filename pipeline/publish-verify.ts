@@ -323,9 +323,14 @@ async function publishVerify(): Promise<void> {
     .order('verified_live_at', { ascending: true })
     .limit(5)
 
-  const newCandidates = (candidates ?? []) as Article[]
-  const legacyCandidates = (legacyBackfill ?? []) as Article[]
+  let newCandidates = (candidates ?? []) as Article[]
+  let legacyCandidates = (legacyBackfill ?? []) as Article[]
   const liveCheck = (liveSample ?? []) as Article[]
+  if ((newCandidates.length > 0 || legacyCandidates.length > 0) && !process.env.PUBLISH_VERIFY_SECRET) {
+    log('PUBLISH_VERIFY_SECRET missing; pre-live verify skipped to avoid false 401 warnings')
+    newCandidates = []
+    legacyCandidates = []
+  }
   const toVerify = [...newCandidates, ...legacyCandidates, ...liveCheck]
 
   if (!toVerify.length) {
