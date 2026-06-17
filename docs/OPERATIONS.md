@@ -172,6 +172,12 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
 
 `NEXT_PUBLIC_SITE_URL` (и любые другие host-env) **обязательно** читать через `readSiteUrlFromEnv()` из `lib/site.ts`. Helper делает `trim()`, срезает trailing `/`, и валидирует формат `^https?://[^\s]+$`. Сырое чтение `process.env.NEXT_PUBLIC_SITE_URL` запрещено.
 
+Публичные CTA/social URL из `NEXT_PUBLIC_*` тоже нельзя подставлять в `href` сырым env-значением.
+Для таких ссылок использовать `readPublicUrlFromEnv()` / готовые константы из `lib/site.ts`
+(`TELEGRAM_CHANNEL_URL`, `PERSONAL_TELEGRAM_URL`): helper делает `trim()`, срезает trailing `/`
+и валидирует отсутствие whitespace. Это защищает `/services`, `AuthorCard` и guide CTA от
+Vercel env values с accidental trailing newline.
+
 Почему: 2026-05-04 в Vercel UI значение `NEXT_PUBLIC_SITE_URL` сохранилось с trailing `\n` (вероятно, при сохранении ввели Enter в поле значения). Старая нормализация `(env ?? '').replace(/\/$/, '')` срезала только slash, `\n` доезжал до `<a href="...">` в Telegram-дайджесте, ссылка переставала быть кликабельной (HTML parse ломался на whitespace внутри атрибута). Helper кидает на любой невалидный формат — preflight дайджеста после этого вернёт `preflight_failed` вместо тихой отправки битой разметки.
 
 ## GitHub Actions

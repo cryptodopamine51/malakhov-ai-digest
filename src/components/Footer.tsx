@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { TELEGRAM_CHANNEL_URL } from '../../lib/site'
 
 const NAV_MAIN = [
   { href: '/',         label: 'Главная' },
@@ -24,8 +25,6 @@ const NAV_TOPICS = [
 ]
 
 export default function Footer() {
-  const tgUrl = process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL ?? 'https://t.me/malakhovaidigest'
-
   return (
     <footer className="bg-footer text-white/70 mt-16">
       <div className="mx-auto max-w-6xl px-4 py-12">
@@ -38,7 +37,7 @@ export default function Footer() {
               Лучшие новости об ИИ на русском языке каждый день
             </p>
             <a
-              href={tgUrl}
+              href={TELEGRAM_CHANNEL_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 rounded border border-white/20 px-4 py-2 text-sm text-white hover:bg-white/10 transition-colors"

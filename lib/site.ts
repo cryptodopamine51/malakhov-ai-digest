@@ -16,10 +16,16 @@ export const SITE_SAME_AS: string[] = [SITE_TELEGRAM_URL]
 //   - SITE_TELEGRAM_URL / TELEGRAM_CHANNEL_URL → @malakhovaidigest (content channel)
 //   - PERSONAL_TELEGRAM_URL → @iddopamine (owner's personal account, brand/sales)
 // Both read from env with safe production fallbacks.
-export const TELEGRAM_CHANNEL_URL =
-  process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL ?? SITE_TELEGRAM_URL
-export const PERSONAL_TELEGRAM_URL =
-  process.env.NEXT_PUBLIC_PERSONAL_TELEGRAM_URL ?? 'https://t.me/iddopamine'
+export const TELEGRAM_CHANNEL_URL = readPublicUrlFromEnv(
+  process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL,
+  SITE_TELEGRAM_URL,
+  'NEXT_PUBLIC_TELEGRAM_CHANNEL_URL',
+)
+export const PERSONAL_TELEGRAM_URL = readPublicUrlFromEnv(
+  process.env.NEXT_PUBLIC_PERSONAL_TELEGRAM_URL,
+  'https://t.me/iddopamine',
+  'NEXT_PUBLIC_PERSONAL_TELEGRAM_URL',
+)
 
 // Owner's services live on the separate landing malakhovai.ru. The news domain
 // surfaces them via the indexable /services page, which links onward here.
@@ -53,6 +59,21 @@ export const EDITOR_KNOWS_ABOUT: string[] = [
 export function absoluteUrl(path = '/'): string {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   return `${SITE_URL}${normalizedPath}`
+}
+
+export function readPublicUrlFromEnv(
+  envValue: string | undefined,
+  fallback: string,
+  variableName: string,
+): string {
+  const raw = (envValue ?? fallback).trim()
+  const cleaned = raw.replace(/\/+$/, '')
+  if (!/^https?:\/\/[^\s]+$/.test(cleaned)) {
+    throw new Error(
+      `${variableName} is malformed: ${JSON.stringify(envValue ?? fallback)} — expected http(s)://host with no whitespace`,
+    )
+  }
+  return cleaned
 }
 
 // Reads a site-URL env value defensively: strips surrounding whitespace

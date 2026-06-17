@@ -1,6 +1,6 @@
-export default function TelegramCTA() {
-  const url = process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL ?? 'https://t.me/malakhovaidigest'
+import { TELEGRAM_CHANNEL_URL } from '../../lib/site'
 
+export default function TelegramCTA() {
   return (
     <div className="my-8 flex flex-col sm:flex-row items-start sm:items-center gap-4 rounded border border-line bg-surface px-5 py-5">
       <svg
@@ -18,7 +18,7 @@ export default function TelegramCTA() {
         <p className="text-xs text-muted mt-0.5">Ежедневный дайджест лучших материалов об ИИ</p>
       </div>
       <a
-        href={url}
+        href={TELEGRAM_CHANNEL_URL}
         target="_blank"
         rel="noopener noreferrer"
         className="flex-shrink-0 rounded border border-ink px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-ink hover:text-[var(--base)]"
