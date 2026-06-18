@@ -68,7 +68,7 @@ export function scoreArticle(article: Article): number {
 
   if (aiLabMatch && hasMajorAnnouncementSignal(article)) score += 2
 
-  if (article.topics?.includes('ai-russia')) score += 1
+  if (articleHasCategory(article, 'ai-russia')) score += 1
 
   if ((article.original_text?.length ?? 0) > 200) score += 1
 

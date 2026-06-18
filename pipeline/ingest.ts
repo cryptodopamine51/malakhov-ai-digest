@@ -14,7 +14,7 @@ config({ path: resolve(process.cwd(), '.env.local') })
 
 import { fetchAllFeeds, summarizeRejected, type ParsedItem, type RssRejectedSummary, type SourceFeedResult } from './rss-parser'
 import { getServerClient } from '../lib/supabase'
-import { splitTopicsToCategories } from '../lib/categories'
+import { resolveArticleCategories } from '../lib/categories'
 
 const DEFAULT_MAX_AGE_MINUTES = 6 * 60
 
@@ -79,14 +79,18 @@ async function insertArticle(
   }
 
   const now = new Date().toISOString()
-  const { primary, secondary } = splitTopicsToCategories(item.topics)
+  const { primary, secondary, topics } = resolveArticleCategories({
+    topics: item.topics,
+    title: item.originalTitle,
+    snippet: item.snippet,
+  })
   const { error: insertError } = await supabase.from('articles').insert({
     original_url: item.originalUrl,
     original_title: item.originalTitle,
     original_text: null,
     source_name: item.sourceName,
     source_lang: item.sourceLang,
-    topics: item.topics,
+    topics,
     primary_category: primary,
     secondary_categories: secondary,
     pub_date: item.pubDate,
