@@ -58,7 +58,7 @@ function PulseListItem({ article }: { article: Article }) {
             <span className="font-medium">{TOPIC_LABELS[topic] ?? topic}</span>
           )}
           {topic && <span aria-hidden>·</span>}
-          <RelativeTime date={date} className="font-mono" />
+          <RelativeTime date={date} />
         </div>
         <h3 className="line-clamp-3 text-[15px] font-semibold leading-snug text-ink transition-colors group-hover:text-accent">
           {title}

@@ -7,17 +7,25 @@ import { useState, useEffect } from 'react'
 import { cn } from '../../lib/utils'
 import ThemeToggle from './ThemeToggle'
 
-const NAV_LINKS = [
+const PRIMARY_NAV_LINKS = [
   { href: '/',                          label: 'Главная' },
   { href: '/guides',                    label: 'Гайды' },
   { href: '/services',                  label: 'Услуги' },
+  { href: '/russia',                    label: 'Россия' },
+  { href: '/categories/coding',         label: 'Код' },
+]
+
+const CATEGORY_NAV_LINKS = [
   { href: '/categories/ai-industry',    label: 'Индустрия' },
   { href: '/categories/ai-research',    label: 'Исследования' },
   { href: '/categories/ai-labs',        label: 'Лаборатории' },
   { href: '/categories/ai-investments', label: 'Инвестиции' },
   { href: '/categories/ai-startups',    label: 'Стартапы' },
-  { href: '/russia',                    label: 'Россия' },
-  { href: '/categories/coding',         label: 'Код' },
+]
+
+const MOBILE_NAV_LINKS = [
+  ...PRIMARY_NAV_LINKS,
+  ...CATEGORY_NAV_LINKS,
 ]
 
 export default function Header() {
@@ -69,13 +77,13 @@ export default function Header() {
         </Link>
 
         {/* Десктопная навигация */}
-        <nav className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 lg:flex">
-          {NAV_LINKS.map((link) => (
+        <nav className="hidden min-w-0 flex-1 items-center justify-center gap-1 lg:flex">
+          {PRIMARY_NAV_LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
               className={cn(
-                'rounded px-2 py-1.5 text-[10px] font-sans font-medium uppercase tracking-[0.06em] transition-colors xl:px-3 xl:text-[11px]',
+                'rounded px-2.5 py-1.5 text-[10px] font-sans font-medium uppercase tracking-[0.06em] transition-colors xl:px-3 xl:text-[11px]',
                 pathname === link.href
                   ? 'text-ink font-semibold'
                   : 'text-muted hover:text-ink'
@@ -84,6 +92,37 @@ export default function Header() {
               {link.label}
             </Link>
           ))}
+          <div className="group relative">
+            <button
+              type="button"
+              className={cn(
+                'flex items-center gap-1 rounded px-2.5 py-1.5 text-[10px] font-sans font-medium uppercase tracking-[0.06em] transition-colors xl:px-3 xl:text-[11px]',
+                CATEGORY_NAV_LINKS.some((link) => pathname === link.href)
+                  ? 'text-ink font-semibold'
+                  : 'text-muted hover:text-ink'
+              )}
+              aria-haspopup="true"
+            >
+              Разделы
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            <div className="invisible absolute left-1/2 top-full z-50 mt-2 w-56 -translate-x-1/2 border border-line bg-base p-2 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+              {CATEGORY_NAV_LINKS.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={cn(
+                    'block rounded px-3 py-2 text-[12px] font-medium text-muted transition-colors hover:bg-surface hover:text-ink',
+                    pathname === link.href && 'bg-surface text-ink'
+                  )}
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </div>
+          </div>
         </nav>
 
         {/* Правые иконки */}
@@ -116,7 +155,7 @@ export default function Header() {
       {menuOpen && (
         <nav className="border-t border-line bg-base px-4 py-3 lg:hidden">
           <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
-            {NAV_LINKS.map((link) => (
+            {MOBILE_NAV_LINKS.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
