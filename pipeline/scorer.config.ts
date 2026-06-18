@@ -6,12 +6,20 @@ export const CATEGORY_MIN_SCORE_FOR_CLAUDE: Partial<Record<string, number>> = {
   'ai-research': 4,
 }
 
+function unique(values: string[]): string[] {
+  return [...new Set(values)]
+}
+
 export function getArticleCategories(article: Pick<Article, 'primary_category' | 'secondary_categories' | 'topics'>): string[] {
-  return [
+  const canonicalCategories = [
     article.primary_category,
     ...(article.secondary_categories ?? []),
-    ...(article.topics ?? []),
   ].filter((category): category is string => typeof category === 'string' && category.length > 0)
+
+  if (canonicalCategories.length > 0) return unique(canonicalCategories)
+
+  return unique((article.topics ?? [])
+    .filter((category): category is string => typeof category === 'string' && category.length > 0))
 }
 
 export function articleHasCategory(

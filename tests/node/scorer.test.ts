@@ -152,6 +152,29 @@ test('ai-russia bonus is no longer duplicated by source_lang', () => {
   assert.ok(scoreArticle(enArticle) >= scoreArticle(ruArticle))
 })
 
+test('ai-russia bonus follows canonical categories, not stale legacy topics', () => {
+  const canonicalIndustry = article({
+    original_title: 'Французская разведка отказывается от ИИ Palantir',
+    original_text: 'Французская спецслужба меняет поставщика аналитических инструментов.'.repeat(30),
+    source_name: 'CNews',
+    source_lang: 'ru',
+    primary_category: 'ai-industry',
+    secondary_categories: [],
+    topics: ['ai-russia'],
+  })
+  const canonicalRussia = article({
+    original_title: 'Французская разведка отказывается от ИИ Palantir',
+    original_text: 'Французская спецслужба меняет поставщика аналитических инструментов.'.repeat(30),
+    source_name: 'CNews',
+    source_lang: 'ru',
+    primary_category: 'ai-russia',
+    secondary_categories: [],
+    topics: ['ai-industry'],
+  })
+
+  assert.equal(scoreArticle(canonicalRussia), scoreArticle(canonicalIndustry) + 1)
+})
+
 test('AI/template/stock covers do not award the cover bonus', () => {
   const withRealCover = scoreArticle(article({
     cover_image_url: 'https://leonardo.osnova.io/uuid/-/scale_crop/592x/',
