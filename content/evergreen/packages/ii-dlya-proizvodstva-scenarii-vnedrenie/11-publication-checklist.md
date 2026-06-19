@@ -4,7 +4,7 @@
 
 - [x] Search intent answered in the first screen.
 - [x] Article has a clear practical result for the reader.
-- [x] No invented numbers, prices, product functions, or client cases.
+- [x] No invented numbers, prices, product functions, or client cases are presented as facts; the worked example is labeled as conditional before its first input.
 - [x] Claims in `03-source-notes.md` are checked.
 - [x] Banned phrases from `docs/editorial_style_guide.md` removed from final article and metadata.
 - [x] `Вывод Malakhov AI` is specific and useful.
