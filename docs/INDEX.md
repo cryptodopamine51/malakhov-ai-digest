@@ -35,8 +35,10 @@ npm run context
 - `docs/spec_*`
 - `docs/task_*`
 - `docs/execution_plan_*`
+- `docs/implementation_plan_*`
 - `docs/implementation_wave_*`
 - `docs/roadmap_*`
+- `docs/wordstat_*`
 - `docs/acceptance_criteria_*`
 - `docs/file_map_*`
 - `docs/*_audit_*`
