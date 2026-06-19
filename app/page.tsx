@@ -62,11 +62,11 @@ export default async function HomePage() {
             Ежедневная редакционная лента
           </p>
           <h1 className="max-w-4xl font-serif text-[42px] font-extrabold leading-[0.95] text-ink sm:text-[56px] lg:text-[68px]">
-            AI-новости на русском без визуального шума
+            AI-новости на русском
           </h1>
           <p className="mt-5 max-w-2xl text-[17px] font-medium leading-relaxed text-hero-muted md:text-[19px]">
             Релизы моделей, исследования, сделки, российский рынок и инструменты для работы
-            с ИИ — в одном спокойном редакционном потоке.
+            с ИИ — в одном редакционном потоке.
           </p>
           <div className="mt-6 flex flex-wrap gap-x-6 gap-y-3 border-t border-line pt-5 text-sm text-muted">
             {total > 0 && (
