@@ -964,6 +964,7 @@ async function routeArticle(params: {
   const validationContext = {
     originalTitle: article.original_title,
     originalText: sourceContext.originalText,
+    primaryCategory: article.primary_category,
   }
   let parsed = parseRepairValidateEditorial(writer.text, validationContext)
   let repairCost = 0

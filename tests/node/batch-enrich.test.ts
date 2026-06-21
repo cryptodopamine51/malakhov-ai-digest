@@ -249,6 +249,14 @@ test('validateEditorial rejects stale year hallucination when source does not co
   assert.equal(allowed.errors.some((error) => error.includes('галлюцинация прошедшего года')), false)
 })
 
+test('validateEditorial enforces the longer ai-research body before apply', () => {
+  const parsed = parseEditorialJson(VALID_EDITORIAL_JSON)!
+  parsed.editorial_body = parsed.editorial_body.slice(0, 1450)
+  const validation = validateEditorialDetailed(parsed, { primaryCategory: 'ai-research' })
+  assert.equal(validation.ok, false)
+  assert.ok(validation.errors.some((error) => error.includes('ai-research editorial_body')))
+})
+
 test('normalizeBatchResult extracts text and usage for succeeded item', () => {
   const normalized = normalizeBatchResult({
     custom_id: 'article:article-1:attempt:1:item:item-1',

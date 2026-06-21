@@ -189,6 +189,7 @@ export interface EditorialValidationResult {
 export interface EditorialValidationContext {
   originalTitle?: string | null
   originalText?: string | null
+  primaryCategory?: string | null
   now?: Date
 }
 
@@ -492,6 +493,9 @@ export function validateEditorialDetailed(
     errors.push('editorial_body не string')
   } else {
     if (out.editorial_body.length < 1200) errors.push(`editorial_body слишком короткий: ${out.editorial_body.length}`)
+    if (context.primaryCategory === 'ai-research' && out.editorial_body.length < 1500) {
+      errors.push(`ai-research editorial_body длина ${out.editorial_body.length}, минимум 1500`)
+    }
     if (out.editorial_body.split('\n\n').filter((paragraph) => paragraph.trim()).length < 3) {
       errors.push('editorial_body меньше 3 абзацев')
     }

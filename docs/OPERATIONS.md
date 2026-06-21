@@ -857,6 +857,7 @@ npm run editorial:routing -- --limit=5 --mode=balanced --apply
 - `--apply` claim-ит статьи через общий article lease и не берёт строки с active Anthropic Batch ownership;
 - scheduled `enrich.yml` запускает `npm run editorial:routing -- --mode=deepseek-only --limit=15 --apply --deepseek-daily-budget=1` каждые 30 минут;
 - `deepseek-only` обрабатывает все категории и risk flags через DeepSeek; provider/validation failure остаётся в bounded retry, Anthropic fallback запрещён;
+- для `ai-research` strict validation требует минимум 1500 символов body до apply; короткий ответ сначала идёт в DeepSeek repair/retry;
 - `cheap` применяет DeepSeek только после deterministic repair + strict validation; hard failures и `quality_ok=false` уходят в `editorial_premium_fallback`;
 - `balanced` добавляет compact Claude reviewer для high-score/money risk; reviewer reject или parse fail тоже уходит в `editorial_premium_fallback`;
 - high-risk rollout guards: `ai-research`, legal/regulation, medical и geopolitics не идут напрямую через DeepSeek;
