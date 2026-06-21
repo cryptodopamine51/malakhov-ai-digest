@@ -151,12 +151,13 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
 Аварийные/настроечные переменные:
 
 - `PUBLISH_RPC_DISABLED=1` — только emergency bypass для `publish-verify`: временно возвращает legacy update вместо RPC `publish_article` и поднимает warning alert `publish_rpc_bypass_active`.
-- `EDITORIAL_ROUTING_MODE=cheap|balanced|premium` — experimental multi-provider routing surface. Default должен оставаться `premium`, то есть текущий Claude Batch path.
+- `EDITORIAL_ROUTING_MODE=deepseek-only|cheap|balanced|premium` — production default `deepseek-only`; остальные режимы оставлены только для ручного сравнения.
 - `EDITORIAL_WRITER_PROVIDER=deepseek|anthropic` — override writer provider для routing lab/будущего worker-а. Для production без явного cutover не задавать.
 - `EDITORIAL_REVIEW_POLICY=none|selective|always` — политика compact Claude reviewer. Default для `cheap` и `premium` — none; для `balanced` — selective.
 - `EDITORIAL_SOURCE_TEXT_CAP` — cap исходного текста в Anthropic premium prompt; default `15000`. Текст режется по границе абзаца/слова и завершается маркером `[текст сокращён]`.
 - `DEEPSEEK_REPAIR_MODEL` — модель дешёвого repair-pass для распарсенного editorial JSON, который провалил deterministic validator. Default наследуется от DeepSeek writer model.
-- `DEEPSEEK_DAILY_BUDGET_USD` — hard logical cap для `editorial:routing --apply`; default в workflow `$0.25`.
+- `DEEPSEEK_EDITORIAL_MAX_TOKENS` — лимит writer response; default `6000`. При `finish_reason=length` runner делает один компактный повтор.
+- `DEEPSEEK_DAILY_BUDGET_USD` — hard logical cap для `editorial:routing --apply`; production workflow задаёт `$1`.
 - `DEEPSEEK_TELEGRAM_CAPTION_MODEL` — модель для Telegram channel captions; default `deepseek-v4-flash`.
 - `DEEPSEEK_TELEGRAM_CAPTION_DAILY_BUDGET_USD` — отдельный hard cap для Telegram captions; default `$0.05` в сутки.
 - `DEEPSEEK_TELEGRAM_CAPTION_TIMEOUT_MS` — timeout одного caption-call; default `45000`.
@@ -166,7 +167,7 @@ Vercel автоматически добавляет `Authorization: Bearer ${CR
 - `TELEGRAM_OWNER_USER_ID` — Telegram user id владельца, которому разрешены one-tap quality feedback callbacks. Если не задан, route может проверить `TELEGRAM_OWNER_USERNAME` или использовать `TELEGRAM_ADMIN_CHAT_ID` как chat fallback.
 - `TELEGRAM_OWNER_USERNAME` — optional username владельца без `@` или с ним; fallback для quality feedback callbacks, если user id заранее неизвестен.
 - `TELEGRAM_FEEDBACK_SECRET_TOKEN` — secret token Telegram webhook-а `/api/tg-feedback`. Если не задан, используется `CRON_SECRET`.
-- `TELEGRAM_IMMEDIATE_ALERT_MIN_SEVERITY=critical|warning|info|none` — порог мгновенных Telegram-пушей из `fireAlert`. Default `critical`: warning/info пишутся в `pipeline_alerts`, но не шумят в чат до утренне-вечерней ops-сводки.
+- `TELEGRAM_IMMEDIATE_ALERT_MIN_SEVERITY=critical|warning|info|none` — порог мгновенных Telegram-пушей из `fireAlert`. Default `none`: все ошибки остаются в `pipeline_alerts` и ops-сводке, но не приходят отдельными сообщениями.
 - `TELEGRAM_IMMEDIATE_ALERT_TYPES=alert_a,alert_b` — точечный allow-list типов, которые нужно отправлять мгновенно независимо от severity.
 
 ### Инвариант для URL-переменных
@@ -223,8 +224,8 @@ Vercel env values с accidental trailing newline.
 
 Рекомендуется сделать оба job'а required status checks для ветки `main`.
 
-DeepSeek editorial routing runs from `enrich.yml` in `cheap` mode. Anthropic Batch remains the
-fallback path and is still collected by `enrich-collect-batch.yml`.
+DeepSeek editorial routing runs from `enrich.yml` in `deepseek-only` mode. Risk flags,
+validator re-rolls and provider errors never route production articles to Anthropic.
 `enrich.yml` and `ai-covers.yml` use GitHub Actions concurrency groups so scheduled runs do not
 overlap when provider latency is high.
 
@@ -407,13 +408,10 @@ npm run tg-channel-post -- --slot=1
 
 ### Pipeline alerts
 
-Мгновенные Telegram-пуши из `pipeline/alerts.ts::fireAlert` по умолчанию уходят
-только для `severity='critical'`. `warning` и `info` остаются в `pipeline_alerts`
-с cooldown/dedup и попадают в регулярную ops-сводку. Это снижает шум: оператор
-получает два плановых отчёта в день, а вне расписания — только действительно
-критичные события. Для временного усиления шума можно поставить
-`TELEGRAM_IMMEDIATE_ALERT_MIN_SEVERITY=warning` или добавить конкретный тип в
-`TELEGRAM_IMMEDIATE_ALERT_TYPES`.
+Мгновенные Telegram-пуши из `pipeline/alerts.ts::fireAlert` по умолчанию выключены.
+Все severity остаются в `pipeline_alerts` с cooldown/dedup и попадают в регулярную
+ops-сводку. Для временного включения поставить `TELEGRAM_IMMEDIATE_ALERT_MIN_SEVERITY=critical`
+или добавить конкретный тип в `TELEGRAM_IMMEDIATE_ALERT_TYPES`.
 
 - `anthropic_unavailable` — critical, cooldown 1 час, entity `anthropic`. Это одновременно
   operator alert и persisted degraded-флаг: все cron-workers читают open alert
@@ -848,6 +846,7 @@ Modes:
 
 ```bash
 npm run editorial:routing -- --limit=5
+npm run editorial:routing -- --limit=5 --mode=deepseek-only --apply
 npm run editorial:routing -- --limit=5 --mode=cheap --apply
 npm run editorial:routing -- --limit=5 --mode=balanced --apply
 ```
@@ -856,7 +855,8 @@ npm run editorial:routing -- --limit=5 --mode=balanced --apply
 
 - default mode — dry-run: выбирает eligible `pending`/`retry_wait`, fetch-ит источник и показывает план, но не вызывает провайдеров и не пишет в Supabase;
 - `--apply` claim-ит статьи через общий article lease и не берёт строки с active Anthropic Batch ownership;
-- scheduled `enrich.yml` запускает `npm run editorial:routing -- --mode=cheap --limit=15 --apply --deepseek-daily-budget=0.25` каждые 30 минут;
+- scheduled `enrich.yml` запускает `npm run editorial:routing -- --mode=deepseek-only --limit=15 --apply --deepseek-daily-budget=1` каждые 30 минут;
+- `deepseek-only` обрабатывает все категории и risk flags через DeepSeek; provider/validation failure остаётся в bounded retry, Anthropic fallback запрещён;
 - `cheap` применяет DeepSeek только после deterministic repair + strict validation; hard failures и `quality_ok=false` уходят в `editorial_premium_fallback`;
 - `balanced` добавляет compact Claude reviewer для high-score/money risk; reviewer reject или parse fail тоже уходит в `editorial_premium_fallback`;
 - high-risk rollout guards: `ai-research`, legal/regulation, medical и geopolitics не идут напрямую через DeepSeek;

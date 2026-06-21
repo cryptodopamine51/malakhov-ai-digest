@@ -353,7 +353,7 @@ async function runClaudeFull(article: ArticleRow, originalText: string): Promise
   const request = requestFor(article, originalText)
   const params = {
     model: args.claudeModel,
-    max_tokens: 4000,
+    max_tokens: 6000,
     temperature: 0.4,
     system: buildEditorialSystemPrompt(),
     messages: [{ role: 'user' as const, content: buildEditorialUserMessage(request) }],
@@ -666,7 +666,7 @@ async function runHybrid(article: ArticleRow, originalText: string): Promise<Mod
   const polish = polishPrompt(article, originalText, draft.text)
   const polishMessage = await anthropic.messages.create({
     model: args.claudeModel,
-    max_tokens: 4000,
+    max_tokens: 6000,
     temperature: 0.2,
     system: polish.system,
     messages: [{ role: 'user', content: polish.user }],

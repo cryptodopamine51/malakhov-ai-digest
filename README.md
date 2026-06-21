@@ -14,7 +14,7 @@
 - **БД:** Supabase (PostgreSQL, таблица `articles`)
 - **Пайплайн:** GitHub Actions → `pipeline/*.ts` → Supabase
 - **Telegram:** GitHub Actions (cron 06:00 UTC) → `bot/daily-digest.ts`
-- **Редактор:** Claude Sonnet 4.6 (один вызов = заголовок + лид + тезисы + тело + TG-тизер)
+- **Редактор:** DeepSeek V4 Flash (один вызов = заголовок + лид + тезисы + тело + TG-тизер)
 
 ## Структура
 

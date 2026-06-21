@@ -40,12 +40,12 @@ function restoreEnv(key: string, value: string | undefined): void {
   else process.env[key] = value
 }
 
-test('default immediate Telegram policy sends only critical alerts', () => {
+test('default immediate Telegram policy keeps all alerts in the dashboard only', () => {
   const previous = process.env.TELEGRAM_IMMEDIATE_ALERT_MIN_SEVERITY
   delete process.env.TELEGRAM_IMMEDIATE_ALERT_MIN_SEVERITY
   try {
     assert.equal(_internals.shouldSendImmediateTelegramAlert('warning', 'source_down'), false)
-    assert.equal(_internals.shouldSendImmediateTelegramAlert('critical', 'source_down'), true)
+    assert.equal(_internals.shouldSendImmediateTelegramAlert('critical', 'source_down'), false)
   } finally {
     restoreEnv('TELEGRAM_IMMEDIATE_ALERT_MIN_SEVERITY', previous)
   }
@@ -82,7 +82,7 @@ test('fireAlert writes warning to DB but suppresses immediate Telegram by defaul
 
 test('fireAlert sends critical alert immediately', async () => {
   const previousMin = process.env.TELEGRAM_IMMEDIATE_ALERT_MIN_SEVERITY
-  delete process.env.TELEGRAM_IMMEDIATE_ALERT_MIN_SEVERITY
+  process.env.TELEGRAM_IMMEDIATE_ALERT_MIN_SEVERITY = 'critical'
   const previousFetch = globalThis.fetch
   let fetchCalls = 0
   globalThis.fetch = (async () => {

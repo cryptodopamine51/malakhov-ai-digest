@@ -16,10 +16,12 @@ loadExtraEnv(resolve(process.cwd(), 'malakhov-ai-keys.env'))
 import { getServerClient, type Article } from '../lib/supabase'
 import { buildBatchCustomId, buildBatchRequestParams as buildParams } from '../pipeline/anthropic-batch'
 import {
+  allowsAnthropicFallback,
   buildClaudeReviewerPrompt,
   buildDeterministicEditorialBrief,
   detectEditorialRiskFlags,
   getEditorialRoutingConfig,
+  isTruncatedCompletion,
   parseClaudeReviewerResult,
   shouldReviewWithClaude,
   type ArticleRoutingContext,
@@ -72,7 +74,7 @@ import {
 } from '../pipeline/enrich-submit-batch'
 import { isExhausted, isRetryable, nextRetryAt, type ErrorCode } from '../pipeline/types'
 
-type RoutingMode = Extract<EditorialRoutingMode, 'cheap' | 'balanced' | 'premium'>
+type RoutingMode = Extract<EditorialRoutingMode, 'deepseek-only' | 'cheap' | 'balanced' | 'premium'>
 type RoutingStatus = 'planned' | 'applied' | 'rejected' | 'fallback_queued' | 'failed' | 'skipped'
 
 interface Args {
@@ -106,6 +108,7 @@ interface RoutingResult {
 const MOSCOW_OFFSET = '+03:00'
 const LOW_RISK_FALLBACK_FLAGS = new Set(['research', 'legal_regulation', 'medical', 'geopolitics'])
 const CHEAP_FALLBACK_FLAGS = new Set([...LOW_RISK_FALLBACK_FLAGS, 'high_score'])
+const DEFAULT_DEEPSEEK_MAX_TOKENS = 6000
 
 const args = parseArgs()
 
@@ -121,8 +124,11 @@ function parseArgs(): Args {
     }
   }
 
-  const modeRaw = String(flags.get('mode') ?? 'cheap')
-  const mode: RoutingMode = modeRaw === 'balanced' || modeRaw === 'premium' ? modeRaw : 'cheap'
+  const modeRaw = String(flags.get('mode') ?? 'deepseek-only')
+  const mode: RoutingMode =
+    modeRaw === 'cheap' || modeRaw === 'balanced' || modeRaw === 'premium'
+      ? modeRaw
+      : 'deepseek-only'
 
   return {
     apply: flags.has('apply'),
@@ -182,7 +188,7 @@ function validateApplyEnv(): void {
   if (args.mode !== 'premium' && !process.env.DEEPSEEK_API_KEY) {
     throw new Error('DEEPSEEK_API_KEY is required for editorial routing --apply')
   }
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (allowsAnthropicFallback(args.mode) && !process.env.ANTHROPIC_API_KEY) {
     throw new Error('ANTHROPIC_API_KEY is required because premium fallback must be available')
   }
 }
@@ -533,17 +539,24 @@ async function callDeepSeekWriter(params: {
       const response = await client.chat.completions.create({
         model: args.deepseekModel,
         temperature: 0.4,
-        max_tokens: 4000,
+        max_tokens: numberEnv('DEEPSEEK_EDITORIAL_MAX_TOKENS', DEFAULT_DEEPSEEK_MAX_TOKENS),
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: params.system },
-          { role: 'user', content: params.user },
+          {
+            role: 'user',
+            content: attempt === 1
+              ? params.user
+              : `${params.user}\n\nThe previous response was truncated. Return compact valid JSON: keep editorial_body between 1200 and 1800 characters and avoid unnecessary detail.`,
+          },
         ],
       } as any)
 
       const usage = usageToTotals('deepseek', args.deepseekModel, deepSeekUsage(response.usage))
       totalUsage = addUsageTotals(totalUsage, usage)
       const text = response.choices[0]?.message?.content ?? ''
+      const finishReason = response.choices[0]?.finish_reason ?? null
+      const truncated = isTruncatedCompletion(finishReason)
       await writeLlmUsageLog({
         supabase: params.supabase,
         provider: 'deepseek',
@@ -555,18 +568,24 @@ async function callDeepSeekWriter(params: {
         sourceName: params.article.source_name,
         sourceLang: params.article.source_lang,
         originalTitle: params.article.original_title,
-        resultStatus: text ? 'ok' : 'failed',
+        resultStatus: text && !truncated ? 'ok' : 'failed',
         metadata: {
           mode: args.mode,
           degraded: params.degraded === true,
           attempt,
+          finish_reason: finishReason,
+          truncated,
           prompt_chars: params.system.length + params.user.length,
-          error: text ? null : 'empty_response',
+          error: truncated ? 'response_truncated' : text ? null : 'empty_response',
         },
         usage,
       })
 
-      if (text) return { text, usage: totalUsage, costUsd: totalUsage.estimatedCostUsd, error: null }
+      if (text && !truncated) return { text, usage: totalUsage, costUsd: totalUsage.estimatedCostUsd, error: null }
+      if (truncated) {
+        lastError = 'response truncated at max_tokens'
+        continue
+      }
       lastError = 'empty response'
       if (attempt < 2) continue
     } catch (error) {
@@ -673,12 +692,13 @@ function plannedDeepSeekCost(system: string, user: string): number {
     model: args.deepseekModel,
     usage: {
       inputTokens: approxTokens(`${system}\n${user}`),
-      outputTokens: 2800,
+      outputTokens: 4000,
     },
   })
 }
 
 function shouldFallbackBeforeDeepSeek(mode: RoutingMode, riskFlags: string[]): string | null {
+  if (mode === 'deepseek-only') return null
   if (mode === 'premium') return 'mode_premium'
   const flags = mode === 'cheap' ? CHEAP_FALLBACK_FLAGS : LOW_RISK_FALLBACK_FLAGS
   const matched = riskFlags.filter((flag) => flags.has(flag))
@@ -878,6 +898,17 @@ async function routeArticle(params: {
   }
 
   if (args.deepseekDailyBudgetUsd > 0 && params.spentTodayUsd + estimatedCost > args.deepseekDailyBudgetUsd) {
+    if (!allowsAnthropicFallback(args.mode)) {
+      const failure = await releaseRoutingFailure(
+        params.supabase,
+        article,
+        params.runId,
+        startedAt,
+        'provider_api_error',
+        `deepseek_budget_cap:${args.deepseekDailyBudgetUsd}`,
+      )
+      return resultFor(article, failure === 'retryable' ? 'skipped' : 'failed', `deepseek_budget_cap:${args.deepseekDailyBudgetUsd}`, 0)
+    }
     if (params.anthropicDegraded.active) {
       const failure = await releaseRoutingFailure(
         params.supabase,
@@ -909,16 +940,16 @@ async function routeArticle(params: {
   })
 
   if (!writer.text) {
-    if (params.anthropicDegraded.active) {
+    if (!allowsAnthropicFallback(args.mode) || params.anthropicDegraded.active) {
       const failure = await releaseRoutingFailure(
         params.supabase,
         article,
         params.runId,
         startedAt,
-        'unhandled_error',
-        `deepseek_failed_degraded:${writer.error ?? 'missing_output'}`,
+        'provider_api_error',
+        `deepseek_failed:${writer.error ?? 'missing_output'}`,
       )
-      return resultFor(article, failure === 'retryable' ? 'skipped' : 'failed', `deepseek_failed_degraded:${writer.error ?? 'missing_output'}`, writer.costUsd)
+      return resultFor(article, failure === 'retryable' ? 'skipped' : 'failed', `deepseek_failed:${writer.error ?? 'missing_output'}`, writer.costUsd)
     }
     return queuePremiumFallback({
       supabase: params.supabase,
@@ -962,17 +993,17 @@ async function routeArticle(params: {
     }
   }
   if (!parsed.output || !parsed.validation.ok) {
-    if (params.anthropicDegraded.active) {
+    if (!allowsAnthropicFallback(args.mode) || params.anthropicDegraded.active) {
       const failure = await releaseRoutingFailure(
         params.supabase,
         article,
         params.runId,
         startedAt,
         'editorial_validation_failed',
-        `validator_failed_degraded:${parsed.error ?? 'validation'}`,
+        `validator_failed:${parsed.error ?? 'validation'}`,
       )
       return {
-        ...resultFor(article, failure === 'retryable' ? 'skipped' : 'failed', `validator_failed_degraded:${parsed.error ?? 'validation'}`, writer.costUsd + repairCost),
+        ...resultFor(article, failure === 'retryable' ? 'skipped' : 'failed', `validator_failed:${parsed.error ?? 'validation'}`, writer.costUsd + repairCost),
         validationErrors: parsed.validation.errors,
         validationWarnings: parsed.validation.warnings,
         repairs: parsed.repairs,
@@ -997,7 +1028,7 @@ async function routeArticle(params: {
   }
 
   if (parsed.output.quality_ok === false) {
-    if (params.anthropicDegraded.active) {
+    if (!allowsAnthropicFallback(args.mode) || params.anthropicDegraded.active) {
       await rejectBeforeRouting(
         params.supabase,
         article,
@@ -1007,10 +1038,10 @@ async function routeArticle(params: {
         sourceContext.originalText,
         sourceContext.coverImageUrl,
         parsed.output.quality_reason || 'quality_not_ok',
-        `quality_not_ok_degraded:${parsed.output.quality_reason || 'unspecified'}`,
+        `quality_not_ok:${parsed.output.quality_reason || 'unspecified'}`,
       )
       return {
-        ...resultFor(article, 'rejected', `quality_not_ok_degraded:${parsed.output.quality_reason || 'unspecified'}`, writer.costUsd + repairCost),
+        ...resultFor(article, 'rejected', `quality_not_ok:${parsed.output.quality_reason || 'unspecified'}`, writer.costUsd + repairCost),
         validationWarnings: parsed.validation.warnings,
         repairs: parsed.repairs,
         riskFlags,
@@ -1141,7 +1172,7 @@ async function main(): Promise<void> {
     rejectedBreakdown,
   }
   const spentTodayUsd = args.apply ? await getTodayDeepSeekSpend(supabase) : 0
-  const anthropicDegraded = args.apply
+  const anthropicDegraded = args.apply && allowsAnthropicFallback(args.mode)
     ? await getAnthropicDegradedState(supabase)
     : { active: false, reason: null, firstSeenAt: null, lastSeenAt: null }
   const articles = args.apply

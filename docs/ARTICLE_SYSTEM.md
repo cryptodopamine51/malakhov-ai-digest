@@ -123,7 +123,7 @@ Batch-specific lifecycle не хранится в `articles.enrich_status`.
   List-price сохраняется в `response_payload.estimated_list_cost_usd` и metadata usage-log,
   чтобы можно было сравнить экономию исторически.
 
-### Editorial validation and routing experiments
+### Editorial validation and routing
 
 `pipeline/claude.ts` содержит provider-neutral validator surface:
 
@@ -157,10 +157,10 @@ Lead anchor check (`sentenceHasAnchor`, первое предложение ли
 поднимается в начало лида (до `shortenLead`, без потери контента). `card_teaser` 50-59
 символов считается warning (`card_teaser короткий`), а не hard reject; ниже 50 остаётся ошибкой.
 
-`pipeline/editorial-routing.ts` и `pipeline/editorial-apply.ts` задают fallback-first routing surface
-для scheduled limited rollout:
+`pipeline/editorial-routing.ts` и `pipeline/editorial-apply.ts` задают production routing surface:
 
-- default config без env остаётся `premium` + `anthropic`;
+- default config без env — `deepseek-only` + `deepseek`;
+- `deepseek-only` запрещает Anthropic fallback для всех категорий, risk flags и ошибок;
 - `cheap` выбирает DeepSeek writer без reviewer; `balanced` добавляет selective compact Claude reviewer;
 - `buildDeterministicEditorialBrief()` заменяет дорогой Claude-orchestrator на code/template brief;
 - `shouldReviewWithClaude()` включает reviewer в `balanced` только на validator failure, high score или high-risk topics.
@@ -197,10 +197,14 @@ Lead anchor check (`sentenceHasAnchor`, первое предложение ли
   `retry_wait` с `last_error_code='anthropic_degraded'` до recovery. В этом режиме
   `enrich-submit-batch` не создаёт новые Anthropic Batch jobs.
 
-С 2026-05-11 `enrich.yml` запускает `npm run editorial:routing -- --mode=cheap --limit=15 --apply`
-каждые 30 минут. Это не удаляет Anthropic Batch: high-risk статьи, DeepSeek/API failures,
-validator failures и reviewer rejects по-прежнему создают обычный Anthropic Batch fallback item,
-который обрабатывается текущим `enrich-collect-batch`.
+Production `deepseek-only` обходит premium/degraded ветки: все категории идут в DeepSeek,
+provider/validation failures получают bounded retry, а `quality_ok=false` закрывается обычным
+reject без вызова Claude. `finish_reason='length'` вызывает один компактный повтор с лимитом
+6000 output-токенов, поэтому оборванный JSON не передаётся parser-у.
+
+С 2026-06-21 `enrich.yml` запускает
+`npm run editorial:routing -- --mode=deepseek-only --limit=15 --apply --deepseek-daily-budget=1`
+каждые 30 минут. Anthropic Batch и reviewer оставлены только для ручных сравнительных режимов.
 
 ## Score и publish gate
 

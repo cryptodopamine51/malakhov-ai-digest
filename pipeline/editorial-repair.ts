@@ -269,7 +269,7 @@ async function callDeepSeekRepairCompletion(
   const response = await client.chat.completions.create({
     model,
     temperature: 0.1,
-    max_tokens: 4000,
+    max_tokens: 6000,
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: system },

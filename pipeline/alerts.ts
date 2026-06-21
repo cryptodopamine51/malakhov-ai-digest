@@ -57,10 +57,9 @@ function hasTelegramAlertTarget(opts: Pick<AlertPayload, 'botToken' | 'adminChat
  * Fires an alert. Skips if an identical alert was fired within its cooldown window.
  * Returns true only when an immediate Telegram notification was sent.
  *
- * By default, immediate Telegram notifications are reserved for critical alerts.
- * Warning/info alerts are still written to `pipeline_alerts` and are included in
- * the morning/evening ops report. Override with
- * TELEGRAM_IMMEDIATE_ALERT_MIN_SEVERITY=warning|info|none when needed.
+ * By default, alerts are persisted but do not interrupt the owner in Telegram.
+ * Use TELEGRAM_IMMEDIATE_ALERT_MIN_SEVERITY=critical|warning|info or the explicit
+ * TELEGRAM_IMMEDIATE_ALERT_TYPES allow-list when an immediate push is required.
  */
 export async function fireAlert(opts: AlertPayload): Promise<boolean> {
   const { supabase, alertType, severity, entityKey, message, payload = {} } = opts
@@ -216,7 +215,7 @@ function shouldSendImmediateTelegramAlert(severity: AlertPayload['severity'], al
     .filter(Boolean)
   if (explicitTypes.includes(alertType)) return true
 
-  const minSeverity = (process.env.TELEGRAM_IMMEDIATE_ALERT_MIN_SEVERITY ?? 'critical').toLowerCase()
+  const minSeverity = (process.env.TELEGRAM_IMMEDIATE_ALERT_MIN_SEVERITY ?? 'none').toLowerCase()
   if (minSeverity === 'none' || minSeverity === 'off' || minSeverity === 'false') return false
 
   const threshold = severityRank(minSeverity)

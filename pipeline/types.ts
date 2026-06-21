@@ -20,6 +20,7 @@ export type ErrorCode =
   | 'fetch_blocked'
   | 'fetch_unknown'
   | 'claude_api_error'
+  | 'provider_api_error'
   | 'provider_invalid_request'
   | 'claude_rate_limit'
   | 'claude_truncated'
@@ -44,6 +45,7 @@ export const RETRYABLE_ERRORS: ErrorCode[] = [
   'fetch_blocked',
   'fetch_unknown',
   'claude_api_error',
+  'provider_api_error',
   'claude_rate_limit',
   'claude_truncated',
   'batch_expired',

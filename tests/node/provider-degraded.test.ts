@@ -55,6 +55,8 @@ test('shouldEnableAnthropicDegradedFromStats uses billing immediately or N unava
 })
 
 test('enableAnthropicDegradedMode writes open alert and sends admin push', async () => {
+  const previousMinSeverity = process.env.TELEGRAM_IMMEDIATE_ALERT_MIN_SEVERITY
+  process.env.TELEGRAM_IMMEDIATE_ALERT_MIN_SEVERITY = 'critical'
   const supabase = mockSupabase()
   const previousFetch = global.fetch
   const fetchCalls: Array<{ url: string; body: string }> = []
@@ -72,6 +74,8 @@ test('enableAnthropicDegradedMode writes open alert and sends admin push', async
     })
   } finally {
     global.fetch = previousFetch
+    if (previousMinSeverity === undefined) delete process.env.TELEGRAM_IMMEDIATE_ALERT_MIN_SEVERITY
+    else process.env.TELEGRAM_IMMEDIATE_ALERT_MIN_SEVERITY = previousMinSeverity
   }
 
   const alert = supabase.inserts.find((call) => call.table === 'pipeline_alerts')?.payload

@@ -1,7 +1,7 @@
 import type { EditorialOutput, EditorialRequest, EditorialValidationResult } from './claude'
 import { detectEditorialRiskFlags as detectRiskFlags } from './risk-flags'
 
-export type EditorialRoutingMode = 'cheap' | 'balanced' | 'premium'
+export type EditorialRoutingMode = 'deepseek-only' | 'cheap' | 'balanced' | 'premium'
 export type EditorialWriterProvider = 'deepseek' | 'anthropic'
 export type EditorialReviewPolicy = 'none' | 'selective' | 'always'
 
@@ -9,6 +9,14 @@ export interface EditorialRoutingConfig {
   mode: EditorialRoutingMode
   writerProvider: EditorialWriterProvider
   reviewPolicy: EditorialReviewPolicy
+}
+
+export function allowsAnthropicFallback(mode: EditorialRoutingMode): boolean {
+  return mode !== 'deepseek-only'
+}
+
+export function isTruncatedCompletion(finishReason: string | null | undefined): boolean {
+  return finishReason === 'length'
 }
 
 export interface ArticleRoutingContext {
@@ -43,8 +51,8 @@ export function getEditorialRoutingConfig(env: Record<string, string | undefined
 }
 
 function parseRoutingMode(value: string | undefined): EditorialRoutingMode {
-  if (value === 'cheap' || value === 'balanced' || value === 'premium') return value
-  return 'premium'
+  if (value === 'deepseek-only' || value === 'cheap' || value === 'balanced' || value === 'premium') return value
+  return 'deepseek-only'
 }
 
 function parseWriterProvider(value: string | undefined, mode: EditorialRoutingMode): EditorialWriterProvider {

@@ -2,9 +2,11 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  allowsAnthropicFallback,
   buildDeterministicEditorialBrief,
   detectEditorialRiskFlags,
   getEditorialRoutingConfig,
+  isTruncatedCompletion,
   parseClaudeReviewerResult,
   shouldReviewWithClaude,
 } from '../../pipeline/editorial-routing'
@@ -21,12 +23,33 @@ const context = {
   score: 8.2,
 }
 
-test('getEditorialRoutingConfig keeps current Claude path as default', () => {
+test('getEditorialRoutingConfig defaults to the production DeepSeek-only path', () => {
   assert.deepEqual(getEditorialRoutingConfig({}), {
+    mode: 'deepseek-only',
+    writerProvider: 'deepseek',
+    reviewPolicy: 'none',
+  })
+})
+
+test('getEditorialRoutingConfig supports an explicit premium Claude comparison path', () => {
+  assert.deepEqual(getEditorialRoutingConfig({ EDITORIAL_ROUTING_MODE: 'premium' }), {
     mode: 'premium',
     writerProvider: 'anthropic',
     reviewPolicy: 'none',
   })
+})
+
+test('deepseek-only cannot route any article to Anthropic', () => {
+  assert.equal(allowsAnthropicFallback('deepseek-only'), false)
+  assert.equal(allowsAnthropicFallback('cheap'), true)
+  assert.equal(allowsAnthropicFallback('balanced'), true)
+  assert.equal(allowsAnthropicFallback('premium'), true)
+})
+
+test('DeepSeek length finish reason is handled as a truncated response', () => {
+  assert.equal(isTruncatedCompletion('length'), true)
+  assert.equal(isTruncatedCompletion('stop'), false)
+  assert.equal(isTruncatedCompletion(null), false)
 })
 
 test('getEditorialRoutingConfig selects DeepSeek without reviewer for cheap mode', () => {
