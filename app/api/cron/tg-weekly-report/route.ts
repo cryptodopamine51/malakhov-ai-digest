@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const result = await runWeeklyReport({ delivery: 'scheduled' })
+    const result = await runWeeklyReport({ delivery: 'scheduled', format: 'signal' })
     const failed = result.status === 'skipped-low-articles'
     return NextResponse.json(
       { ok: !failed, ...result },

@@ -5,6 +5,7 @@ import type { Article } from '../../lib/supabase'
 import {
   buildWeekSummary,
   buildWeeklyReportMessage,
+  completeWeeklyDescription,
   runWeeklyReport,
   selectWeeklyReportArticles,
   weeklyReportWindow,
@@ -86,12 +87,26 @@ test('all three report formats use the approved title, omit promo copy, and fit 
     })
     assert.equal((message.match(/utm_medium=weekly_report/g) ?? []).length, 6)
     assert.match(message, /6 новостей в ИИ, которые обсуждали на прошлой неделе/)
-    assert.match(message, /За неделю обсуждали:/)
+    assert.doesNotMatch(message, /За неделю обсуждали:/)
     assert.doesNotMatch(message, /без (?:информационного )?шума/iu)
     assert.doesNotMatch(message, /Подписывайтесь/iu)
     assert.doesNotMatch(message, /https:\/\/t\.me\/example/)
     assert.ok(message.length <= 4_000)
   }
+})
+
+test('weekly descriptions contain only complete sentences and never end with an ellipsis', () => {
+  const description = completeWeeklyDescription(article(1, {
+    tg_teaser: 'Первое предложение сообщает факт. Второе предложение слишком длинное и не должно обрываться посередине из-за ограничения длины текста.',
+  }), 45)
+  assert.equal(description, 'Первое предложение сообщает факт.')
+  assert.match(description, /[.!?]$/)
+  assert.doesNotMatch(description, /…/)
+
+  const withoutPunctuation = completeWeeklyDescription(article(2, {
+    tg_teaser: 'Компания запустила сервис для автоматизации продаж',
+  }), 100)
+  assert.equal(withoutPunctuation, 'Компания запустила сервис для автоматизации продаж.')
 })
 
 test('selection models produce distinct entrepreneur-facing collections', () => {

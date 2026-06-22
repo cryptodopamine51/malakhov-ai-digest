@@ -311,11 +311,6 @@ function shortenAtWord(text: string, maxLength: number): string {
   return `${prefix.slice(0, end).trimEnd()}…`
 }
 
-function shortDescription(article: Article, maxLength = 210): string {
-  const source = article.tg_teaser?.trim() || article.lead?.trim() || article.card_teaser?.trim() || titleOf(article)
-  return shortenAtWord(source.replace(/\s+/g, ' '), maxLength)
-}
-
 function formatRange(window: WeeklyReportWindow): string {
   const [, startMonth, startDay] = window.weekStart.split('-').map(Number)
   const [, endMonth, endDay] = window.weekEnd.split('-').map(Number)
@@ -373,6 +368,44 @@ function sanitizeWeeklyCopy(text: string): string {
     .trim()
 }
 
+function completedSentences(text: string, maxLength: number): string | null {
+  const normalized = sanitizeWeeklyCopy(text).replace(/…+/g, '.').replace(/\s+/g, ' ').trim()
+  if (!normalized) return null
+  const sentences = normalized.match(/[^.!?]+[.!?]+/g) ?? []
+  let result = ''
+  for (const sentence of sentences) {
+    const next = `${result} ${sentence.trim()}`.trim()
+    if (next.length > maxLength) break
+    result = next
+  }
+  if (result) return result
+  if (normalized.length <= maxLength) {
+    return /[.!?]$/.test(normalized) ? normalized : `${normalized}.`
+  }
+  return null
+}
+
+export function completeWeeklyDescription(article: Article, maxLength = 210): string {
+  const sources = [article.tg_teaser, article.lead, article.card_teaser]
+    .filter((value): value is string => Boolean(value?.trim()))
+  for (const source of sources) {
+    const completed = completedSentences(source, maxLength)
+    if (completed) return completed
+  }
+
+  const fallback = sanitizeWeeklyCopy(sources.sort((a, b) => a.length - b.length)[0] ?? titleOf(article))
+    .replace(/…+/g, '.')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (fallback.length <= maxLength) return /[.!?]$/.test(fallback) ? fallback : `${fallback}.`
+
+  const prefix = fallback.slice(0, maxLength - 1)
+  const clauseBreak = Math.max(prefix.lastIndexOf(';'), prefix.lastIndexOf(','), prefix.lastIndexOf(' — '))
+  const wordBreak = prefix.lastIndexOf(' ')
+  const cutAt = clauseBreak >= Math.floor(maxLength * 0.55) ? clauseBreak : wordBreak
+  return `${prefix.slice(0, cutAt > 0 ? cutAt : prefix.length).trim().replace(/[,:;—-]+$/, '')}.`
+}
+
 function trackedArticleUrl(
   article: Article,
   window: WeeklyReportWindow,
@@ -414,16 +447,13 @@ export function buildWeeklyReportMessage(
     throw new Error(`Недельный отчёт требует ровно ${REPORT_SIZE} новостей, получено ${articles.length}`)
   }
   const range = escapeTelegramHtml(formatRange(window))
-  const summary = escapeTelegramHtml(buildWeekSummary(articles))
   const lines = withMarker([
     '<b>6 новостей в ИИ, которые обсуждали на прошлой неделе</b>',
     `<i>${range}</i>`,
     '',
-    summary,
-    '',
     ...articles.flatMap((article, index) => [
       `${index + 1}️⃣ <b>${linkedTitle(article, window, format, index + 1, options.siteUrl)}</b>`,
-      escapeTelegramHtml(shortenAtWord(sanitizeWeeklyCopy(shortDescription(article, 240)), 190)),
+      escapeTelegramHtml(completeWeeklyDescription(article)),
       '',
     ]),
   ], options.marker)
@@ -467,7 +497,7 @@ function requestedFormats(format: WeeklyReportFormatArg): WeeklyReportFormat[] {
 }
 
 function configuredScheduledFormat(value?: string): WeeklyReportFormat {
-  const format = value || 'business'
+  const format = value || 'signal'
   if (format === 'signal' || format === 'business' || format === 'channel') return format
   throw new Error(`TELEGRAM_WEEKLY_REPORT_FORMAT должен быть signal|business|channel, получено ${format}`)
 }
