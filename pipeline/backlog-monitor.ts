@@ -13,8 +13,9 @@ import { getServerClient } from '../lib/supabase'
 import { getEnrichBacklogSnapshot } from '../lib/enrich-backlog'
 import { fireAlert, resolveAlert } from './alerts'
 
-const BACKLOG_ALERT_THRESHOLD = 50  // articles
-const BACKLOG_AGE_ALERT_HOURS = 4   // oldest pending older than this triggers alert
+const BACKLOG_TOTAL_ALERT_THRESHOLD = 50
+const BACKLOG_ACTIONABLE_ALERT_THRESHOLD = 10
+const BACKLOG_AGE_ALERT_HOURS = 4
 
 function log(msg: string): void {
   const ts = new Date().toTimeString().slice(0, 8)
@@ -44,7 +45,8 @@ async function checkBacklog(): Promise<void> {
     log(`Самая старая actionable pending: ${Math.round(oldestAgeHours)}h`)
   }
 
-  const shouldAlert = count >= BACKLOG_ALERT_THRESHOLD || oldestAgeHours > BACKLOG_AGE_ALERT_HOURS
+  const shouldAlert = backlog.totalDueCount >= BACKLOG_TOTAL_ALERT_THRESHOLD
+    || (count >= BACKLOG_ACTIONABLE_ALERT_THRESHOLD && oldestAgeHours > BACKLOG_AGE_ALERT_HOURS)
 
   if (shouldAlert) {
     await fireAlert({
@@ -65,7 +67,7 @@ async function checkBacklog(): Promise<void> {
       adminChatId,
     })
     log(`⚠️ Backlog alert fired (${count} actionable, oldest ${Math.round(oldestAgeHours)}h)`)
-  } else if (count < BACKLOG_ALERT_THRESHOLD / 2) {
+  } else {
     await resolveAlert(supabase, 'backlog_high')
   }
 
