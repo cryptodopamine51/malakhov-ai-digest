@@ -312,6 +312,30 @@ dedup по deterministic `storyKey`, recent memory за 72 часа из legacy 
 Legacy `bot/daily-digest-core.ts` и `digest_runs` оставлены для аудита и обратной совместимости,
 но `/api/cron/tg-digest` больше не отправляет production-сообщения.
 
+### Weekly Telegram report
+
+`bot/weekly-report-core.ts` формирует отдельный текстовый отчёт для admin-бота за предыдущую
+полную московскую неделю (понедельник 00:00 — следующий понедельник 00:00, полуоткрытое окно).
+Отчёт всегда содержит ровно 6 live/verified/quality статей: editorial score задаёт основной
+ранговый tier, `rankDigestCandidates` с story importance сортирует кандидатов внутри tier,
+затем применяются story dedup, source cap `3` и entity cap `2`. Score-first порядок нужен для
+недельного широкого окна: вторичная денежная цифра в слабом сюжете не должна обгонять крупный
+релиз модели или продукта. Поскольку отчёт адресован предпринимателям, consumer/gadget/
+entertainment заголовки (смартфоны, Android/Pixel, кино и т. п.) ставятся после индустриального
+пула и попадают в шестёрку только как fallback при слабой неделе.
+Недельная отправка не меняет `articles.tg_sent`, потому что суммирует уже опубликованную повестку.
+
+Публичный формат: цепляющий заголовок, диапазон дат, короткое «чем запомнилась неделя», шесть
+позиций вида «кликабельный заголовок + краткое объяснение» и CTA на Telegram-канал. Доступны три
+редакционные оболочки с одним и тем же набором новостей: `signal`, `business`, `channel`.
+Production default — `business`; он меняется через `TELEGRAM_WEEKLY_REPORT_FORMAT` после выбора
+владельца. Ссылки получают `utm_medium=weekly_report` и week-based campaign.
+
+Для тестовых выпусков CLI поддерживает `--pin=<article-id-or-slug>`: закреплённая статья проходит
+те же caps/dedup и после отбора переставляется на позицию №6. Scheduled-run pin не использует.
+Идемпотентность хранится отдельно в `weekly_report_runs`: одна успешная отправка на
+`(week_start, chat_id)`, без смешивания с legacy `digest_runs`.
+
 ### Article quality judge and owner feedback
 
 С 2026-06-11 поверх published/live статей работает отдельный контур контроля качества:

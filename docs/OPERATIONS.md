@@ -28,6 +28,7 @@ npm run editorial:routing
 npm run routing:lab
 npm run image:style-lab
 npm run tg-digest
+npm run tg-weekly-report -- --week-start=YYYY-MM-DD --format=all --dry-run
 npm run risk:audit -- --limit=500
 npm run quality:judge
 npm run quality:feedback
@@ -231,6 +232,35 @@ overlap when provider latency is high.
 > **Telegram delivery с 2026-06-01:** старый один-message дайджест заменён на 5 отдельных
 > channel posts в течение дня. `tg-digest.yml` удалён, `/api/cron/tg-digest` оставлен как
 > disabled legacy endpoint и не отправляет сообщения.
+
+### Недельный Telegram-отчёт
+
+Каждый понедельник в **11:00 МСК** Supabase job `tg-weekly-report` (`0 8 * * 1` UTC) вызывает
+`GET /api/cron/tg-weekly-report`. Route собирает предыдущую полную неделю Пн–Вс и отправляет
+один отчёт в `TELEGRAM_ADMIN_CHAT_ID`; GitHub Actions backup
+`.github/workflows/tg-weekly-report-backup.yml` повторяет запуск в 11:20 МСК. Таблица
+`weekly_report_runs` и функция `claim_weekly_report_run` не допускают повторной отправки одной
+недели primary/backup runner-ами. `running`-claim можно перехватить только после 15 минут, а
+`failed` — при следующем запуске.
+
+Production default — `TELEGRAM_WEEKLY_REPORT_FORMAT=business`; допустимы
+`signal|business|channel`. Три варианта для редакционного выбора отправляются только вручную и
+не создают run-log:
+
+```bash
+npm run tg-weekly-report -- --week-start=2026-06-15 --format=all --dry-run \
+  --pin=novyy-benchmark-aa-briefcase-luchshaya-model-ii-reshaet-lish-3-zadach
+npm run tg-weekly-report -- --week-start=2026-06-15 --format=all --send=admin --markers \
+  --pin=novyy-benchmark-aa-briefcase-luchshaya-model-ii-reshaet-lish-3-zadach
+```
+
+Диагностика:
+
+```sql
+select jobid, jobname, schedule, active from cron.job where jobname = 'tg-weekly-report';
+select week_start, format, status, article_ids, telegram_message_id, error, updated_at
+  from weekly_report_runs order by week_start desc limit 10;
+```
 
 ## Cron-расписание Telegram channel posts
 

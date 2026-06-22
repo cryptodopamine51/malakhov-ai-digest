@@ -53,7 +53,7 @@ RLS contract:
 - public tables в схеме `public` работают с включённым RLS;
 - единственная публичная policy на `articles` разрешает `SELECT` только для live-материалов (`published=true`, `quality_ok=true`, `verified_live=true`, `publish_status='live'`);
 - `categories` имеет public read только для `is_active=true`; запись — только через `service_role`;
-- operational tables (`article_attempts`, `ingest_runs`, `enrich_runs`, `digest_runs`, `telegram_channel_posts`, `pipeline_alerts`, `source_runs`, `article_quality_scores`, `article_feedback`) не имеют public policies и должны читаться/писаться только через `service_role`.
+- operational tables (`article_attempts`, `ingest_runs`, `enrich_runs`, `digest_runs`, `telegram_channel_posts`, `weekly_report_runs`, `pipeline_alerts`, `source_runs`, `article_quality_scores`, `article_feedback`) не имеют public policies и должны читаться/писаться только через `service_role`.
 
 Модель категорий:
 - одна основная категория на статью (`articles.primary_category`, FK на `categories.slug`, NOT NULL);
@@ -69,6 +69,7 @@ RLS contract:
 - `source_runs`
 - `digest_runs`
 - `telegram_channel_posts`
+- `weekly_report_runs`
 - `article_attempts`
 - `pipeline_alerts`
 - `article_quality_scores`
@@ -102,6 +103,10 @@ slot-level отправок и unschedule-ит legacy `tg-digest-*` jobs. См. 
 для ежедневного LLM-judge и `article_feedback` для owner feedback из Telegram. Обе таблицы
 включают RLS без public policies; запись идёт только через service-role pipeline/webhook после
 проверки Telegram owner id на уровне приложения.
+Миграция `20260622073323_weekly_telegram_report.sql` добавляет отдельный service-role-only
+журнал `weekly_report_runs` и security-invoker claim-функцию для идемпотентной недельной
+Telegram-отправки. Уникальность `(week_start, chat_id)` отделяет этот lifecycle от legacy
+`digest_runs`; та же миграция создаёт `pg_cron` job на понедельник 11:00 МСК.
 
 ## Основные модули
 
