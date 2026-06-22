@@ -75,7 +75,7 @@ test('weekly selection keeps editorial score above incidental importance anchors
   assert.doesNotMatch(selection.articles.map((item) => item.ru_title).join('\n'), /Android/)
 })
 
-test('all three report formats contain six linked titles, summary, CTA, and fit Telegram', () => {
+test('all three report formats use the approved title, omit promo copy, and fit Telegram', () => {
   const articles = Array.from({ length: 6 }, (_, index) => article(index + 1))
   const window = weeklyReportWindow('2026-06-22')
 
@@ -85,10 +85,46 @@ test('all three report formats contain six linked titles, summary, CTA, and fit 
       channelUrl: 'https://t.me/example',
     })
     assert.equal((message.match(/utm_medium=weekly_report/g) ?? []).length, 6)
-    assert.match(message, /Неделя запомнилась/)
-    assert.match(message, /https:\/\/t\.me\/example/)
+    assert.match(message, /6 новостей в ИИ, которые обсуждали на прошлой неделе/)
+    assert.match(message, /За неделю обсуждали:/)
+    assert.doesNotMatch(message, /без (?:информационного )?шума/iu)
+    assert.doesNotMatch(message, /Подписывайтесь/iu)
+    assert.doesNotMatch(message, /https:\/\/t\.me\/example/)
     assert.ok(message.length <= 4_000)
   }
+})
+
+test('selection models produce distinct entrepreneur-facing collections', () => {
+  const candidate = (index: number, overrides: Partial<Article>) => article(index, {
+    score: 8,
+    source_name: `Distinct Source ${index}`,
+    ...overrides,
+  })
+  const candidates = [
+    candidate(1, { ru_title: 'ИИ-стартап привлёк раунд $500 млн', primary_category: 'ai-investments' }),
+    candidate(2, { ru_title: 'Новый закон ограничил экспорт ИИ-моделей', primary_category: 'ai-industry' }),
+    candidate(3, { ru_title: 'Выручка ИИ-компании выросла до $2 млрд', primary_category: 'ai-startups' }),
+    candidate(4, { ru_title: 'AWS выпустила API для корпоративных ИИ-агентов', primary_category: 'ai-industry' }),
+    candidate(5, { ru_title: 'Облачная платформа автоматизирует поддержку клиентов', primary_category: 'ai-industry' }),
+    candidate(6, { ru_title: 'ИИ-редактор кода получил интеграцию с GitHub', primary_category: 'ai-tools' }),
+    candidate(7, { ru_title: 'CRM внедрила ИИ-агентов для продаж', primary_category: 'ai-business' }),
+    candidate(8, { ru_title: 'Компании сократили расходы на поддержку после внедрения ИИ', primary_category: 'ai-business' }),
+    candidate(9, { ru_title: 'Лаборатория представила новую мультимодальную модель', primary_category: 'ai-labs' }),
+    candidate(10, { ru_title: 'Бенчмарк проверил точность рассуждений моделей', primary_category: 'ai-research' }),
+    candidate(11, { ru_title: 'Новый ИИ-фильм вышел на смартфонах Pixel', score: 10 }),
+    candidate(12, { ru_title: 'Ведущий исследователь перешёл из Google в OpenAI', primary_category: 'ai-industry' }),
+  ]
+
+  const market = selectWeeklyReportArticles(candidates, undefined, 'market').articles.map((item) => item.id)
+  const business = selectWeeklyReportArticles(candidates, undefined, 'business-impact').articles.map((item) => item.id)
+  const operator = selectWeeklyReportArticles(candidates, undefined, 'operator').articles.map((item) => item.id)
+
+  assert.notDeepEqual(market, business)
+  assert.notDeepEqual(business, operator)
+  assert.ok(market.some((id) => candidates.slice(0, 3).some((item) => item.id === id)))
+  assert.ok(operator.some((id) => candidates.slice(3, 6).some((item) => item.id === id)))
+  assert.equal(business.length, 6)
+  assert.ok([market, business, operator].every((ids) => !ids.includes(candidates[10].id)))
 })
 
 test('week summary reflects editorial themes rather than repeating titles', () => {
@@ -97,8 +133,9 @@ test('week summary reflects editorial themes rather than repeating titles', () =
     article(2, { ru_title: 'Новый бенчмарк показал лишь 3% успеха', primary_category: 'ai-research' }),
     article(3, { ru_title: 'OpenAI выпустила новый сервис' }),
   ])
-  assert.match(summary, /ставками/)
-  assert.match(summary, /ограничений и рисков|исследованиями/)
+  assert.match(summary, /инвестиции и экономика/)
+  assert.match(summary, /ошибки и ограничения|результаты исследований/)
+  assert.doesNotMatch(summary, /без шума/)
 })
 
 test('CLI requires explicit delivery and validates scheduled format', () => {
@@ -142,6 +179,7 @@ test('preview sends three marked messages without claiming a scheduled run', asy
 
   assert.equal(result.status, 'preview-sent')
   assert.equal(sent.length, 3)
-  assert.ok(sent.every((message, index) => message.includes(`Тест ${index + 1}/3`)))
+  assert.ok(sent.every((message, index) => message.includes(`Тест ${index + 1}/3 ·`)))
   assert.ok(sent.every((message) => message.includes(candidates[7].ru_title!)))
+  assert.equal(new Set(sent).size, 3)
 })

@@ -244,8 +244,13 @@ overlap when provider latency is high.
 `failed` — при следующем запуске.
 
 Production default — `TELEGRAM_WEEKLY_REPORT_FORMAT=business`; допустимы
-`signal|business|channel`. Три варианта для редакционного выбора отправляются только вручную и
-не создают run-log:
+`signal|business|channel`. Все форматы используют заголовок «6 новостей в ИИ, которые обсуждали
+на прошлой неделе» и компактную структуру с шестью ссылками. Подписной footer и формулировки
+вроде «без шума» в недельный отчёт не добавляются.
+
+При ручном `format=all` варианты отличаются не косметикой, а моделью отбора:
+`signal` — деньги и рыночные сдвиги, `business` — влияние на компании,
+`channel` — инструменты и внедрение. Preview отправляется только владельцу и не создаёт run-log:
 
 ```bash
 npm run tg-weekly-report -- --week-start=2026-06-15 --format=all --dry-run \

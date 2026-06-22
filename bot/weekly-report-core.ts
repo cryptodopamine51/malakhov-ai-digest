@@ -26,6 +26,7 @@ const DEFAULT_CHANNEL_URL = 'https://t.me/malakhovAIdigest'
 export type WeeklyReportFormat = 'signal' | 'business' | 'channel'
 export type WeeklyReportFormatArg = WeeklyReportFormat | 'all'
 export type WeeklyReportDelivery = 'dry-run' | 'preview' | 'scheduled'
+export type WeeklyReportSelectionModel = 'market' | 'business-impact' | 'operator'
 
 export interface WeeklyReportWindow {
   weekStart: string
@@ -163,9 +164,85 @@ function isConsumerWeeklyStory(article: Article): boolean {
   return /(?:android|pixel|wear os|смартфон|iphone|airpods|наушник|умн(?:ые|ых) час|фильм|кино|сериал|игров(?:ой|ая|ые))/iu.test(title)
 }
 
+const SELECTION_MODEL_BY_FORMAT: Record<WeeklyReportFormat, {
+  model: WeeklyReportSelectionModel
+  label: string
+}> = {
+  signal: { model: 'market', label: 'деньги и рынок' },
+  business: { model: 'business-impact', label: 'влияние на бизнес' },
+  channel: { model: 'operator', label: 'инструменты и внедрение' },
+}
+
+function selectionText(article: Article): string {
+  return [
+    titleOf(article),
+    article.lead,
+    article.tg_teaser,
+    article.card_teaser,
+    article.primary_category,
+    ...(article.secondary_categories ?? []),
+    ...(article.topics ?? []),
+  ].filter(Boolean).join(' ').toLowerCase()
+}
+
+function hasSignal(text: string, pattern: RegExp): number {
+  return pattern.test(text) ? 1 : 0
+}
+
+function entrepreneurRelevance(article: Article, model: WeeklyReportSelectionModel): number {
+  const text = selectionText(article)
+  const title = titleOf(article).toLowerCase()
+  const money = hasSignal(text, /(?:инвест|раунд|оценк|выручк|убыт|финанс|рынок|дол[яи] рынк|стоимост|цен[аы]|тариф|funding|valuation|revenue|market share|pricing)/iu)
+  const adoption = hasSignal(text, /(?:бизнес|компан|корпоратив|enterprise|внедрен|продаж|маркетинг|клиент|поддержк|найм|производительност|автоматизац)/iu)
+  const operator = hasSignal(text, /(?:агент|agent|api|облак|cloud|aws|azure|bedrock|интеграц|разработ|код|devops|безопасност|контекст|open.?source|локальн|function call)/iu)
+  const product = hasSignal(text, /(?:запуст|выпуст|представил|релиз|модел|сервис|платформ|доступ|обновил)/iu)
+  const regulation = hasSignal(text, /(?:закон|регулирован|запрет|лицензи|экспортн|суд|антимонопол|government|regulat)/iu)
+  const strategy = hasSignal(text, /(?:партн[её]р|сделк|купил|поглощ|уходит|переходит|назначен|конкурент|инфраструктур)/iu)
+  const research = hasSignal(text, /(?:исследован|бенчмарк|benchmark|точност|ошибк|тестир|эксперимент)/iu)
+  const fundingHeadline = hasSignal(title, /(?:привл[её]к|раунд|оценк|funding|инвестиц)/iu)
+  const operatorHeadline = hasSignal(title, /(?:агент|agent|api|облак|cloud|aws|azure|bedrock|автоматизац|безопасност|разработ|код)/iu)
+
+  const common = adoption * 18 + operator * 12 + product * 10 + money * 10 + regulation * 8 + strategy * 7
+  const modelBonus = model === 'market'
+    ? money * 30 + regulation * 24 + strategy * 22 + adoption * 8 + operator * 5 + research * 2
+    : model === 'operator'
+      ? operator * 32 + operatorHeadline * 18 + adoption * 26 + product * 20 + research * 8
+        + money * 2 - strategy * 4 - fundingHeadline * 24
+      : adoption * 30 + money * 24 + operator * 22 + regulation * 15 + product * 12 + strategy * 10 + research * 5
+
+  return common + modelBonus - (isConsumerWeeklyStory(article) ? 120 : 0)
+}
+
+function diversifyWeeklyThemes(articles: Article[], model: WeeklyReportSelectionModel): Article[] {
+  const caps: Record<WeekTheme, number> = model === 'operator'
+    ? { products: 4, research: 4, risk: 2, money: 1, regulation: 1, talent: 1 }
+    : model === 'market'
+      ? { products: 2, research: 2, risk: 2, money: 3, regulation: 2, talent: 1 }
+      : { products: 2, research: 2, risk: 2, money: 3, regulation: 2, talent: 1 }
+  const themeCounts = new Map<WeekTheme, number>()
+  const preferred: Article[] = []
+  const overflow: Article[] = []
+  for (const article of articles) {
+    const theme = themeOf(article)
+    const count = themeCounts.get(theme) ?? 0
+    if (count < caps[theme]) {
+      preferred.push(article)
+      themeCounts.set(theme, count + 1)
+    } else {
+      overflow.push(article)
+    }
+  }
+  return [...preferred, ...overflow]
+}
+
+export function weeklySelectionModel(format: WeeklyReportFormat): WeeklyReportSelectionModel {
+  return SELECTION_MODEL_BY_FORMAT[format].model
+}
+
 export function selectWeeklyReportArticles(
   candidates: Article[],
   pinnedArticle?: string,
+  model: WeeklyReportSelectionModel = 'business-impact',
 ): WeeklyReportSelection {
   // Weekly windows contain much more semantic noise than daily windows. Keep
   // editorial score as the primary tier, then use story importance inside the
@@ -173,17 +250,24 @@ export function selectWeeklyReportArticles(
   // outranking an actual major model/product release.
   const importanceRanked = rankDigestCandidates(candidates)
   const importanceIndex = new Map(importanceRanked.map((article, index) => [article.id, index]))
-  const sortWithinTier = (a: Article, b: Article) => (
-    Number(b.score ?? 0) - Number(a.score ?? 0) ||
-    (importanceIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+  const compositeScore = (article: Article): number => {
+    const index = importanceIndex.get(article.id) ?? importanceRanked.length
+    const importanceBonus = importanceRanked.length > 0
+      ? 12 * (importanceRanked.length - index) / importanceRanked.length
+      : 0
+    return entrepreneurRelevance(article, model) + Number(article.score ?? 0) * 8 + importanceBonus
+  }
+  const sorted = [...candidates].sort((a, b) => {
+    const businessDiff = compositeScore(b) - compositeScore(a)
+    if (businessDiff !== 0) return businessDiff
+    const scoreDiff = Number(b.score ?? 0) - Number(a.score ?? 0)
+    if (scoreDiff !== 0) return scoreDiff
+    return (importanceIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
       (importanceIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER)
-  )
-  // Entrepreneur-facing weekly reports prefer industry/business stories.
-  // Consumer/gadget/entertainment items remain available only as a fallback
-  // when the week has fewer than six stronger industry candidates.
+  })
   const ranked = [
-    ...candidates.filter((article) => !isConsumerWeeklyStory(article)).sort(sortWithinTier),
-    ...candidates.filter(isConsumerWeeklyStory).sort(sortWithinTier),
+    ...diversifyWeeklyThemes(sorted.filter((article) => !isConsumerWeeklyStory(article)), model),
+    ...sorted.filter(isConsumerWeeklyStory),
   ]
   const pinned = pinnedArticle
     ? ranked.find((article) => article.id === pinnedArticle || article.slug === pinnedArticle)
@@ -199,7 +283,7 @@ export function selectWeeklyReportArticles(
     : ranked
   const selected = selectDigestArticles(ordered, [], {
     target: REPORT_SIZE,
-    perSourceCap: 3,
+    perSourceCap: 2,
     perPrimaryEntityCap: 2,
   })
 
@@ -260,19 +344,14 @@ function themeOf(article: Article): WeekTheme {
   return 'products'
 }
 
-function joinRu(items: string[]): string {
-  if (items.length <= 1) return items[0] ?? 'главными запусками и решениями индустрии'
-  return `${items.slice(0, -1).join(', ')} и ${items.at(-1)}`
-}
-
 export function buildWeekSummary(articles: Article[]): string {
   const labels: Record<WeekTheme, string> = {
-    products: 'новыми моделями и ИИ-сервисами',
-    money: 'крупными ставками и жёсткой проверкой экономики ИИ-компаний',
-    research: 'исследованиями, которые уточнили реальные возможности моделей',
-    regulation: 'усилением контроля над доступом к передовым моделям',
-    talent: 'новым раундом борьбы за ключевых исследователей',
-    risk: 'отрезвляющими примерами ограничений и рисков ИИ',
+    products: 'запуски моделей и ИИ-сервисов',
+    money: 'инвестиции и экономика ИИ-компаний',
+    research: 'результаты исследований и тестов',
+    regulation: 'регулирование и ограничения доступа',
+    talent: 'переходы ведущих исследователей',
+    risk: 'ошибки и ограничения ИИ-систем',
   }
   const counts = new Map<WeekTheme, number>()
   for (const article of articles) counts.set(themeOf(article), (counts.get(themeOf(article)) ?? 0) + 1)
@@ -280,7 +359,18 @@ export function buildWeekSummary(articles: Article[]): string {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
     .map(([theme]) => labels[theme])
-  return `Неделя запомнилась ${joinRu(themes)}. Ниже — шесть событий без информационного шума.`
+  return `За неделю обсуждали: ${themes.join('; ')}.`
+}
+
+function sanitizeWeeklyCopy(text: string): string {
+  return text
+    .replace(/\s*[—–-]\s*(?:разбираем|разбираемся),?[^.!?]*[.!?]?$/iu, '')
+    .replace(/(?:^|(?<=[.!?])\s+)(?:что(?:\s+это\s+значит)?|почему это важно|разбираем|разбираемся)[^.!?…]*[.!?…]?/giu, ' ')
+    .replace(/без\s+(?:информационного\s+)?шума/giu, '')
+    .replace(/меняет правила игры/giu, 'заметно влияет на рынок')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([,.!?])/g, '$1')
+    .trim()
 }
 
 function trackedArticleUrl(
@@ -310,13 +400,6 @@ function linkedTitle(
   return `<a href="${url}">${title}</a>`
 }
 
-function reportFooter(channelUrl: string): string[] {
-  return [
-    '',
-    `Подписывайтесь на <a href="${escapeTelegramHtml(channelUrl)}">Malakhov AI Digest</a> — основные новости ИИ без шума.`,
-  ]
-}
-
 function withMarker(lines: string[], marker?: string): string[] {
   return marker ? [`<b>${escapeTelegramHtml(marker)}</b>`, '', ...lines] : lines
 }
@@ -332,54 +415,18 @@ export function buildWeeklyReportMessage(
   }
   const range = escapeTelegramHtml(formatRange(window))
   const summary = escapeTelegramHtml(buildWeekSummary(articles))
-  let lines: string[]
-
-  if (format === 'signal') {
-    lines = withMarker([
-      '<b>⚡️ ИИ-неделя без шума: 6 событий, которые меняют рынок</b>',
-      `<i>${range}</i>`,
+  const lines = withMarker([
+    '<b>6 новостей в ИИ, которые обсуждали на прошлой неделе</b>',
+    `<i>${range}</i>`,
+    '',
+    summary,
+    '',
+    ...articles.flatMap((article, index) => [
+      `${index + 1}️⃣ <b>${linkedTitle(article, window, format, index + 1, options.siteUrl)}</b>`,
+      escapeTelegramHtml(shortenAtWord(sanitizeWeeklyCopy(shortDescription(article, 240)), 190)),
       '',
-      '<b>Чем запомнилась неделя</b>',
-      summary,
-      '',
-      ...articles.flatMap((article, index) => [
-        `<b>${index + 1}. ${linkedTitle(article, window, format, index + 1, options.siteUrl)}</b>`,
-        escapeTelegramHtml(shortDescription(article)),
-        '',
-      ]),
-      ...reportFooter(options.channelUrl),
-    ], options.marker)
-  } else if (format === 'business') {
-    lines = withMarker([
-      '<b>📊 Что изменилось в ИИ за неделю — и почему это важно бизнесу</b>',
-      `<i>${range}</i>`,
-      '',
-      `<b>Итог недели:</b> ${summary}`,
-      '',
-      '<b>6 главных новостей</b>',
-      '',
-      ...articles.flatMap((article, index) => [
-        `<b>${index + 1}. ${linkedTitle(article, window, format, index + 1, options.siteUrl)}</b>`,
-        escapeTelegramHtml(shortDescription(article, 230)),
-        '',
-      ]),
-      ...reportFooter(options.channelUrl),
-    ], options.marker)
-  } else {
-    lines = withMarker([
-      '<b>🔥 6 новостей об ИИ, которые будут обсуждать на этой неделе</b>',
-      `<i>Главное за ${range}</i>`,
-      '',
-      summary,
-      '',
-      ...articles.flatMap((article, index) => [
-        `${index + 1}️⃣ <b>${linkedTitle(article, window, format, index + 1, options.siteUrl)}</b>`,
-        escapeTelegramHtml(shortDescription(article, 190)),
-        '',
-      ]),
-      ...reportFooter(options.channelUrl),
-    ], options.marker)
-  }
+    ]),
+  ], options.marker)
 
   const message = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()
   if (message.length > TELEGRAM_MESSAGE_LIMIT) {
@@ -495,8 +542,11 @@ export async function runWeeklyReport(options: RunWeeklyReportOptions = {}): Pro
     }
   }
 
-  const selection = selectWeeklyReportArticles(candidates, options.pinnedArticle)
-  if (selection.articles.length !== REPORT_SIZE) {
+  const selections = new Map(formats.map((format) => [
+    format,
+    selectWeeklyReportArticles(candidates, options.pinnedArticle, weeklySelectionModel(format)),
+  ]))
+  if ([...selections.values()].some((selection) => selection.articles.length !== REPORT_SIZE)) {
     return {
       status: 'skipped-low-articles',
       weekStart: window.weekStart,
@@ -509,20 +559,25 @@ export async function runWeeklyReport(options: RunWeeklyReportOptions = {}): Pro
   const channelUrl = options.channelUrl ?? process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL ?? DEFAULT_CHANNEL_URL
   const messages = new Map(formats.map((format, index) => [
     format,
-    buildWeeklyReportMessage(format, selection.articles, window, {
+    buildWeeklyReportMessage(format, selections.get(format)!.articles, window, {
       siteUrl,
       channelUrl,
-      marker: options.marker && formats.length > 1 ? `Тест ${index + 1}/${formats.length}` : undefined,
+      marker: options.marker && formats.length > 1
+        ? `Тест ${index + 1}/${formats.length} · ${SELECTION_MODEL_BY_FORMAT[format].label}`
+        : undefined,
     }),
   ]))
-  const articleIds = selection.articles.map((article) => article.id)
+  const articleIds = selections.get(formats[0])!.articles.map((article) => article.id)
 
-  console.log(`[weekly-report] week=${window.weekStart}..${window.weekEnd} candidates=${candidates.length} selected=${articleIds.join(',')}`)
-  console.log(`[weekly-report] diagnostics=${JSON.stringify({
-    sources: selection.diagnostics.sourceDistribution,
-    stories: selection.diagnostics.storyKeys,
-    skipped: selection.diagnostics.skipped.slice(0, 20).map((item) => ({ id: item.articleId, reason: item.reason })),
-  })}`)
+  for (const format of formats) {
+    const selection = selections.get(format)!
+    console.log(`[weekly-report] week=${window.weekStart}..${window.weekEnd} format=${format} model=${weeklySelectionModel(format)} selected=${selection.articles.map((article) => article.id).join(',')}`)
+    console.log(`[weekly-report] diagnostics=${JSON.stringify({
+      sources: selection.diagnostics.sourceDistribution,
+      stories: selection.diagnostics.storyKeys,
+      skipped: selection.diagnostics.skipped.slice(0, 20).map((item) => ({ id: item.articleId, reason: item.reason })),
+    })}`)
+  }
 
   if (delivery === 'dry-run') {
     const stdout = options.stdout ?? console.log
