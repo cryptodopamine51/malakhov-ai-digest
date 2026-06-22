@@ -39,6 +39,6 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
-          TELEGRAM_WEEKLY_REPORT_FORMAT: business
+          TELEGRAM_WEEKLY_REPORT_FORMAT: signal
           NEXT_PUBLIC_SITE_URL: https://news.malakhovai.ru
           NEXT_PUBLIC_TELEGRAM_CHANNEL_URL: https://t.me/malakhovAIdigest
