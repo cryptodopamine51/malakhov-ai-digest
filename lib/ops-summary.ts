@@ -778,9 +778,7 @@ export function evaluateOpsStatus(summary: Omit<OpsSummary, 'status'>): OpsStatu
   if (summary.health.batches_open > 0) {
     yellowReasons.push(`открытых пакетных задач обработки: ${summary.health.batches_open}`)
   }
-  if ((summary.health.oldest_pending_age_minutes ?? 0) >= 360) {
-    redReasons.push(`самая старая статья ждёт обработки ${summary.health.oldest_pending_age_minutes} мин`)
-  } else if ((summary.health.oldest_pending_age_minutes ?? 0) >= 180) {
+  if ((summary.health.oldest_pending_age_minutes ?? 0) >= 180) {
     yellowReasons.push(`самая старая статья ждёт обработки ${summary.health.oldest_pending_age_minutes} мин`)
   }
   if (warningAlerts.length > 0) {

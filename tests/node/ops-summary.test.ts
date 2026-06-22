@@ -298,6 +298,19 @@ test('evaluateOpsStatus returns red for critical alerts', () => {
   assert.equal(status.emoji, '🔴')
 })
 
+test('evaluateOpsStatus keeps an old pending queue yellow instead of raising a red outage', () => {
+  const summary = baseSummary({
+    health: {
+      ...baseSummary().health,
+      oldest_pending_age_minutes: 600,
+    },
+  })
+  const status = evaluateOpsStatus(summary)
+  assert.equal(status.level, 'yellow')
+  assert.equal(status.emoji, '🟡')
+  assert.match(status.reasons.join(' '), /600 мин/)
+})
+
 test('formatOpsSummaryForTelegram renders traffic-light header and escapes HTML', () => {
   const summary = baseSummary()
   summary.status = evaluateOpsStatus(summary)

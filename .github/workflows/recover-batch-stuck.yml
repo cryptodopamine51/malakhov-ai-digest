@@ -1,8 +1,7 @@
 name: Recover Stuck Batch Items
 
 on:
-  schedule:
-    - cron: '*/30 * * * *'
+  # Legacy Anthropic batch recovery: manual-only after the DeepSeek cutover.
   workflow_dispatch:
 
 jobs:

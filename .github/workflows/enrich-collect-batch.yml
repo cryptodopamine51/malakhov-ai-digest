@@ -1,8 +1,7 @@
 name: Collect Anthropic Batch Results
 
 on:
-  schedule:
-    - cron: '*/15 * * * *'
+  # Legacy Anthropic collector: kept only for explicit recovery of historical batches.
   workflow_dispatch:
 
 jobs:

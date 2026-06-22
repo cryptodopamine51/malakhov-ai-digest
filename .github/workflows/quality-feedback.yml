@@ -1,9 +1,7 @@
 name: Article Quality Judge and Feedback
 
 on:
-  schedule:
-    # Daily after the morning publication cycle: 11:15 MSK.
-    - cron: '15 8 * * *'
+  # The current judge is Claude-based. Keep it manual until it is migrated to DeepSeek.
   workflow_dispatch:
 
 jobs:
