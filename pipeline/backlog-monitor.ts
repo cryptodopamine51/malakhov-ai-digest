@@ -50,7 +50,9 @@ async function checkBacklog(): Promise<void> {
     await fireAlert({
       supabase,
       alertType: 'backlog_high',
-      severity: oldestAgeHours > BACKLOG_AGE_ALERT_HOURS * 2 ? 'critical' : 'warning',
+      // A stale queue is actionable, but it is not an outage by itself. Keep it
+      // yellow; red is reserved for failed active runs and delivery failures.
+      severity: 'warning',
       message: `Enrich backlog: ${count} actionable статей ожидают. Самая старая: ${Math.round(oldestAgeHours)}h назад.`,
       payload: {
         actionableCount: count,
