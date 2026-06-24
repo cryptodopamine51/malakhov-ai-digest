@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           # GitHub schedules are read from main, while production code lives on this branch.
-          ref: codex/evergreen-quality-standard-2026-05-21
+          ref: codex/prod-release-2026-06-17
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

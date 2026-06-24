@@ -13,6 +13,7 @@ import { SITE_URL, readSiteUrlFromEnv } from '../lib/site'
 import { getServerClient } from '../lib/supabase'
 import type { Article } from '../lib/supabase'
 import { getMoscowDateKey, shiftMoscowDateKey } from '../lib/utils'
+import { WEEKLY_REPORT_SCHEMA, assertSchemaReady } from '../pipeline/schema-guard'
 import {
   rankDigestCandidates,
   selectDigestArticles,
@@ -485,6 +486,12 @@ export async function runWeeklyReport(options: RunWeeklyReportOptions = {}): Pro
   }
 
   const supabase = options.supabase ?? getServerClient()
+  // Fail fast с внятной ошибкой, если миграция weekly report не накатана на прод
+  // (иначе claim падает криптовым "Could not find the function …"). Только scheduled
+  // пишет в weekly_report_runs; dry-run и preview таблицу не трогают.
+  if (delivery === 'scheduled') {
+    await assertSchemaReady(supabase, WEEKLY_REPORT_SCHEMA)
+  }
   const candidates = await (options.fetchCandidates ?? fetchWeeklyReportCandidates)(supabase, window)
   if (candidates.length < REPORT_SIZE) {
     return {
