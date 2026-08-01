@@ -197,6 +197,24 @@ Lead anchor check (`sentenceHasAnchor`, первое предложение ли
   `retry_wait` с `last_error_code='anthropic_degraded'` до recovery. В этом режиме
   `enrich-submit-batch` не создаёт новые Anthropic Batch jobs.
 
+## Self-hosted production data plane (2026-08-01)
+
+The VPS migration does not change article lifecycle, public URL or publish semantics. `articles`
+remains the source of truth and `publish_article` remains the live gate. Server-side web and GitHub
+jobs use the self-hosted service endpoint with `SUPABASE_SERVICE_KEY`; browser code uses only the
+same-origin public endpoint plus anon key and can read verified live articles/categories under RLS.
+
+The recovered corpus baseline is 741 live articles with zero duplicate `id`, `slug` and
+`original_url`. `20260801140646_remove_legacy_batch_apply_overload.sql` keeps only the current
+`apply_anthropic_batch_item_result` signature that includes `article_videos`; the obsolete overload
+is not a valid runtime contract. The other service RPC contracts are `publish_article` and
+`claim_weekly_report_run`. No recovery sentinel or backup table may remain in `public`.
+
+GitHub workflows remain the only production scheduler plane. Telegram channel and weekly delivery
+each have one GitHub primary with a database uniqueness/claim guard; the self-hosted database has no
+`pg_cron` extension/job to create a second sender. Manual validation must use `send=false`/dry-run
+paths and must not make a test Telegram delivery.
+
 С 2026-05-11 `enrich.yml` запускает `npm run editorial:routing -- --mode=cheap --limit=15 --apply`
 каждые 30 минут. Это не удаляет Anthropic Batch: high-risk статьи, DeepSeek/API failures,
 validator failures и reviewer rejects по-прежнему создают обычный Anthropic Batch fallback item,
@@ -865,3 +883,11 @@ Broad RSS feeds допускаются только с keyword filters:
 - slug и URL policy;
 - логики media extraction/rendering;
 - digest article selection.
+
+## Recovery staging rendering (2026-08-01)
+
+Главная, `/russia` и category feeds принудительно server-rendered в standalone staging. Это
+исключает baked empty feed: image build ещё не подключён к private Docker network Supabase, а
+request-time runtime уже подключён. Пагинация и canonical URL contract не меняются; recovered
+live rows по-прежнему проходят тот же `published + quality_ok + verified_live + publish_status=live`
+public-read gate.

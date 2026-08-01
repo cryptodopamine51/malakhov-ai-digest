@@ -1,0 +1,17 @@
+[Unit]
+Description=Encrypted Malakhov AI Digest database backup
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/srv/malakhov-ai-digest/app-current/infra/vps/backup.sh
+UMask=0077
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+MemoryMax=1G
+TimeoutStartSec=1h
+
+[Install]
+WantedBy=multi-user.target

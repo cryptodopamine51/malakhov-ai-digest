@@ -11,6 +11,10 @@ import ResponsiveLocalImage from '../src/components/ResponsiveLocalImage'
 import TopicTabs from '../src/components/TopicTabs'
 
 export const revalidate = 300
+// A standalone build runs before the private Supabase network is attached.
+// Render this DB-backed surface at request time so staging never bakes an empty
+// recovery feed into the image.
+export const dynamic = 'force-dynamic'
 
 // Home-page metadata override the layout defaults so the SERP title carries
 // the primary navigational query ("AI новости на русском"). The brand suffix

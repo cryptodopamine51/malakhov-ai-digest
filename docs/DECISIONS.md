@@ -121,3 +121,45 @@
 - Context: model-routing lab показал, что DeepSeek может дать cheap editorial draft примерно за `$0.001` на статью, но production path не должен рисковать публикацией validator-failed или редакционно слабого материала.
 - Decision: production `enrich.yml` запускает `npm run editorial:routing -- --mode=cheap --limit=15 --apply --deepseek-daily-budget=0.25`. Low-risk output проходит deterministic repair + strict validator + provider-neutral apply gate. Любая provider/API/parse/validator/quality/reviewer проблема маршрутизируется в текущий Claude Batch fallback как `editorial_premium_fallback`.
 - Consequences: стоимость снижается на обычных low-risk статьях, но high-risk и failed cheap attempts остаются на Anthropic Batch. Fallback rate и провайдерские попытки видны в `llm_usage_logs`; live-публикация остаётся за `publish-verify` RPC. Если manual review покажет просадку качества, откат — вернуть `enrich.yml` на `npm run enrich-submit-batch`.
+
+## ADR-011 · VPS Supabase foundation is pinned and private before data import
+
+- Status: accepted
+- Date: 2026-08-01
+- Context: the managed Supabase project disappeared, while a verified Next.js fetch cache still contains recoverable live content. The first safe action must preserve that evidence and establish a compatible API foundation without changing the public site, DNS, or existing VPS proxy services.
+- Decision: use the official self-hosted Supabase Docker distribution at `v1.26.07` / `949a57d2854b7fcadc0d621cb7fffa167506d581`, with PostgreSQL 17.6.1.136 and the release-pinned Kong gateway. Publish no Supabase host ports in Iteration 1, including Studio. Secrets are generated only in the VPS `.env` with mode `0600`. Schema and recovered-content import are deferred until the Iteration 2 RLS/schema preflight.
+- Consequences: current Supabase changes, including the announced switch to Envoy as the default gateway on 2026-08-09, require an explicit reviewed upgrade. The VPS can be health-checked independently while Vercel remains production and x-ui/xray remains untouched.
+
+## ADR-012 · Staging replays runtime schema without historical Telegram schedules
+
+- Status: accepted
+- Date: 2026-08-01
+- Context: migrations 016/017 and the weekly-report migration combine necessary runtime tables with
+  pg_cron/pg_net schedules aimed at the production domain. Replaying them during recovery staging
+  could send real Telegram requests before application health and owner approval.
+- Decision: use a disposable preflight plus `20260801000000_self_hosted_staging.sql`, which carries
+  the required tables, triggers, grants and three RPC contracts but creates no cron job. Every exposed
+  runtime table has RLS; anon can only read verified live articles and service_role is tested through
+  the internal REST gateway. Production schedule selection remains a separate owner-approved cutover.
+- Consequences: staging faithfully tests DB/API/app behavior without becoming a second active
+  scheduler. The historical schedule files stay immutable and are revisited only during Iteration 3.
+
+## ADR-013 · Production runs as a private Supabase foundation behind same-origin Caddy
+
+- Status: accepted
+- Date: 2026-08-01
+- Context: the managed Supabase project is unavailable, while Iterations 1–2 recovered and proved
+  741 articles on a pinned VPS foundation. Production needs a public web/API hostname without
+  exposing PostgreSQL, Studio, the pooler or gateway ports, and must preserve Vercel and database
+  writes as independent rollback planes.
+- Decision: deploy root-owned versioned Next.js releases and Caddy on the VPS. Caddy is the only
+  public ingress on 80/443 and routes the application plus same-origin Supabase API paths; all
+  foundation services stay on the private Docker network. Rotate the legacy JWT set atomically,
+  enforce 14 runtime tables with RLS and exactly three runtime RPC grants, encrypt logical backups
+  with an off-host age identity, prove restore into a disposable database, and switch
+  `news.malakhovai.ru` only after those gates. GitHub Actions remains the sole scheduler plane;
+  no `pg_cron` Telegram jobs are restored. Vercel is retained for at least 48 hours as DNS rollback.
+- Consequences: application rollback never rewinds PostgreSQL. Every release, JWT rotation, backup,
+  restore and cutover produces root-only evidence. GitHub endpoint secrets are changed only after
+  public TLS is trusted. x-ui ports 2096/21417 are protected and outside Caddy. A future Supabase or
+  gateway upgrade remains an explicit reviewed operation because the foundation is pinned.

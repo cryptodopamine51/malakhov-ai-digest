@@ -190,8 +190,8 @@ Doc impact этой сессии: `app/guides/[slug]/page.tsx`, `content/guides/
 
 | Слой | Текущее решение |
 |---|---|
-| Сайт | Next.js 15, App Router, Tailwind CSS, Vercel |
-| Данные | Supabase PostgreSQL |
+| Сайт | Next.js 15, App Router, Tailwind CSS; immutable VPS release + Caddy, Vercel временно остаётся только DNS rollback |
+| Данные | Self-hosted Supabase PostgreSQL 17 на VPS; DB/Kong/Studio/Supavisor private |
 | Ingest | RSS → `pipeline/ingest.ts` |
 | Enrichment | `editorial:routing --mode=cheap` (DeepSeek-first writer + Claude Sonnet 4.6 selective reviewer / Anthropic Batch fallback). См. `docs/ARTICLE_SYSTEM.md`. |
 | Delivery | сайт + Telegram дайджест |
@@ -245,7 +245,26 @@ Doc impact этой сессии: `app/guides/[slug]/page.tsx`, `content/guides/
 - Canonical для news-сайта всегда `https://news.malakhovai.ru`; не использовать `malakhovai.ru` или env-derived URL в canonical, sitemap, RSS, `llms.txt`, `og:url` и article links.
 - FAQPage schema разрешена только там, где FAQ видим на странице. Для news articles FAQ не добавлять без отдельного изменения render/schema.
 - `legacy/` не использовать для нового функционала.
-- Продакшен-деплой идёт через Vercel и GitHub/Vercel flow, не ручным копированием файлов.
+- VPS-релизы неизменяемо версионируются в `/srv/malakhov-ai-digest/releases/<release-id>`;
+  `app-current` переключается только после protected health gate. Vercel production deployment
+  `dpl_Fcj75UJFatrq8cQe5aBBDj3XX6kz` сохраняется как DNS rollback минимум 48 часов после cutover.
+
+## VPS production recovery status (Iteration 3, 2026-08-01)
+
+- Foundation pinned at Supabase `v1.26.07` with 11/11 healthy containers and no public DB/API ports.
+- Runtime schema contract: 14 runtime tables with RLS 14/14, one RLS-protected `categories`
+  reference table, zero unexpected public tables and exactly three service-role RPC contracts.
+- Recovered production corpus: 741 live rows, no duplicate `id`, `slug` or `original_url`.
+- JWT secret, anon key and service key were rotated after the private Iteration 2 trace; old keys
+  return 401 and current keys pass the anon/service API matrix. Values are never logged.
+- Encrypted age backup, Mac offsite copy and disposable restore drill are proven. Daily backup and
+  five-minute monitor timers are enabled. Exact artifacts and RTO/RPO evidence live in
+  `docs/task_vps_supabase_recovery_2026-08-01.md` and the VPS root-only evidence directory.
+- Production is `/srv/malakhov-ai-digest/releases/iter3-20260801T162632Z-final` behind Caddy on
+  80/443. REG.RU authoritative DNS moved to `195.245.239.84` at `2026-08-01T15:52:41Z`; trusted
+  TLS, 741-row external feed and 30 canonical URLs are green. GitHub endpoint/key secrets were
+  rotated through stdin at `16:05Z`; Site Monitor manual run `30707436965` passed without a
+  Telegram send. Vercel deployment `dpl_Fcj75UJFatrq8cQe5aBBDj3XX6kz` is retained for rollback.
 
 ## Быстрые команды
 

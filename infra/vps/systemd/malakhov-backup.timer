@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily encrypted Malakhov AI Digest backup
+
+[Timer]
+OnCalendar=*-*-* 01:15:00 UTC
+RandomizedDelaySec=15m
+Persistent=true
+Unit=malakhov-backup.service
+
+[Install]
+WantedBy=timers.target

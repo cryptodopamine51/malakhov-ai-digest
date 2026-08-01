@@ -1,10 +1,17 @@
-name: Telegram Weekly Report Backup
+name: Telegram Weekly Report Primary
 
 on:
   schedule:
-    # 08:20 UTC = 11:20 Moscow, after primary Supabase pg_cron at 11:00.
+    # 08:20 UTC = 11:20 Moscow. Sole production primary after the VPS
+    # cutover; the former pg_cron job is intentionally absent.
     - cron: '20 8 * * 1'
   workflow_dispatch:
+    inputs:
+      send:
+        description: 'Actually send for a manual dispatch (default is dry-run/no-send)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -14,13 +21,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  backup:
+  primary:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout production code
         uses: actions/checkout@v4
         with:
+          # Scheduled workflows are sourced from main, while this production
+          # line remains the deployed weekly-report payload.
           ref: codex/prod-release-2026-06-17
 
       - name: Setup Node.js
@@ -32,7 +41,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run weekly report backup
+      - name: Manual dry-run
+        if: github.event_name == 'workflow_dispatch' && inputs.send != true
+        run: npm run tg-weekly-report -- --dry-run
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          NEXT_PUBLIC_SITE_URL: https://news.malakhovai.ru
+
+      - name: Run weekly report primary
+        if: github.event_name == 'schedule' || inputs.send == true
         run: npx tsx scripts/run-tg-weekly-report-backup.ts
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

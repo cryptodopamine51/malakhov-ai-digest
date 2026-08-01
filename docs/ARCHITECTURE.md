@@ -4,7 +4,8 @@
 
 Система разделена на четыре слоя:
 
-1. Web app: Next.js приложение в `app/` и `src/components/`, отрендеренное на Vercel.
+1. Web app: Next.js приложение в `app/` и `src/components/`, запущенное immutable release на VPS
+   за Caddy; Vercel временно сохранён только как DNS rollback.
 2. Data layer: Supabase PostgreSQL как единый источник данных.
 3. Content pipeline: TypeScript-скрипты в `pipeline/`, запускаемые по cron через GitHub Actions.
 4. Delivery and observability: Telegram channel posts, publish verification, health checks, alerts.
@@ -137,3 +138,42 @@ Telegram-отправки. Уникальность `(week_start, chat_id)` от
 - структуры данных и статусов;
 - ролей Supabase/Next.js/pipeline;
 - взаимодействия между публичным web и background jobs.
+
+## Self-hosted Supabase staging (2026-08-01)
+
+Iteration 2 восстановительного контура работает на VPS как private staging: PostgreSQL,
+Supavisor и Studio не имеют host-port; Kong доступен только в Docker network `supabase_default`.
+Next.js standalone runtime использует server-only `SUPABASE_URL=http://kong:8000`, а Caddy слушает
+только `127.0.0.1:8088` для SSH tunnel. Browser client читает исключительно явно заданные
+`NEXT_PUBLIC_SUPABASE_*`; он не делает fallback к server-only env. В `public` включён RLS на 14
+runtime tables: anon/authenticated получают только read live articles, service_role — server-only
+writes/RPC. Historical pg_cron migrations не применяются на staging: их table/RPC contracts
+заменяет `20260801000000_self_hosted_staging.sql` без расписаний.
+
+## Self-hosted production boundary (Iteration 3, 2026-08-01)
+
+The recovery foundation is now the authoritative data candidate for production. PostgreSQL,
+Supavisor, Studio and Kong remain reachable only inside `supabase_default`; public traffic enters
+through the production Caddy container and same-origin routes `/rest/*`, `/auth/*`, `/storage/*`,
+`/realtime/*` and `/functions/*` to Kong. The Next.js server uses `http://kong:8000`; browser code
+receives only the public hostname and anon key. The service-role key never enters `.next/static`.
+
+The public schema boundary is intentionally narrow:
+
+- 14 pipeline/runtime tables, all with RLS;
+- one reference table, `categories`, with RLS and read-only anon/authenticated access;
+- zero recovery sentinel or backup tables in `public`;
+- exactly three `service_role` RPC contracts: publish, weekly-report claim and current Anthropic
+  batch-item apply. Trigger helpers are not executable by API roles.
+
+`20260801140646_remove_legacy_batch_apply_overload.sql` enforces this contract, removes the private
+recovery sentinel after persistence proof, removes the obsolete RPC overload and relocates
+`pgcrypto` out of the exposed schema. PostgreSQL data and encrypted backups are independent of an
+application rollback: DNS may return to Vercel without rolling back or deleting database writes.
+
+Application releases are versioned root-owned snapshots under `/srv/malakhov-ai-digest/releases`.
+`app-current` changes only after container health and the protected application health endpoint
+pass. Caddy owns only 80/443; the existing x-ui sockets 2096/21417 remain a protected external
+boundary. At `2026-08-01T15:52:41Z` the authoritative A record moved from `76.76.21.21` to
+`195.245.239.84`; the VPS is now the public delivery layer. Vercel deployment
+`dpl_Fcj75UJFatrq8cQe5aBBDj3XX6kz` remains ready only as the 48-hour DNS rollback plane.

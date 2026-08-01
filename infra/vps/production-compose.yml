@@ -1,0 +1,82 @@
+services:
+  app:
+    container_name: malakhov-digest-production-app
+    image: malakhov-ai-digest:${APP_RELEASE_ID}
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      # The deploy script exposes a short-lived loopback-only bridge to Kong.
+      # Host networking lets BuildKit reach it without publishing Supabase.
+      network: host
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+        SUPABASE_URL: ${BUILD_SUPABASE_URL:-http://127.0.0.1:18080}
+    env_file:
+      - ${APP_ENV_FILE}
+    restart: unless-stopped
+    mem_limit: 2g
+    cpus: 2.5
+    pids_limit: 256
+    stop_grace_period: 30s
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3000/api/feed?limit=1').then(r=>r.json()).then(v=>process.exit(v.total>=741?0:1)).catch(()=>process.exit(1))
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 45s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+    networks:
+      - supabase
+
+  caddy:
+    container_name: malakhov-digest-production-caddy
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 10s
+    volumes:
+      - ./Caddyfile.production:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - caddy_logs:/var/log/caddy
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+    networks:
+      - supabase
+
+networks:
+  supabase:
+    external: true
+    name: ${SUPABASE_DOCKER_NETWORK:-supabase_default}
+
+volumes:
+  caddy_data:
+  caddy_config:
+  caddy_logs:

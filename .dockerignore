@@ -1,0 +1,12 @@
+.git
+.next
+node_modules
+.env
+.env.*
+!.env.example
+output
+coverage
+.DS_Store
+**/.DS_Store
+._*
+**/._*

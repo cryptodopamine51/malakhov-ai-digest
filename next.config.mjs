@@ -5,6 +5,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // The VPS runtime uses Next's standalone server inside a private Docker
+  // network. Vercel ignores this output mode, so it keeps the existing deploy
+  // path while making the production image reproducible.
+  output: 'standalone',
   outputFileTracingRoot: __dirname,
   images: {
     // 2026-05-22 hotfix: Vercel image optimization endpoint начал возвращать HTTP 402

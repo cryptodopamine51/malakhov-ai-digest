@@ -1,0 +1,36 @@
+# Iteration 2 private staging only. It publishes Caddy on loopback so an owner
+# can inspect it through SSH port forwarding; Postgres, Supavisor and Studio
+# remain inside the existing Supabase network.
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+        SUPABASE_URL: ${SUPABASE_URL}
+    env_file:
+      - .staging.env
+    restart: unless-stopped
+    networks:
+      - supabase
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_started
+    ports:
+      - "127.0.0.1:8088:80"
+    volumes:
+      - ./Caddyfile.staging:/etc/caddy/Caddyfile:ro
+    networks:
+      - supabase
+
+networks:
+  supabase:
+    external: true
+    name: ${SUPABASE_DOCKER_NETWORK:-docker_default}
