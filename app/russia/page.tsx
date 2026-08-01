@@ -6,6 +6,7 @@ import InterestingArticles from '../../src/components/InterestingArticles'
 import TopicTabs from '../../src/components/TopicTabs'
 
 export const revalidate = 300
+export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: 'ИИ в России — новости и тренды',

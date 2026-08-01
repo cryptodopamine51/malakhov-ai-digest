@@ -301,8 +301,11 @@ let publicReadClientInstance: SupabaseClient | null = null
 export function getBrowserClient(): SupabaseClient {
   if (browserClientInstance) return browserClientInstance
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY
+  // A browser bundle must only ever receive explicitly public configuration.
+  // In particular, do not fall back to server-only SUPABASE_URL/ANON_KEY here:
+  // a standalone Docker runtime uses an internal gateway hostname.
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!url || !key) {
     throw new Error('Supabase: отсутствуют SUPABASE_URL или SUPABASE_ANON_KEY')
@@ -315,8 +318,14 @@ export function getBrowserClient(): SupabaseClient {
 export function getPublicReadClient(): SupabaseClient {
   if (publicReadClientInstance) return publicReadClientInstance
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY
+  // Server rendering may use the private Docker-network gateway; client code
+  // remains on the explicitly public URL above.
+  const url = typeof window === 'undefined'
+    ? process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
+    : process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = typeof window === 'undefined'
+    ? process.env.SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    : process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!url || !key) {
     throw new Error('Supabase: NEXT_PUBLIC_SUPABASE_URL или NEXT_PUBLIC_SUPABASE_ANON_KEY не заданы')

@@ -137,3 +137,14 @@ Telegram-отправки. Уникальность `(week_start, chat_id)` от
 - структуры данных и статусов;
 - ролей Supabase/Next.js/pipeline;
 - взаимодействия между публичным web и background jobs.
+
+## Self-hosted Supabase staging (2026-08-01)
+
+Iteration 2 восстановительного контура работает на VPS как private staging: PostgreSQL,
+Supavisor и Studio не имеют host-port; Kong доступен только в Docker network `supabase_default`.
+Next.js standalone runtime использует server-only `SUPABASE_URL=http://kong:8000`, а Caddy слушает
+только `127.0.0.1:8088` для SSH tunnel. Browser client читает исключительно явно заданные
+`NEXT_PUBLIC_SUPABASE_*`; он не делает fallback к server-only env. В `public` включён RLS на 14
+runtime tables: anon/authenticated получают только read live articles, service_role — server-only
+writes/RPC. Historical pg_cron migrations не применяются на staging: их table/RPC contracts
+заменяет `20260801000000_self_hosted_staging.sql` без расписаний.

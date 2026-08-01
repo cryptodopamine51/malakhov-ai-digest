@@ -96,3 +96,10 @@ Malakhov AI Digest — русскоязычное AI-медиа, которое 
 ## Product Change Rule
 
 Если меняются разделы сайта, основная навигация, ключевые entry points или публичный пользовательский сценарий, обновлять этот файл.
+
+## Recovery staging availability (2026-08-01)
+
+Private VPS staging preserves the same public news, category and evergreen surfaces, but serves
+DB-backed feeds at request time so a Docker image can never freeze an empty recovery snapshot.
+It is inspectable only through an owner SSH tunnel and does not change the canonical production
+domain, Vercel delivery or any public user journey.
