@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Malakhov AI Digest internal monitor every five minutes
+
+[Timer]
+OnBootSec=2m
+OnUnitActiveSec=5m
+AccuracySec=30s
+Persistent=true
+Unit=malakhov-monitor.service
+
+[Install]
+WantedBy=timers.target

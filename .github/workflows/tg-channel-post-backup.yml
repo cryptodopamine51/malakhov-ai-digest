@@ -1,8 +1,9 @@
-name: Telegram Channel Post Backup
+name: Telegram Channel Post Primary
 
 on:
   schedule:
-    # Backup 5 minutes after the primary Supabase pg_cron slot times.
+    # Sole production primary after the VPS cutover. No pg_cron/systemd
+    # Telegram channel-post scheduler may run alongside this workflow.
     - cron: '35 6 * * *'
     - cron: '35 9 * * *'
     - cron: '35 12 * * *'
@@ -14,6 +15,11 @@ on:
         description: 'Optional slot 1..5; empty uses current Moscow time'
         required: false
         type: string
+      send:
+        description: 'Actually send for a manual dispatch (default is test-only/no-send)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -23,16 +29,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  backup:
+  primary:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          # GitHub schedules are read from main, while production code lives on this branch.
-          ref: codex/prod-release-2026-06-17
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -43,7 +46,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run Telegram channel post backup
+      - name: Manual no-send validation
+        if: github.event_name == 'workflow_dispatch' && inputs.send != true
+        run: npx tsx --test tests/node/channel-post.test.ts tests/node/tg-channel-schedule.test.ts
+
+      - name: Run Telegram channel post primary
+        if: github.event_name == 'schedule' || inputs.send == true
         run: npm run tg-channel-post:backup
         env:
           GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule }}

@@ -1,0 +1,12 @@
+[Unit]
+Description=Malakhov AI Digest internal production monitor
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/srv/malakhov-ai-digest/app-current/infra/vps/monitor.sh
+UMask=0077
+Nice=5
+MemoryMax=256M
+TimeoutStartSec=2m

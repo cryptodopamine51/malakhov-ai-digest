@@ -18,10 +18,14 @@ if ss -lntH "sport = :3000" | grep -q .; then
 fi
 
 docker compose exec -T db psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
-  -c 'create table if not exists public.recovery_preflight_sentinel (value text primary key)' \
-  -c "insert into public.recovery_preflight_sentinel(value) values ('iteration-1') on conflict (value) do nothing"
+  -c 'create schema if not exists recovery_ops' \
+  -c 'revoke all on schema recovery_ops from public, anon, authenticated' \
+  -c 'create table if not exists recovery_ops.preflight_sentinel (value text primary key)' \
+  -c "insert into recovery_ops.preflight_sentinel(value) values ('foundation') on conflict (value) do nothing"
 docker compose restart db
 until docker compose exec -T db pg_isready -U postgres -d postgres >/dev/null 2>&1; do sleep 2; done
-docker compose exec -T db psql -U postgres -d postgres -Atqc "select value from public.recovery_preflight_sentinel where value = 'iteration-1'" | grep -Fx iteration-1 >/dev/null
+docker compose exec -T db psql -U postgres -d postgres -Atqc "select value from recovery_ops.preflight_sentinel where value = 'foundation'" | grep -Fx foundation >/dev/null
+docker compose exec -T db psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+  -c 'drop schema recovery_ops cascade' >/dev/null
 docker compose ps --format 'table {{.Name}}\t{{.Status}}'
-printf '%s\n' 'preflight=passed persistence=passed supabase_host_ports=not_published studio=not_published'
+printf '%s\n' 'preflight=passed persistence=passed sentinel=removed supabase_host_ports=not_published studio=not_published'

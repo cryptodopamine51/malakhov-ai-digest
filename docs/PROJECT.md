@@ -103,3 +103,12 @@ Private VPS staging preserves the same public news, category and evergreen surfa
 DB-backed feeds at request time so a Docker image can never freeze an empty recovery snapshot.
 It is inspectable only through an owner SSH tunnel and does not change the canonical production
 domain, Vercel delivery or any public user journey.
+
+## VPS production migration status (Iteration 3, 2026-08-01)
+
+The public product surfaces and canonical URLs do not change during the migration. A production
+release on `195.245.239.84` serves the recovered 741-article corpus, categories, guides, RSS,
+sitemaps, robots and health through Caddy, while its database and administrative services remain
+private. REG.RU authoritative DNS moved from Vercel `76.76.21.21` to the VPS at
+`2026-08-01T15:52:41Z`; trusted HTTPS and public content gates passed. The previous ready Vercel
+deployment is retained for at least 48 hours as DNS rollback, without rewinding PostgreSQL.
