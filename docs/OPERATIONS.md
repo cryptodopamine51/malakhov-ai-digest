@@ -1428,6 +1428,44 @@ CHECK constraint `digest_runs_status_check_v2` расширен НАДМНОЖЕ
 
 Pre-claim env-config errors (`TELEGRAM_BOT_TOKEN`, `NEXT_PUBLIC_SITE_URL`, `assertServiceRoleKey`) намеренно НЕ пишут digest_runs — они срабатывают до любого DB-touch и логируются в stderr.
 
+## VPS recovery staging (Iteration 2, 2026-08-01)
+
+- Foundation: `/srv/malakhov-ai-digest/supabase-source/docker`, pinned Supabase `v1.26.07`;
+  staging application source: `/srv/malakhov-ai-digest/app-staging`.
+- `infra/vps/staging-db.sh preflight` creates then removes `iteration2_schema_preflight`; it validates
+  schema+migrations with `ON_ERROR_STOP=1`. The three historical scheduler migrations are replaced
+  by the versioned self-hosted adaptation, so no `tg-*` cron jobs are committed.
+- `apply`, `import` and `verify` are the only DB actions for this stage. Import is transactional,
+  accepts the verified 741-row JSONL only, uses `ON CONFLICT (id) DO NOTHING`, and asserts all three
+  uniqueness dimensions before commit. Migration 010's two documented `CREATE INDEX CONCURRENTLY`
+  statements run separately and are immediately verified.
+- `infra/vps/deploy-staging.sh` creates root-only `.staging.env`, starts Caddy + standalone Next.js
+  and publishes only `127.0.0.1:8088`. Inspect through
+  `ssh -L 8088:127.0.0.1:8088 root@195.245.239.84`; never expose DB, pooler, Studio or Kong.
+- All application schedulers are disabled in this container. Do not run ingest/enrich/publish or send
+  Telegram from staging. `staging-db.sh lifecycle` uses a rollback-only fixture; API role test creates
+  and deletes its service-role fixture in the same command.
+
+### Scheduler matrix for cutover
+
+Iteration 2 changes no active production schedule. This is the approved single-primary map to apply
+only during the owner-controlled cutover; all other listed runners stay disabled until their primary
+has been observed healthy. The idempotency key/claim is the protection for a manual retry, not a
+reason to operate two primaries.
+
+| Job family | Staging state | Cutover primary | Backup/manual runner | Timezone / concurrency / idempotency proof |
+|---|---|---|---|---|
+| RSS ingest | disabled | GitHub `rss-parse.yml` | manual workflow dispatch | UTC; workflow concurrency; source URL + article uniqueness |
+| Enrich, batch collect and retry | disabled | GitHub `enrich*.yml` / `retry-failed.yml` | manual workflow dispatch | UTC; workflow concurrency; database claim/release |
+| Publish verification | disabled | GitHub `publish-verify.yml` | manual workflow dispatch | UTC; `publish_article` returns already-live on repeat |
+| Pipeline health / ops report | disabled | GitHub `pipeline-health.yml` / `ops-report.yml` | manual workflow dispatch | UTC; alert fingerprints and report window |
+| Telegram channel slots | disabled; no `tg-*` cron committed | one owner-approved scheduler after C6 (not selected in Iteration 2) | disabled GitHub backup runner | Moscow slots; `telegram_channel_posts` unique delivery key |
+| Weekly Telegram report | disabled; no `tg-*` cron committed | one owner-approved scheduler after C6 (not selected in Iteration 2) | manual dry-run only | Monday 11:00 Moscow; `claim_weekly_report_run` |
+
+Before enabling either Telegram primary, set its backup runner disabled, perform the owner-approved
+dry-run, and record the exact scheduler, timezone and concurrency key in this table. This prevents
+the historical `pg_cron` + GitHub double-send configuration from returning.
+
 ## Database security
 
 - Production `public` tables работают с включённым RLS.

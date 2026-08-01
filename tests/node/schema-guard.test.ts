@@ -52,7 +52,7 @@ test('assertSchemaReady кидает actionable ошибку с именем м�
   const supabase = tableStub(new Set())
   await assert.rejects(
     () => assertSchemaReady(supabase as never, WEEKLY_REPORT_SCHEMA),
-    /weekly report: schema not applied.*weekly_report_runs.*20260622073323_weekly_telegram_report\.sql/s,
+    /weekly report: schema not applied[\s\S]*weekly_report_runs[\s\S]*20260622073323_weekly_telegram_report\.sql/,
   )
   const ok = tableStub(new Set(['weekly_report_runs']))
   await assert.doesNotReject(() => assertSchemaReady(ok as never, WEEKLY_REPORT_SCHEMA))
@@ -72,6 +72,6 @@ test('scheduled weekly report падает внятно, если таблицы
         fetchCandidates: async () => candidates as never,
         sendMessage: async () => ({ result: { message_id: 1 } }),
       }),
-    /schema not applied.*20260622073323/s,
+    /schema not applied[\s\S]*20260622073323/,
   )
 })

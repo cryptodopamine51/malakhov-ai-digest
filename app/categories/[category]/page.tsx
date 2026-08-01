@@ -10,6 +10,7 @@ import InterestingArticles from '../../../src/components/InterestingArticles'
 import TopicTabs from '../../../src/components/TopicTabs'
 
 export const revalidate = 300
+export const dynamic = 'force-dynamic'
 
 function CategoryIllustration({ slug }: { slug: string }): ReactNode {
   const shared = 'absolute inset-0 h-full w-full opacity-60'

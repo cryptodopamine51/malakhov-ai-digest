@@ -865,3 +865,11 @@ Broad RSS feeds допускаются только с keyword filters:
 - slug и URL policy;
 - логики media extraction/rendering;
 - digest article selection.
+
+## Recovery staging rendering (2026-08-01)
+
+Главная, `/russia` и category feeds принудительно server-rendered в standalone staging. Это
+исключает baked empty feed: image build ещё не подключён к private Docker network Supabase, а
+request-time runtime уже подключён. Пагинация и canonical URL contract не меняются; recovered
+live rows по-прежнему проходят тот же `published + quality_ok + verified_live + publish_status=live`
+public-read gate.

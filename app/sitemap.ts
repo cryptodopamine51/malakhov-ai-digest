@@ -1,4 +1,6 @@
 import type { MetadataRoute } from 'next'
+
+export const dynamic = 'force-dynamic'
 import { getArticleUrl } from '../lib/article-slugs'
 import { getAllArticlesForSitemap } from '../lib/articles'
 import { getAllGuides, getGuideAbsoluteUrl } from '../lib/guides'

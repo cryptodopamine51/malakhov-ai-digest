@@ -642,3 +642,68 @@ Status: COMPLETE
 
 Docs updated: `docs/DECISIONS.md`, `docs/OPERATIONS.md`,
 `docs/task_vps_supabase_recovery_2026-08-01.md`
+
+### 2026-08-01 — Iteration 2
+
+Status: COMPLETE (D2, A3 and P4 closed on private staging)
+
+- Git branch / HEAD: `codex/vps-recovery-iter2`; commit is made after this evidence log, without
+  rewriting the accepted Iteration 1 history (`98912ae`).
+- Local files changed: private staging Docker/Caddy/compose and DB/API verification scripts under
+  `infra/vps/`, standalone `Dockerfile`, `.dockerignore`, server/browser Supabase env separation,
+  dynamic staging reads for home/category/Russia/sitemap, two versioned self-host migrations, the
+  confirmed ES2017-safe schema-test repair, canonical docs and this handoff.
+- VPS changes: schema and recovery import were applied only to the existing private foundation;
+  `/srv/malakhov-ai-digest/app-staging` runs the standalone Next.js image behind Caddy on
+  `127.0.0.1:8088` only. No Supabase DB/API/Studio port is published. x-ui/xray, UFW, DNS, Vercel,
+  GitHub secrets and active production schedules were not changed.
+- Pinned versions: foundation remains Supabase `v1.26.07` / PostgreSQL
+  `supabase/postgres:17.6.1.136`; staging runtime uses `node:22.16.0-bookworm-slim` and
+  `caddy:2.10.2-alpine`.
+- Recovery/DB counts and checksums: VPS recheck matched archive
+  `203f28ebad455ba1340aab51c82198d4a5589e48aeb2b5842ee01e8c9aeba13f` and JSONL
+  `22c498dd256e21c3ffbda2a81236dc33c499a1cd771ecde6f1b574048d28364b`; foundation = 11/11
+  healthy containers. Disposable schema preflight passed with no committed `tg-*` cron jobs.
+  Import is idempotent: 741 live rows, zero duplicate `id`, `slug` and `original_url`; runtime
+  proof = 14 tables, 3 RPCs and RLS on 14 tables. Home and category query plans are index scans
+  (`idx_articles_verified_public` and `idx_articles_published` on this 741-row dataset); the
+  dedicated `idx_articles_live_category_created` is present.
+- Security/API proof: anon live read = 200, anon insert = 401, anon RPC = 401; service cleanup
+  before/after = 204, service insert = 201 and service RPC = 200. The temporary fixture is removed.
+  Browser static assets contain no `SUPABASE_SERVICE_KEY`/`SERVICE_ROLE_KEY` marker. Health is 401
+  without its token and 200 with it; internal dashboard is 404 without the token and 200 with it.
+- Application proof: `/`, `/russia`, category, one recovered article, an evergreen guide, RSS,
+  sitemaps, robots and both LLM files returned 200; `/api/feed` reports 741. XML validation passed
+  3/3 and a deterministic 30/30 recovered-article sample returned HTTP 200 with the production
+  canonical URL. Access is only via `ssh -L 8088:127.0.0.1:8088 root@195.245.239.84`.
+- Pipeline/scheduler proof: rollback-only lifecycle passed enrich claim/release, repeat-safe
+  `publish_article` and `claim_weekly_report_run`; Telegram calls = 0. The documented matrix keeps
+  all staging runners disabled and selects one primary per non-Telegram job; Telegram primary remains
+  deliberately unselected until an owner-approved C6 dry-run.
+- Tests executed and exact results: `npm run context` passed; `npm test` = 420 pass, 0 fail;
+  `npx tsc --noEmit` passed; `npm run docs:check` passed; local `npm run build` with non-secret
+  loopback build inputs passed (existing lint warnings only); focused migration/schema suite =
+  11 pass, 0 fail. VPS `staging-db.sh preflight/import/verify/lifecycle`, API-role script, XML,
+  30-URL and port checks passed. The old `schema-guard` failure reproduced on clean Iteration 1
+  because the `/s` RegExp flag is unsupported by the ES2017 TypeScript target; it was minimally
+  replaced with equivalent `[\\s\\S]` matching, not masked.
+- Quality gates closed: S0, R1, D2, A3, P4.
+- Quality gates still open: B5, C6.
+- Production/DNS impact: none. `news.malakhovai.ru` remains on Vercel; staging is internal-only.
+- Secrets missing (names only): owner-controlled C6 still requires the approved public hostname/TLS
+  decision and the existing deployment secret inventory. No public or GitHub secret was changed;
+  before C6, rotate the staging anon/service JWT pair because an early operator debug trace expanded
+  them in the private work session. The committed scripts never print secret values.
+- Risks/blockers: B5 still needs an owner-approved backup/restore drill. C6 needs an explicit
+  cutover window, DNS/TLS/API-hostname decision, GitHub secret update and manual workflow checks;
+  then enable exactly one approved Telegram scheduler only after its dry-run.
+- Rollback state: `docker compose -p malakhov-digest-staging -f
+  /srv/malakhov-ai-digest/app-staging/infra/vps/staging-compose.yml down` removes only the staging
+  app/Caddy containers. Foundation data, recovery archive, x-ui/xray, Vercel and DNS remain intact.
+- Exact next action: Iteration 3 performs B5 restore-drill evidence first. After owner approval for
+  C6, provision the public Caddy hostname/TLS without publishing DB/Studio, set GitHub deployment
+  inputs by name only, manually validate workflows and external monitoring, then choose one Telegram
+  primary and leave its backup disabled before any real send.
+
+Docs updated: `docs/ARCHITECTURE.md`, `docs/ARTICLE_SYSTEM.md`, `docs/OPERATIONS.md`,
+`docs/DECISIONS.md`, `docs/PROJECT.md`, `docs/task_vps_supabase_recovery_2026-08-01.md`

@@ -1,0 +1,7 @@
+:80 {
+  encode zstd gzip
+
+  @supabase path /rest/* /auth/* /storage/* /realtime/* /functions/*
+  reverse_proxy @supabase kong:8000
+  reverse_proxy app:3000
+}
