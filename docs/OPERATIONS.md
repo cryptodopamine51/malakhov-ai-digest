@@ -235,10 +235,10 @@ overlap when provider latency is high.
 
 ### Недельный Telegram-отчёт
 
-Каждый понедельник в **11:00 МСК** Supabase job `tg-weekly-report` (`0 8 * * 1` UTC) вызывает
-`GET /api/cron/tg-weekly-report`. Route собирает предыдущую полную неделю Пн–Вс и отправляет
-один отчёт в `TELEGRAM_ADMIN_CHAT_ID`; GitHub Actions backup
-`.github/workflows/tg-weekly-report-backup.yml` повторяет запуск в 11:20 МСК. Таблица
+Каждый понедельник в **11:20 МСК** sole-primary GitHub workflow
+`.github/workflows/tg-weekly-report-backup.yml` собирает предыдущую полную неделю Пн–Вс и
+отправляет один отчёт в `TELEGRAM_ADMIN_CHAT_ID`. Self-hosted Postgres не имеет `pg_cron`
+extension/job для этой семьи. Таблица
 `weekly_report_runs` и функция `claim_weekly_report_run` не допускают повторной отправки одной
 недели primary/backup runner-ами. `running`-claim можно перехватить только после 15 минут, а
 `failed` — при следующем запуске.
@@ -270,9 +270,9 @@ select week_start, format, status, article_ids, telegram_message_id, error, upda
 
 ## Cron-расписание Telegram channel posts
 
-Telegram-посты в штатном режиме дёргаются через Supabase `pg_cron` + `pg_net`; GitHub Actions
-запускает независимый backup-runner через 5 минут после каждого slot. Каждый запуск вызывает один slot:
-`/api/cron/tg-channel-post?slot=1..5`. Таблица `telegram_channel_posts` хранит план и delivery
+Telegram-посты в штатном режиме запускает только GitHub Actions workflow
+`.github/workflows/tg-channel-post-backup.yml` в пяти точных slot. Self-hosted Postgres не имеет
+`pg_cron`/`pg_net` sender jobs, а Vercel Cron отключён. Таблица `telegram_channel_posts` хранит plan/delivery
 state по каждому слоту; UNIQUE `(delivery_date, slot_no, channel_id)` гарантирует, что один
 slot не отправится дважды.
 
@@ -282,7 +282,7 @@ slot не отправится дважды.
 `success`, `sending` и `skipped_*` не переотправляются, чтобы не дублировать уже забранный или
 заведомо пропущенный slot.
 
-### Primary — Supabase pg_cron + pg_net (минутная точность)
+### Historical Supabase schedule — disabled
 
 | Job | Расписание (UTC) | МСК | Дни |
 |---|---|---|---|
@@ -292,10 +292,8 @@ slot не отправится дважды.
 | `tg-channel-post-4` | `30 15 * * *` | 18:30 | ежедневно |
 | `tg-channel-post-5` | `0 18 * * *` | 21:00 | ежедневно |
 
-`pg_cron` работает внутри Supabase Postgres, расписания исполняются с точностью до секунд.
-`pg_net.http_get` дёргает `https://news.malakhovai.ru/api/cron/tg-channel-post?slot=N` с
-заголовком `Authorization: Bearer <secret>`, секрет хранится в `vault.secrets` под именем
-`cron_bearer_token` и читается через `vault.decrypted_secrets`.
+Эти пять значений сохранены только как историческая карта. В production нет extension/job,
+`vault` bearer и второго sender plane для них; не применять migration `017` как scheduler.
 
 Caption генерируется в `bot/channel-post-core.ts` как два абзаца: жирный заголовок и короткий
 редакционный body. При создании нового daily plan runner сначала пытается DeepSeek через
@@ -313,13 +311,8 @@ multipart upload. Это убирает класс отказов `Bad Request: 
 сторонний CDN доступен сайту/оператору, но Telegram не может скачать URL со своих IP. Если
 prefetch не проходит, слот остаётся `failed_send` с явной причиной `Telegram photo prefetch ...`.
 
-Конфигурация — в `supabase/migrations/017_telegram_channel_posts.sql`. Эта миграция также
-unschedule-ит legacy `tg-digest-weekday` и `tg-digest-weekend`. Секрет в Vault создаётся
-**один раз** руками:
-
-```sql
-SELECT vault.create_secret('Bearer <CRON_SECRET>', 'cron_bearer_token', '...');
-```
+Историческая конфигурация находится в `supabase/migrations/017_telegram_channel_posts.sql`, но
+self-hosted production применяет scheduler-free adaptation `20260801000000_self_hosted_staging.sql`.
 
 Диагностика:
 
@@ -334,10 +327,9 @@ SELECT delivery_date, slot_no, status, article_id, telegram_message_id, sent_at,
   FROM telegram_channel_posts ORDER BY delivery_date DESC, slot_no DESC LIMIT 10;
 ```
 
-### Backup — GitHub Actions
+### Primary — GitHub Actions
 
-Workflow `.github/workflows/tg-channel-post-backup.yml` запускается на тех же пяти slot-ах с
-лагом 5 минут:
+Workflow `.github/workflows/tg-channel-post-backup.yml` — единственный production primary:
 
 | Cron (UTC) | МСК | Slot |
 |---|---:|---:|
@@ -353,7 +345,8 @@ Supabase/Vercel route. Поэтому backup не создаёт второй de
 `telegram_channel_posts` (`status='success'` не переотправляется; `sending` считается уже
 забранным; missed `planned` и `failed_send` slots `<= N` catch-up-ятся по порядку).
 
-Manual dispatch: запусти workflow с `slot=1..5` или локально:
+Manual dispatch для проверки запускается только с `send=false`; он завершает test-only job и не
+вызывает Telegram. Локальный реальный runner не использовать как dry-run:
 
 ```bash
 npm run tg-channel-post:backup -- --slot=3
@@ -414,11 +407,9 @@ Vercel REST API смену Production Branch не поддерживает (пр
 
 ### Vercel Cron
 
-`vercel.json` больше не содержит Telegram cron entries. Vercel Hobby плохо подходит для
-пяти точных отправок в день; primary schedule — Supabase `pg_cron`, backup schedule —
-GitHub Actions `tg-channel-post-backup.yml`. Route `/api/cron/tg-channel-post?slot=N`
-остаётся Vercel serverless endpoint-ом, но primary вызывает его из Postgres через `pg_net`;
-backup вызывает `runChannelPost(slot)` напрямую из Node.
+`vercel.json` не содержит Telegram cron entries. Единственный primary — GitHub Actions
+`tg-channel-post-backup.yml`; ни Vercel, ни self-hosted Postgres не запускают второй sender.
+Route `/api/cron/tg-channel-post?slot=N` сохранён для совместимости, но не имеет production cron.
 
 Vercel Cron на Hobby plan имеет два жёстких ограничения:
 
@@ -1013,18 +1004,18 @@ Cтратегия рендеринга по типам страниц:
 
 Текущая схема (исторически сложилась, признана каноном до отдельного решения владельца):
 
-- **Прод-код живёт в ветке `codex/evergreen-quality-standard-2026-05-21`** — в неё пушатся
-  все production-изменения. CI (`ci.yml`) гоняется на ней наравне с `main` и PR.
+- **Production runtime собирается из принятой cumulative recovery-ветки** в immutable VPS release.
+  Iteration 3 использует `codex/vps-recovery-iter3`; controller независимо аудитит её до merge.
 - **`main` — носитель workflow-определений.** Scheduled GitHub Actions исполняют YML с
   default-ветки (`main`), но чекаутят код прод-ветки через ref-pin в шаге Checkout.
   ⚠️ Любое изменение env/шагов cron-workflow надо вносить В ОБЕ ветки: в прод-ветку
   (для консистентности кода) и в `main` (иначе scheduled-запуски его не увидят).
-- **Деплой на Vercel — ручной**: `vercel deploy --prod` из чистого рабочего дерева прод-ветки
-  (git-автодеплой с этой ветки не подключён). Перед деплоем: CI зелёный + `npm run build` локально.
-- Один раз когда-нибудь: влить прод-ветку в `main`, перевести ref-pin'ы и Vercel на `main` —
-  решение владельца, см. `docs/spec_2026-06-10_digest_full_audit.md` Волна B.
+- **Деплой на VPS — ручной gated** через `infra/vps/deploy-production.sh`: versioned release,
+  private build API bridge, 62/62 SSG pages, compose health, затем атомарный `app-current`.
+- После принятия Iteration 3 controller должен влить cumulative branch и обновить исторические
+  workflow ref-pin'ы на принятую ветку/default branch; Vercel больше не является deploy target.
 
-- Runtime сайта: Vercel.
+- Runtime сайта: VPS `195.245.239.84`, Caddy + Next.js standalone.
 - Production domain: `https://news.malakhovai.ru`.
 - News-домен должен быть отдельным property в Яндекс.Вебмастере и Google Search Console.
 - Sitemaps для индексации:
@@ -1054,7 +1045,7 @@ Cтратегия рендеринга по типам страниц:
    кнопка скрывается. То же на главной (`/`) и `/russia` — Load more подгружает page 2+ через
    `/api/feed` / `/api/categories/<cat>/articles` и обновляет URL через `pushState`. Сервер при
    этом игнорирует `?page=` и при reload отдаёт page 1: это намеренный компромисс — listing-страницы
-   остаются `Static / SSG` на Vercel CDN, canonical всегда указывает на base URL.
+   остаются `Static / SSG` в Next.js standalone release, canonical всегда указывает на base URL.
 8. Если меняли media/video logic, на live-странице корректно рендерится media block.
 9. Если меняли media sanitizer, problem pages с Habr career/course banner и Ars Technica
    `Photo of ...` не показывают эти inline images; нормальная тематическая картинка остаётся.
@@ -1465,8 +1456,8 @@ reason to operate two primaries.
 | Enrich, batch collect and retry | disabled | GitHub `enrich*.yml` / `retry-failed.yml` | manual workflow dispatch | UTC; workflow concurrency; database claim/release |
 | Publish verification | disabled | GitHub `publish-verify.yml` | manual workflow dispatch | UTC; `publish_article` returns already-live on repeat |
 | Pipeline health / ops report | disabled | GitHub `pipeline-health.yml` / `ops-report.yml` | manual workflow dispatch | UTC; alert fingerprints and report window |
-| Telegram channel slots | disabled; no `tg-*` cron committed | one owner-approved scheduler after C6 (not selected in Iteration 2) | disabled GitHub backup runner | Moscow slots; `telegram_channel_posts` unique delivery key |
-| Weekly Telegram report | disabled; no `tg-*` cron committed | one owner-approved scheduler after C6 (not selected in Iteration 2) | manual dry-run only | Monday 11:00 Moscow; `claim_weekly_report_run` |
+| Telegram channel slots | no `tg-*` DB cron | GitHub `tg-channel-post-backup.yml` (sole primary; five UTC schedules) | manual `send=false` test only | Moscow slots; workflow concurrency + `telegram_channel_posts` unique delivery key |
+| Weekly Telegram report | no `tg-*` DB cron | GitHub `tg-weekly-report-backup.yml` (sole primary; Monday 08:20 UTC) | manual `send=false` dry-run only | workflow concurrency + `claim_weekly_report_run` |
 
 Before enabling either Telegram primary, set its backup runner disabled, perform the owner-approved
 dry-run, and record the exact scheduler, timezone and concurrency key in this table. This prevents
@@ -1503,13 +1494,135 @@ writes root-only `articles.jsonl`, manifest, rejection report, field statistics
 and SHA-256 checksum. Never remove or rebuild `.next` until an independently
 verified recovery copy and export exist.
 
-`infra/vps/` is the non-production foundation for `/srv/malakhov-ai-digest`.
+`infra/vps/` is the production operator surface for `/srv/malakhov-ai-digest`.
 It pins official Supabase `v1.26.07` / commit
 `949a57d2854b7fcadc0d621cb7fffa167506d581` and records all image tags in
 `infra/vps/LOCK.json`. Run its `install-docker.sh`, `deploy-foundation.sh`, and
 `preflight.sh` only as root on the designated VPS. The real generated `.env` is
 VPS-only mode `0600`; recovery artifacts remain root-only under
 `/srv/malakhov-ai-digest/recovery`. Gateway, Postgres and Supavisor have no host
-ports, and Studio has no host port. The Iteration 1 helper `backup.sh` is a
-local dump helper, not a compliant backup solution: encryption, offsite copy,
-retention and restore drill remain mandatory Iteration 3 work.
+ports, and Studio has no host port. `backup.sh` is now the encrypted, locked, tier-retained
+production backup path; its Mac offsite copy and disposable restore drill are proven below.
+
+## VPS production cutover and recovery (Iteration 3, 2026-08-01)
+
+### Layout and deployment
+
+- Foundation: `/srv/malakhov-ai-digest/supabase-source/docker`, pinned by `infra/vps/LOCK.json`.
+- Versioned releases: `/srv/malakhov-ai-digest/releases/<release-id>`; they must be root-owned and
+  have no group/world write bits. `/srv/malakhov-ai-digest/app-current` is the only current symlink.
+- Production release: `iter3-20260801T162632Z-final`; Caddy/app compose project is
+  `malakhov-digest-production`.
+- Secrets live only in `/srv/malakhov-ai-digest/secrets` (`0700` directory, `0600` files). Never
+  copy them into a release, evidence log or command output.
+- `infra/vps/deploy-production.sh` accepts only a path below `releases/`, creates the root-only app
+  env from an explicit allow-list, forces application schedulers off, validates compose, creates a
+  short-lived loopback-only Caddy bridge from BuildKit to private Kong, rebuilds 62/62 pages,
+  removes that bridge, recreates both containers, checks protected health and only then switches
+  `app-current`.
+- Caddy owns 80/443 and proxies Supabase same-origin endpoints to private Kong. DB, Kong, Studio and
+  Supavisor must never have host ports. Ports 2096 and 21417 and service `x-ui` are protected scope.
+
+Pre-cutover health commands:
+
+```bash
+cd /srv/malakhov-ai-digest/supabase-source/docker
+docker compose ps
+docker inspect -f '{{.State.Health.Status}}' malakhov-digest-production-app
+docker inspect -f '{{.State.Health.Status}}' malakhov-digest-production-caddy
+ss -ltnp | grep -E ':(80|443|2096|21417) '
+/srv/malakhov-ai-digest/app-current/infra/vps/monitor.sh
+```
+
+### JWT rotation
+
+Run `infra/vps/rotate-jwt.sh` only as root, detached with its root-only evidence log. It rotates
+`JWT_SECRET`, `ANON_KEY` and `SERVICE_ROLE_KEY` as one unit, recreates all affected Supabase
+consumers and the application, and proves old anon/service tokens both return 401 while the new API
+matrix passes. The rollback material exists only under `/run` during the operation and is removed by
+the script. Never use `set -x` or print any env value.
+
+### Encrypted backup and restore drill
+
+`infra/vps/backup.sh` uses `flock`, `pg_dump --format=custom`, globals, restore list, config/recovery
+artifacts and internal SHA-256 evidence. The entire tar is encrypted to the configured age recipient;
+plaintext is removed before success. Retention tiers are daily 7, weekly 4 and monthly 6. The daily
+timer is `malakhov-backup.timer` at 01:15 UTC with randomized delay and `Persistent=true`.
+
+The final cutover artifact (including the current production env and operator/migration snapshot) is:
+
+- VPS: `/srv/malakhov-ai-digest/backups/encrypted/daily/malakhov-ai-digest-20260801T145753Z.tar.age`;
+- Mac offsite: `/Users/malast/.codex/backups/malakhov-ai-digest/malakhov-ai-digest-20260801T145753Z.tar.age`;
+- SHA-256: `f4e2e53bf6365a77c66ca27e1c40788be6d0ab6b1b4fbdd7e045477c34ef49a0`;
+- restore evidence: `/srv/malakhov-ai-digest/evidence/restore-drill-20260801T145917Z.manifest`,
+  RTO 3 seconds, RPO age at drill 81 seconds, disposable DB removed.
+
+The age identity is Mac-only and must never be committed, copied to the VPS or printed. Decrypt to a
+validated `/run/malakhov-restore-*` directory and invoke `backup-restore-drill.sh` with that bundle.
+The script compares per-table counts, article checksum, schema, RLS, RPC and required indexes, drops
+the exact disposable database with force, then removes only its validated `/run` root.
+
+### Monitoring
+
+`malakhov-monitor.timer` runs every five minutes. It checks 11 foundation and two production
+containers, live rows, DB connections/blocked locks, disk <80%, encrypted backup age/checksum,
+`x-ui` and protected sockets. After `/srv/malakhov-ai-digest/.cutover-complete` exists it also checks
+the public 741-row feed and certificate expiry >7 days. Status is root-only at
+`evidence/monitor/latest.status`; critical state is also written to journald. GitHub
+`site-monitor.yml` remains the external 15-minute HTTP check and existing critical Telegram alert
+channel; do not send a synthetic Telegram notification during validation.
+
+### DNS/TLS cutover
+
+Authoritative servers are `ns1.hosting.reg.ru` / `ns2.hosting.reg.ru`, so the official REG.RU flow
+requires the hosting ispmanager panel, not REG.API zone methods for `ns1.reg.ru`. Before changing DNS:
+
+1. verify the authoritative A/TTL and record `76.76.21.21` as the Vercel rollback value;
+2. prove backup + restore, 14/14 RLS, three RPCs, 741 rows, 30 canonical URLs and protected ports;
+3. change only `news` A to `195.245.239.84` in the hosting panel;
+4. wait for both authoritative servers, then public resolvers, to return the VPS;
+5. require a publicly trusted certificate, correct SAN and expiry before changing GitHub secrets;
+6. set GitHub `SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_ANON_KEY`,
+   `SUPABASE_SERVICE_KEY`, `PUBLISH_VERIFY_SECRET` and `NEXT_PUBLIC_SITE_URL` through `gh secret set`
+   using stdin only; never print values;
+7. create `.cutover-complete`, run external smoke and observe at least 30 minutes.
+
+Actual cutover evidence:
+
+- `2026-08-01T15:52:41Z`: parent-zone record `news.malakhovai.ru. 3600 A` changed from
+  `76.76.21.21` to `195.245.239.84`; both authoritative server pools converged by `16:03Z`;
+- trusted VPS certificate: `CN=news.malakhovai.ru`, issuer `Let's Encrypt YE2`, valid from
+  `2026-08-01T15:04:49Z` through `2026-10-30T15:04:48Z`, SHA-256 fingerprint
+  `78:73:D2:D0:70:52:8D:21:CC:E3:2E:27:04:A6:87:0B:53:22:6C:F2:69:A1:43:CB:1B:E9:E7:DD:03:F7:F7:1E`;
+- final deploy produced 62/62 pages, external smoke passed seven surfaces, 741 rows and 30
+  canonical article URLs; app, Caddy and 11/11 foundation containers were healthy;
+- GitHub self-hosted secrets were updated through stdin at `16:05Z`; manual Site Monitor run
+  `30707436965` passed at `16:07Z` without a Telegram send;
+- `.cutover-complete` enabled external feed/TLS monitoring; the first full monitor at `16:06:11Z`
+  was healthy with 741 rows, 38% disk use, zero blocked locks and protected x-ui sockets intact.
+
+During propagation the VPS recursive resolver alternated between the new authoritative answer and
+the cached Vercel answer until the old 3600-second TTL expired. This produced expected
+`external_feed` critical evidence at `16:15Z`/`16:18Z`: forced VPS checks were 200/741, while forced
+Vercel checks were 200/0. Do not hide this condition with `/etc/hosts`, and do not roll DNS back to
+the known-empty target; keep observing until recursive samples and consecutive unforced monitor
+runs are green. The authoritative pool itself was already 28/28 on the VPS. Recursive expiry was
+complete at `16:55:42Z`; a 100-query sample returned only `195.245.239.84`, followed by three
+unforced healthy monitor runs and a corrected 30-article canonical smoke.
+
+### Rollback
+
+Rollback DNS only; never restore an older database over current writes.
+
+1. record the failure timestamp and current write window; take a fresh encrypted backup;
+2. replace only the `news` A record with `76.76.21.21`;
+3. verify Vercel deployment `dpl_Fcj75UJFatrq8cQe5aBBDj3XX6kz` is still `READY` and public;
+4. leave the VPS foundation running private and stop only the production app/Caddy if needed:
+   `docker compose -p malakhov-digest-production -f production-compose.yml down`;
+5. restore GitHub Supabase secrets to their pre-cutover values only if workflows must resume against
+   the old backend; do not enable a second Telegram scheduler;
+6. preserve both releases, logs, backup manifests and database writes for incident analysis.
+
+Immediate rollback gates: empty feed, >1% HTTP failure, TLS/canonical loop, secret exposure, public
+DB/API port, failed restore evidence, Telegram duplicate, x-ui degradation, row/checksum mismatch or
+critical pipeline alert. Vercel must be retained for at least 48 hours after a successful cutover.

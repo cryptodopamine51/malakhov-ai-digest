@@ -707,3 +707,96 @@ Status: COMPLETE (D2, A3 and P4 closed on private staging)
 
 Docs updated: `docs/ARCHITECTURE.md`, `docs/ARTICLE_SYSTEM.md`, `docs/OPERATIONS.md`,
 `docs/DECISIONS.md`, `docs/PROJECT.md`, `docs/task_vps_supabase_recovery_2026-08-01.md`
+
+### 2026-08-01 — Iteration 3
+
+Status: COMPLETE (B5/C6 closed; observation end `2026-08-01T16:58:58Z`)
+
+- Git branch / HEAD: cumulative branch `codex/vps-recovery-iter3` started at accepted Iteration 2
+  commit `5859e4b4c7c6a9af7206a2adc1810820d172f223`; final commit is made after this evidence log.
+  History was not rewritten and no PR was opened.
+- Local files changed: production Caddy/compose/deploy, atomic JWT rotation, encrypted
+  backup/restore drill, monitor/systemd, GitHub secret updater and external smoke scripts under
+  `infra/vps/`; scheduler-safe Telegram workflows; migration
+  `20260801140646_remove_legacy_batch_apply_overload.sql`; canonical docs and this handoff.
+- VPS changes: final root-owned release
+  `/srv/malakhov-ai-digest/releases/iter3-20260801T162632Z-final` is the `app-current` target.
+  Caddy is public only on 80/443; app and 11 foundation services share the private
+  `supabase_default` network. Build uses a loopback-only temporary Caddy bridge to Kong and removes
+  it before success. Production/staging schedulers remain disabled inside containers.
+- Pinned versions: Supabase `v1.26.07` commit
+  `949a57d2854b7fcadc0d621cb7fffa167506d581`; PostgreSQL
+  `supabase/postgres:17.6.1.136`; Node `22.16.0-bookworm-slim`; Caddy `2.10.2-alpine`.
+- Recovery/DB counts and checksums: 741 live rows; duplicate `id` / `slug` / `original_url` =
+  0/0/0. Public boundary = 14 runtime tables with RLS 14/14, one RLS reference table, zero
+  unexpected/sentinel/backup tables and exactly three service-role RPC contracts. Recovery archive
+  remains `203f28ebad455ba1340aab51c82198d4a5589e48aeb2b5842ee01e8c9aeba13f`; recovered JSONL
+  remains `22c498dd256e21c3ffbda2a81236dc33c499a1cd771ecde6f1b574048d28364b`.
+- JWT security: `JWT_SECRET`, anon and service JWTs were rotated together. Root-only evidence is
+  `/srv/malakhov-ai-digest/evidence/jwt-rotation-20260801T135934Z.log`; both previous tokens return
+  401, current anon/service API matrix passes, and no value was printed or committed.
+- Backup/restore: encrypted artifact
+  `/srv/malakhov-ai-digest/backups/encrypted/daily/malakhov-ai-digest-20260801T145753Z.tar.age` and
+  Mac offsite copy
+  `/Users/malast/.codex/backups/malakhov-ai-digest/malakhov-ai-digest-20260801T145753Z.tar.age`
+  share SHA-256 `f4e2e53bf6365a77c66ca27e1c40788be6d0ab6b1b4fbdd7e045477c34ef49a0`.
+  Restore evidence `/srv/malakhov-ai-digest/evidence/restore-drill-20260801T145917Z.manifest`
+  proves counts/checksum/schema/RLS/RPC/index parity, RTO 3 seconds and RPO age 81 seconds; the
+  disposable DB/container target was removed. Retention is daily 7 / weekly 4 / monthly 6 and the
+  locked daily timer is enabled.
+- DNS/TLS: parent-zone `news.malakhovai.ru. 3600 A` changed in ISPmanager from Vercel
+  `76.76.21.21` to VPS `195.245.239.84` at `2026-08-01T15:52:41Z`; both authoritative pools
+  converged by `16:03Z`. Trusted VPS certificate is `CN=news.malakhovai.ru`, Let's Encrypt `YE2`,
+  valid from `2026-08-01T15:04:49Z` through `2026-10-30T15:04:48Z`, SHA-256 fingerprint
+  `78:73:D2:D0:70:52:8D:21:CC:E3:2E:27:04:A6:87:0B:53:22:6C:F2:69:A1:43:CB:1B:E9:E7:DD:03:F7:F7:1E`.
+- Application/external proof: final Docker build generated 62/62 pages. Main, category, guide,
+  RSS, sitemap, news sitemap and robots returned 200; feed total = 741; 30/30 sampled article
+  canonical URLs matched. Sustained post-cutover samples were 100 requests / 0 failures and a final
+  200 requests / one timeout (0.50%, below the >1% rollback threshold); every completed response
+  resolved to `195.245.239.84`. Service-role key and JWT secret were absent from static bundles and
+  app logs.
+- GitHub/schedulers: endpoint and rotated key secrets were updated with `gh secret set` through
+  stdin at `16:05Z`; values were not logged. Manual Site Monitor run `30707436965` passed at
+  `16:07Z` on the no-send healthy path. `pg_cron` has zero jobs/extensions in production,
+  `vercel.json` has no Telegram cron and application schedulers are off. Telegram channel and weekly
+  report each have exactly one GitHub primary; manual validation uses `send=false` and no Telegram
+  test delivery occurred.
+- Monitoring/observation: `malakhov-monitor.timer` runs every five minutes and
+  `malakhov-backup.timer` daily. `.cutover-complete` enables public feed/TLS checks. Checkpoints from
+  `15:52:41Z` through `2026-08-01T16:58:58Z` kept app/Caddy and 11/11 foundation containers healthy,
+  restart count 0, 741 rows, zero blocked locks, disk 38%, and x-ui plus ports 2096/21417 healthy.
+  The monitor correctly reported `external_feed` critical at `16:15Z` and `16:18Z` while recursive
+  resolver shards still cached Vercel (`total=0`) under the old 3600-second TTL; 28/28 authoritative
+  nodes already returned the VPS and a forced VPS check returned 741. DNS rollback was rejected
+  because it would have made the known-empty Vercel path universal. Observation continued through
+  complete recursive expiry: `16:55:42Z` was 30/30 VPS, `16:56Z` was 100/100 VPS, then three
+  consecutive unforced monitor runs and the corrected 30-article smoke passed. Caddy's final sample
+  contained 1,195 requests, zero 5xx; the only app error line was an expected stale Server Action
+  request after immutable deploy.
+- Tests executed and exact results: `npm run context` passed; `npm test` = 420 pass / 0 fail;
+  `npx tsc --noEmit`, `npm run docs:check`, `git diff --check`, `bash -n`, ShellCheck (SC1091
+  external-source exclusion), actionlint and production `docker compose config` passed. Local and
+  VPS Docker production builds both generated 62/62 pages. Disposable schema preflight, live
+  schema/index verification and API role matrix passed; external smoke and encrypted restore drill
+  passed.
+- Quality gates closed: S0, R1, D2, A3, P4, B5, C6. Production criteria are complete.
+- Production/DNS impact: `https://news.malakhovai.ru` is served by the VPS. Vercel deployment
+  `dpl_Fcj75UJFatrq8cQe5aBBDj3XX6kz` remains `READY` and must be retained until at least
+  `2026-08-03T15:52:41Z` as DNS rollback.
+- Secrets missing (names only): none for the completed cutover. Age identity remains Mac-only and
+  all runtime identities remain outside Git/evidence output.
+- Risks/follow-up: DNS caches may retain the old TTL during the first hour, so both Vercel and VPS
+  must remain healthy. Controller must merge the audited cumulative branch before the modified
+  safe-dispatch workflow definitions become default-branch truth. Owner check at 24h: external
+  HTTP/TLS, 741+ feed, scheduler runs, backup timer/age and no Telegram duplicates. Owner check at
+  7d: decrypt latest offsite backup, run another disposable restore drill, inspect disk/log
+  retention and review dependency warnings without an unreviewed foundation upgrade.
+- Rollback state: replace only the `news` A record with `76.76.21.21`, take a fresh encrypted backup
+  first if writes occurred, keep the self-hosted database private/running and never overwrite it with
+  an older dump. Restore GitHub endpoint secrets only if workflows must use the old data plane.
+- Exact next action: controller performs independent branch audit and merge. No production action is
+  required unless a monitoring gate turns red; then execute the rollback runbook immediately.
+
+Docs updated: `CLAUDE.md`, `docs/ARCHITECTURE.md`, `docs/ARTICLE_SYSTEM.md`,
+`docs/OPERATIONS.md`, `docs/DECISIONS.md`, `docs/PROJECT.md`,
+`docs/task_vps_supabase_recovery_2026-08-01.md`

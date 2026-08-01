@@ -6,3 +6,7 @@ node_modules
 !.env.example
 output
 coverage
+.DS_Store
+**/.DS_Store
+._*
+**/._*

@@ -143,3 +143,23 @@
   the internal REST gateway. Production schedule selection remains a separate owner-approved cutover.
 - Consequences: staging faithfully tests DB/API/app behavior without becoming a second active
   scheduler. The historical schedule files stay immutable and are revisited only during Iteration 3.
+
+## ADR-013 · Production runs as a private Supabase foundation behind same-origin Caddy
+
+- Status: accepted
+- Date: 2026-08-01
+- Context: the managed Supabase project is unavailable, while Iterations 1–2 recovered and proved
+  741 articles on a pinned VPS foundation. Production needs a public web/API hostname without
+  exposing PostgreSQL, Studio, the pooler or gateway ports, and must preserve Vercel and database
+  writes as independent rollback planes.
+- Decision: deploy root-owned versioned Next.js releases and Caddy on the VPS. Caddy is the only
+  public ingress on 80/443 and routes the application plus same-origin Supabase API paths; all
+  foundation services stay on the private Docker network. Rotate the legacy JWT set atomically,
+  enforce 14 runtime tables with RLS and exactly three runtime RPC grants, encrypt logical backups
+  with an off-host age identity, prove restore into a disposable database, and switch
+  `news.malakhovai.ru` only after those gates. GitHub Actions remains the sole scheduler plane;
+  no `pg_cron` Telegram jobs are restored. Vercel is retained for at least 48 hours as DNS rollback.
+- Consequences: application rollback never rewinds PostgreSQL. Every release, JWT rotation, backup,
+  restore and cutover produces root-only evidence. GitHub endpoint secrets are changed only after
+  public TLS is trusted. x-ui ports 2096/21417 are protected and outside Caddy. A future Supabase or
+  gateway upgrade remains an explicit reviewed operation because the foundation is pinned.

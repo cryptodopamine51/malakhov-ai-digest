@@ -148,8 +148,11 @@ verify() {
 \pset tuples_only on
 \pset format unaligned
 select 'runtime_tables=' || count(*) from pg_class where relkind = 'r' and relnamespace = 'public'::regnamespace and relname in ('articles','anthropic_batch_items','anthropic_batches','article_attempts','article_feedback','article_quality_scores','digest_runs','enrich_runs','ingest_runs','llm_usage_logs','pipeline_alerts','source_runs','telegram_channel_posts','weekly_report_runs');
+select 'reference_tables=' || count(*) from pg_class where relkind = 'r' and relnamespace = 'public'::regnamespace and relname = 'categories';
+select 'unexpected_public_tables=' || count(*) from pg_class where relkind = 'r' and relnamespace = 'public'::regnamespace and relname not in ('articles','anthropic_batch_items','anthropic_batches','article_attempts','article_feedback','article_quality_scores','categories','digest_runs','enrich_runs','ingest_runs','llm_usage_logs','pipeline_alerts','source_runs','telegram_channel_posts','weekly_report_runs');
 select 'runtime_rpcs=' || count(distinct proname) from pg_proc where pronamespace = 'public'::regnamespace and proname in ('apply_anthropic_batch_item_result','claim_weekly_report_run','publish_article');
 select 'rls_tables=' || count(*) from pg_class where relkind = 'r' and relnamespace = 'public'::regnamespace and relrowsecurity and relname in ('articles','anthropic_batch_items','anthropic_batches','article_attempts','article_feedback','article_quality_scores','digest_runs','enrich_runs','ingest_runs','llm_usage_logs','pipeline_alerts','source_runs','telegram_channel_posts','weekly_report_runs');
+select 'reference_rls=' || count(*) from pg_class where relkind = 'r' and relnamespace = 'public'::regnamespace and relrowsecurity and relname = 'categories';
 select 'anon_articles_select=' || has_table_privilege('anon','public.articles','select') || ' anon_articles_insert=' || has_table_privilege('anon','public.articles','insert') || ' service_articles_insert=' || has_table_privilege('service_role','public.articles','insert');
 select 'live_rows=' || count(*) from public.articles where published is true and quality_ok is true and publish_status = 'live';
 select 'duplicate_ids=' || count(*) from (select id from public.articles group by id having count(*) > 1) d;

@@ -39,7 +39,10 @@ const fixtureId = '11111111-1111-4111-8111-111111111111'
 const fixtureUrl = 'https://staging.invalid/api-role-fixture'
 const live = await request('anon_live_read', '/articles?select=id&published=eq.true&quality_ok=eq.true&verified_live=eq.true&publish_status=eq.live&limit=1', anon, {}, [200])
 if ((await live.json()).length !== 1) throw new Error('anon live read did not return a row')
+const categories = await request('anon_active_categories_read', '/categories?select=slug&is_active=eq.true&limit=1', anon, {}, [200])
+if ((await categories.json()).length !== 1) throw new Error('anon active category read did not return a row')
 await request('anon_insert_denied', '/articles', anon, { method: 'POST', body: JSON.stringify({ id: fixtureId, original_url: fixtureUrl }) }, [401, 403])
+await request('anon_category_insert_denied', '/categories', anon, { method: 'POST', body: JSON.stringify({ slug: 'iteration-3-denied', name_ru: 'denied', order_index: 999 }) }, [401, 403])
 await request('anon_rpc_denied', '/rpc/publish_article', anon, { method: 'POST', body: JSON.stringify({ p_article_id: fixtureId, p_verifier: 'iteration2' }) }, [401, 403, 404])
 await request('service_cleanup_before', `/articles?id=eq.${fixtureId}`, service, { method: 'DELETE' }, [204])
 await request('service_insert', '/articles', service, {
