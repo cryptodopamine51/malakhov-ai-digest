@@ -1,0 +1,17 @@
+# Requires Docker Compose v2.24.4+ for !reset. This file is copied beside the
+# upstream pinned compose file by bootstrap-foundation.sh; it publishes no
+# Supabase host ports in Iteration 1 (Caddy/API comes only after Iteration 2).
+services:
+  kong:
+    ports: !reset []
+  supavisor:
+    ports: !reset []
+    mem_limit: 768m
+  db:
+    mem_limit: 2g
+  studio:
+    mem_limit: 512m
+  realtime:
+    mem_limit: 768m
+  storage:
+    mem_limit: 512m

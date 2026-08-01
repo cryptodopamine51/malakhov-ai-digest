@@ -1453,3 +1453,25 @@ npm run docs:check
 - `docs:check` смотрит изменённые файлы и требует обновить соответствующие канонические docs.
 
 В CI этот же guard запускается workflow `docs-guard.yml`.
+
+## VPS Supabase recovery foundation (Iteration 1, 2026-08-01)
+
+The recovery tool is `scripts/recover-supabase-cache.ts`. Its default input is
+`.next/cache/fetch-cache`; use `--input`, `--output` and `--dry-run` for an
+explicit forensic run. It accepts only Next `kind=FETCH` records for the former
+Supabase `/rest/v1/articles` endpoint, preserves unknown article fields, excludes
+transport metadata, picks the newest `updated_at` (then HTTP response date), and
+writes root-only `articles.jsonl`, manifest, rejection report, field statistics
+and SHA-256 checksum. Never remove or rebuild `.next` until an independently
+verified recovery copy and export exist.
+
+`infra/vps/` is the non-production foundation for `/srv/malakhov-ai-digest`.
+It pins official Supabase `v1.26.07` / commit
+`949a57d2854b7fcadc0d621cb7fffa167506d581` and records all image tags in
+`infra/vps/LOCK.json`. Run its `install-docker.sh`, `deploy-foundation.sh`, and
+`preflight.sh` only as root on the designated VPS. The real generated `.env` is
+VPS-only mode `0600`; recovery artifacts remain root-only under
+`/srv/malakhov-ai-digest/recovery`. Gateway, Postgres and Supavisor have no host
+ports, and Studio has no host port. The Iteration 1 helper `backup.sh` is a
+local dump helper, not a compliant backup solution: encryption, offsite copy,
+retention and restore drill remain mandatory Iteration 3 work.

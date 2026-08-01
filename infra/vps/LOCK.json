@@ -1,0 +1,30 @@
+{
+  "supabase": {
+    "release": "v1.26.07",
+    "commit": "949a57d2854b7fcadc0d621cb7fffa167506d581",
+    "compose": "docker/docker-compose.yml",
+    "gateway": "Kong 3.9.1 (pinned before the announced Envoy default on 2026-08-09)"
+  },
+  "images": {
+    "postgres": "supabase/postgres:17.6.1.136",
+    "studio": "supabase/studio:2026.07.07-sha-a6a04f2",
+    "auth": "supabase/gotrue:v2.189.0",
+    "rest": "postgrest/postgrest:v14.12",
+    "realtime": "supabase/realtime:v2.102.3",
+    "storage": "supabase/storage-api:v1.60.4",
+    "imgproxy": "darthsim/imgproxy:v3.30.1",
+    "meta": "supabase/postgres-meta:v0.96.6",
+    "functions": "supabase/edge-runtime:v1.74.0",
+    "pooler": "supabase/supavisor:2.9.5"
+  },
+  "runtimeObservedOn2026-08-01": {
+    "dockerEngine": "29.7.1",
+    "dockerCompose": "5.3.1"
+  },
+  "security": {
+    "publicPorts": [22, 80, 443],
+    "supabaseGateway": "not published during Iteration 1",
+    "postgresAndPooler": "not published",
+    "studio": "not published directly"
+  }
+}

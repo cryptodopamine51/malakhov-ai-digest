@@ -121,3 +121,11 @@
 - Context: model-routing lab показал, что DeepSeek может дать cheap editorial draft примерно за `$0.001` на статью, но production path не должен рисковать публикацией validator-failed или редакционно слабого материала.
 - Decision: production `enrich.yml` запускает `npm run editorial:routing -- --mode=cheap --limit=15 --apply --deepseek-daily-budget=0.25`. Low-risk output проходит deterministic repair + strict validator + provider-neutral apply gate. Любая provider/API/parse/validator/quality/reviewer проблема маршрутизируется в текущий Claude Batch fallback как `editorial_premium_fallback`.
 - Consequences: стоимость снижается на обычных low-risk статьях, но high-risk и failed cheap attempts остаются на Anthropic Batch. Fallback rate и провайдерские попытки видны в `llm_usage_logs`; live-публикация остаётся за `publish-verify` RPC. Если manual review покажет просадку качества, откат — вернуть `enrich.yml` на `npm run enrich-submit-batch`.
+
+## ADR-011 · VPS Supabase foundation is pinned and private before data import
+
+- Status: accepted
+- Date: 2026-08-01
+- Context: the managed Supabase project disappeared, while a verified Next.js fetch cache still contains recoverable live content. The first safe action must preserve that evidence and establish a compatible API foundation without changing the public site, DNS, or existing VPS proxy services.
+- Decision: use the official self-hosted Supabase Docker distribution at `v1.26.07` / `949a57d2854b7fcadc0d621cb7fffa167506d581`, with PostgreSQL 17.6.1.136 and the release-pinned Kong gateway. Publish no Supabase host ports in Iteration 1, including Studio. Secrets are generated only in the VPS `.env` with mode `0600`. Schema and recovered-content import are deferred until the Iteration 2 RLS/schema preflight.
+- Consequences: current Supabase changes, including the announced switch to Envoy as the default gateway on 2026-08-09, require an explicit reviewed upgrade. The VPS can be health-checked independently while Vercel remains production and x-ui/xray remains untouched.
