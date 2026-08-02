@@ -16,6 +16,18 @@ export const TG_CHANNEL_BACKUP_CRON_BY_SLOT = {
   5: '5 18 * * *',
 } as const
 
+/**
+ * Exact VPS primary schedule. The timezone is part of each calendar expression
+ * so host-local UTC (or a later OS timezone change) cannot move a post.
+ */
+export const TG_CHANNEL_PRIMARY_SYSTEMD_CALENDAR_BY_SLOT = {
+  1: '*-*-* 09:30:00 Europe/Moscow',
+  2: '*-*-* 12:30:00 Europe/Moscow',
+  3: '*-*-* 15:30:00 Europe/Moscow',
+  4: '*-*-* 18:30:00 Europe/Moscow',
+  5: '*-*-* 21:00:00 Europe/Moscow',
+} as const
+
 type ChannelPostSlot = 1 | 2 | 3 | 4 | 5
 
 export type ChannelPostBackupSlotSource = 'explicit' | 'github_schedule' | 'clock'

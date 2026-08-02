@@ -1,0 +1,14 @@
+[Unit]
+Description=Malakhov AI Digest Telegram channel post slot %i
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/malakhov-ai-digest/tg-channel-post.env
+ExecStart=/usr/local/libexec/malakhov-tg-channel-post %i
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/run

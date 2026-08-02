@@ -543,6 +543,22 @@ expected fingerprint SHA256:QCYBWOPiJBAT3+AOvP2x6r5lm10KFeGMU2h1dyLQ4X4.
 
 ## 10. Progress / Handoff log
 
+### 2026-08-02 — Telegram scheduler reliability follow-up
+
+Status: IN PROGRESS
+
+- Root cause: GitHub Actions was made the sole Telegram primary after cutover,
+  but scheduled runs were delayed by 53–126 minutes; a hosted schedule is not
+  an exact scheduler.
+- Target architecture: VPS systemd primary at 09:30, 12:30, 15:30, 18:30,
+  21:00 Europe/Moscow; GitHub delayed backup five minutes later; the existing
+  conditional DB claim remains the shared duplicate guard.
+- Safety boundary: enable timers only; do not manually start a delivery unit
+  outside a natural slot. x-ui/xray and unrelated containers are out of scope.
+- Caveat: GitHub reads scheduled workflow definitions from default `main`; a
+  PR to the production release branch cannot alone activate a changed workflow
+  definition on `main`.
+
 Каждая итерация добавляет запись по шаблону, не удаляя предыдущие:
 
 ```text

@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Malakhov Telegram channel post slot 2 at 12:30 Moscow time
+
+[Timer]
+OnCalendar=*-*-* 12:30:00 Europe/Moscow
+Persistent=true
+AccuracySec=1s
+RandomizedDelaySec=0
+Unit=malakhov-tg-channel-post@2.service
+
+[Install]
+WantedBy=timers.target

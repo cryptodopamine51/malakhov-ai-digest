@@ -270,11 +270,32 @@ select week_start, format, status, article_ids, telegram_message_id, error, upda
 
 ## Cron-расписание Telegram channel posts
 
-Telegram-посты в штатном режиме запускает только GitHub Actions workflow
-`.github/workflows/tg-channel-post-backup.yml` в пяти точных slot. Self-hosted Postgres не имеет
-`pg_cron`/`pg_net` sender jobs, а Vercel Cron отключён. Таблица `telegram_channel_posts` хранит plan/delivery
-state по каждому слоту; UNIQUE `(delivery_date, slot_no, channel_id)` гарантирует, что один
-slot не отправится дважды.
+Точный production primary — пять VPS systemd timers в явно заданной зоне
+`Europe/Moscow`: 09:30, 12:30, 15:30, 18:30 и 21:00. Они вызывают только
+защищённый application route `/api/cron/tg-channel-post?slot=1..5`; plan,
+conditional DB claim и Telegram send остаются в одном application runtime.
+`telegram_channel_posts` хранит plan/delivery state; UNIQUE
+`(delivery_date, slot_no, channel_id)` и conditional claim делают параллельный
+backup noop, а не дублем.
+
+`/etc/malakhov-ai-digest/tg-channel-post.env` содержит URL и `CRON_SECRET` с
+mode `0600`; значения не попадают в git или journal. Timer имеет
+`Persistent=true`, `RandomizedDelaySec=0` и `AccuracySec=1s`, поэтому не
+зависит от timezone хоста и catch-up-ит reboot. Установка не вызывает delivery
+unit вне естественного slot:
+
+```sh
+cd /srv/malakhov-ai-digest/infra/vps
+./install-tg-channel-post-timers.sh
+systemctl list-timers --all 'malakhov-tg-channel-post-*'
+journalctl -u 'malakhov-tg-channel-post@*.service' --since today --no-pager
+```
+
+Для rollback без изменения DB остановить именно timers:
+
+```sh
+systemctl disable --now malakhov-tg-channel-post-{1,2,3,4,5}.timer
+```
 
 Если ранний cron/pg_net missed и дневной план впервые создаёт более поздний slot, runner не
 оставляет просроченные строки висеть: `runChannelPost(slot=N)` отправляет все `planned`/`failed_send` слоты
@@ -327,9 +348,10 @@ SELECT delivery_date, slot_no, status, article_id, telegram_message_id, sent_at,
   FROM telegram_channel_posts ORDER BY delivery_date DESC, slot_no DESC LIMIT 10;
 ```
 
-### Primary — GitHub Actions
+### Delayed backup — GitHub Actions
 
-Workflow `.github/workflows/tg-channel-post-backup.yml` — единственный production primary:
+Workflow `.github/workflows/tg-channel-post-backup.yml` — delayed backup через
+пять минут после VPS primary, а не точный scheduler:
 
 | Cron (UTC) | МСК | Slot |
 |---|---:|---:|
@@ -339,11 +361,10 @@ Workflow `.github/workflows/tg-channel-post-backup.yml` — единственн
 | `35 15 * * *` | 18:35 | 4 |
 | `5 18 * * *` | 21:05 | 5 |
 
-Runner: `npm run tg-channel-post:backup`. Он мапит `github.event.schedule` на slot через
-`lib/tg-channel-schedule.ts`, а затем вызывает тот же `runChannelPost(slot)`, что и
-Supabase/Vercel route. Поэтому backup не создаёт второй delivery-path: idempotency остаётся в
-`telegram_channel_posts` (`status='success'` не переотправляется; `sending` считается уже
-забранным; missed `planned` и `failed_send` slots `<= N` catch-up-ятся по порядку).
+Backup вызывает тот же production route с GitHub secret `CRON_SECRET`, а не
+отдельный sender с устаревшим DB endpoint. Поэтому idempotency остаётся в
+`telegram_channel_posts` (`success` не переотправляется, `sending` уже
+забран, planned/failed slots catch-up-ятся по порядку).
 
 Manual dispatch для проверки запускается только с `send=false`; он завершает test-only job и не
 вызывает Telegram. Локальный реальный runner не использовать как dry-run:
@@ -352,10 +373,10 @@ Manual dispatch для проверки запускается только с `
 npm run tg-channel-post:backup -- --slot=3
 ```
 
-GitHub Secrets, которые нужны backup workflow: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`,
-`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL_ID`; `DEEPSEEK_API_KEY` опционален, без него caption
-уйдёт через локальный fallback. `NEXT_PUBLIC_SITE_URL` в workflow зафиксирован как
-`https://news.malakhovai.ru`.
+GitHub schedule definitions читаются только с default `main`. Поэтому изменение
+workflow в release-branch/PR не становится active до отдельного попадания файла
+в `main`; до этого текущий `main` — legacy backup. Не включать `pg_cron`/
+`pg_net`, Vercel Cron или второй VPS primary одновременно с этими timers.
 
 ### Supabase RLS на public-таблицах (advisor `rls_disabled_in_public`)
 
@@ -1375,15 +1396,17 @@ ENV: `PUBLISHED_LOW_WINDOW_HOURS`, `PUBLISHED_LOW_WINDOW_QUIET_START_MSK`, `PUBL
 `bot/channel-post-core.ts`. Логика monitor-а (по МСК):
 
 - слот «должен был выйти» через 30 минут после планового времени (09:30/12:30/15:30/18:30/21:00);
-- если due-слотов ≥ 2 (≈ с 13:00 МСК), а success-доставок за день меньше due-slots —
-  `fireAlert('tg_channel_posts_missing', critical, cooldown 4ч)`; в payload различаются
-  `no_rows` (pg_cron мёртв), `no_success` (план есть, ломается отправка) и
-  `partial_success` (часть слотов отправлена, но missed planned slots/catch-up надо проверить);
+- после grace любого due slot отсутствующая строка — critical `no_rows` (scheduler failure);
+  `failed_send`, зависший `sending` или `planned` без success — critical
+  `delivery_failure`; `partial_success` остаётся missed-slot critical;
+- если все due строки `skipped_low_articles`, это отдельный
+  `tg_channel_posts_content_shortage` warning: попытки delivery не было, поэтому
+  ложный critical «ломается отправка» не создаётся;
 - success-доставок не меньше due-slots — `resolveAlert`;
 - открытые `tg_channel_posts_missing` за прошлые `day:YYYY-MM-DD` автоматически переводятся в
   `resolved`, чтобы вчерашний incident не держал текущий ops-status красным после начала нового
   delivery-дня;
-- раньше 13:00 МСК — noop для текущего дня, но cleanup старых day-alerts всё равно выполняется.
+- до первого due slot — noop для текущего дня, но cleanup старых day-alerts всё равно выполняется.
 
 Тесты: `tests/node/tg-channel-monitor.test.ts`.
 
@@ -1456,7 +1479,7 @@ reason to operate two primaries.
 | Enrich, batch collect and retry | disabled | GitHub `enrich*.yml` / `retry-failed.yml` | manual workflow dispatch | UTC; workflow concurrency; database claim/release |
 | Publish verification | disabled | GitHub `publish-verify.yml` | manual workflow dispatch | UTC; `publish_article` returns already-live on repeat |
 | Pipeline health / ops report | disabled | GitHub `pipeline-health.yml` / `ops-report.yml` | manual workflow dispatch | UTC; alert fingerprints and report window |
-| Telegram channel slots | no `tg-*` DB cron | GitHub `tg-channel-post-backup.yml` (sole primary; five UTC schedules) | manual `send=false` test only | Moscow slots; workflow concurrency + `telegram_channel_posts` unique delivery key |
+| Telegram channel slots | no `tg-*` DB cron | VPS `malakhov-tg-channel-post-{1..5}.timer` (five Moscow slots) | GitHub `tg-channel-post-backup.yml`, manual `send=false` test only | Europe/Moscow; DB conditional claim + unique delivery key |
 | Weekly Telegram report | no `tg-*` DB cron | GitHub `tg-weekly-report-backup.yml` (sole primary; Monday 08:20 UTC) | manual `send=false` dry-run only | workflow concurrency + `claim_weekly_report_run` |
 
 Before enabling either Telegram primary, set its backup runner disabled, perform the owner-approved

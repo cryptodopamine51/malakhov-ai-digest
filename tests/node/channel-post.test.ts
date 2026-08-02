@@ -324,6 +324,29 @@ test('deliverPlannedChannelPost records success and marks article tg_sent', asyn
   assert.equal(supabase.operations.some((op) => op.table === 'articles' && op.payload.tg_sent === true), true)
 })
 
+test('conditional claim permits only one concurrent primary/backup delivery for a slot', async () => {
+  const sharedRow = plannedRow()
+  const supabase = createSupabaseMock(sharedRow)
+  let sends = 0
+  const sendPhoto = async () => {
+    sends += 1
+    return { result: { message_id: 700 + sends } }
+  }
+
+  const [primary, backup] = await Promise.all([
+    deliverPlannedChannelPost(supabase as never, { ...sharedRow }, 'bot-token', sendPhoto),
+    deliverPlannedChannelPost(supabase as never, { ...sharedRow }, 'bot-token', sendPhoto),
+  ])
+
+  assert.equal(sends, 1)
+  assert.equal(primary.status === 'success' || backup.status === 'success', true)
+  assert.equal(primary.status === 'skipped_already_claimed' || backup.status === 'skipped_already_claimed', true)
+  assert.equal(
+    supabase.operations.filter((op) => op.table === 'telegram_channel_posts' && op.payload.status === 'sending').length,
+    2,
+  )
+})
+
 test('deliverPlannedChannelPost failure does not mark article tg_sent', async () => {
   const row = plannedRow()
   const supabase = createSupabaseMock(row)
