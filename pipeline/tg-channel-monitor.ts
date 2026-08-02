@@ -11,12 +11,12 @@
  *
  * Логика (всё по МСК):
  *  - слот считается «должен был выйти» через 30 минут после планового времени;
- *  - если должно было выйти ≥ 2 слотов (≈ с 13:00 МСК), а success-доставок меньше
- *    ожидаемого числа — fire critical (различаем: вообще нет строк = pg_cron мёртв;
- *    строки есть, но нет success = ломается отправка; success есть, но меньше due =
- *    missed slot/catch-up не сработал);
+ *  - после grace каждого слота отсутствие его строки — critical scheduler failure;
+ *  - failed_send, sending или planned после grace — critical delivery failure;
+ *  - только skipped_low_articles — content-shortage warning, а не ложный critical;
+ *  - success-доставок меньше ожидаемого числа — missed-slot critical;
  *  - success-доставок не меньше ожидаемого числа — resolveAlert;
- *  - раньше 13:00 МСК — noop (не шумим из-за одного слота).
+ *  - до первого due-слота — noop.
  */
 
 import { config as loadEnv } from 'dotenv'
@@ -33,13 +33,16 @@ loadEnv({ path: resolve(process.cwd(), '.env') })
 const MSK_OFFSET_MS = 3 * 60 * 60 * 1000
 const SLOT_GRACE_MINUTES = 30
 const TG_CHANNEL_ALERT_TYPE = 'tg_channel_posts_missing'
+const TG_CHANNEL_CONTENT_SHORTAGE_ALERT_TYPE = 'tg_channel_posts_content_shortage'
 
 export interface TgChannelDayRow {
   status: string
+  slot_no?: number | null
 }
 
 export type TgChannelDecision =
-  | { kind: 'fire'; reason: 'no_rows' | 'no_success' | 'partial_success'; dueSlots: number; successCount: number }
+  | { kind: 'fire'; reason: 'no_rows' | 'delivery_failure' | 'partial_success'; dueSlots: number; successCount: number }
+  | { kind: 'warning'; reason: 'content_shortage'; dueSlots: number; successCount: number }
   | { kind: 'resolve'; successCount: number }
   | { kind: 'noop'; reason: 'too_early'; dueSlots: number }
 
@@ -55,12 +58,18 @@ export function dueSlotCount(now: Date = new Date()): number {
 
 export function decideTgChannelAlert(rows: TgChannelDayRow[], now: Date = new Date()): TgChannelDecision {
   const dueSlots = dueSlotCount(now)
-  const successCount = rows.filter((row) => row.status === 'success').length
-  if (successCount >= dueSlots && dueSlots > 0) return { kind: 'resolve', successCount }
-  if (successCount > 0 && dueSlots < 2) return { kind: 'resolve', successCount }
-  if (dueSlots < 2) return { kind: 'noop', reason: 'too_early', dueSlots }
-  if (rows.length === 0) return { kind: 'fire', reason: 'no_rows', dueSlots, successCount }
-  if (successCount === 0) return { kind: 'fire', reason: 'no_success', dueSlots, successCount }
+  if (dueSlots === 0) return { kind: 'noop', reason: 'too_early', dueSlots }
+
+  // Older callers did not select slot_no. Keep their rows relevant, so a
+  // delivery problem cannot be silently reclassified as a scheduler problem.
+  const dueRows = rows.filter((row) => row.slot_no === null || row.slot_no === undefined || row.slot_no <= dueSlots)
+  const successCount = dueRows.filter((row) => row.status === 'success').length
+  if (successCount >= dueSlots) return { kind: 'resolve', successCount }
+  if (dueRows.length === 0) return { kind: 'fire', reason: 'no_rows', dueSlots, successCount }
+  if (dueRows.every((row) => row.status === 'skipped_low_articles')) {
+    return { kind: 'warning', reason: 'content_shortage', dueSlots, successCount }
+  }
+  if (successCount === 0) return { kind: 'fire', reason: 'delivery_failure', dueSlots, successCount }
   return { kind: 'fire', reason: 'partial_success', dueSlots, successCount }
 }
 
@@ -75,8 +84,8 @@ export async function resolveStaleTgChannelDayAlerts(
 ): Promise<number> {
   const { data, error } = await supabase
     .from('pipeline_alerts')
-    .select('entity_key')
-    .eq('alert_type', TG_CHANNEL_ALERT_TYPE)
+    .select('alert_type, entity_key')
+    .in('alert_type', [TG_CHANNEL_ALERT_TYPE, TG_CHANNEL_CONTENT_SHORTAGE_ALERT_TYPE])
     .eq('status', 'open')
 
   if (error) {
@@ -85,13 +94,14 @@ export async function resolveStaleTgChannelDayAlerts(
   }
 
   const staleEntityKeys = Array.from(new Set(
-    ((data ?? []) as Array<{ entity_key: string | null }>)
-      .map((row) => row.entity_key)
-      .filter((entityKey): entityKey is string => isStaleTgChannelAlertEntity(entityKey, currentDeliveryDate)),
+    ((data ?? []) as Array<{ alert_type: string; entity_key: string | null }>)
+      .filter((row) => isStaleTgChannelAlertEntity(row.entity_key, currentDeliveryDate))
+      .map((row) => `${row.alert_type}\u0000${row.entity_key}`),
   ))
 
-  for (const entityKey of staleEntityKeys) {
-    await resolveAlert(supabase, TG_CHANNEL_ALERT_TYPE, entityKey)
+  for (const entry of staleEntityKeys) {
+    const [alertType, entityKey] = entry.split('\u0000')
+    if (alertType && entityKey) await resolveAlert(supabase, alertType, entityKey)
   }
 
   return staleEntityKeys.length
@@ -106,7 +116,7 @@ async function main() {
   const deliveryDate = mskDateKey()
   const { data, error } = await supabase
     .from('telegram_channel_posts')
-    .select('status')
+    .select('status, slot_no')
     .eq('delivery_date', deliveryDate)
   if (error) throw new Error(`telegram_channel_posts query failed: ${error.message}`)
 
@@ -119,9 +129,9 @@ async function main() {
 
   if (decision.kind === 'fire') {
     const detail = decision.reason === 'no_rows'
-      ? 'нет ни одной строки за день — pg_cron/pg_net не дёргает /api/cron/tg-channel-post (диагностика: docs/OPERATIONS.md → Cron-расписание Telegram channel posts)'
-      : decision.reason === 'no_success'
-        ? 'строки плана есть, но ни одной success-доставки — ломается отправка (см. error_message в telegram_channel_posts)'
+      ? 'нет строки для due-слота — primary scheduler не создал claim (диагностика: docs/OPERATIONS.md → Telegram channel posts monitor)'
+      : decision.reason === 'delivery_failure'
+        ? 'есть due planned/sending/failed_send строки, но ни одной success-доставки — проверь error_message и зависшие claims в telegram_channel_posts'
         : 'есть success-доставка, но меньше ожидаемых слотов — проверь missed planned slots и catch-up в bot/channel-post-core.ts'
     await fireAlert({
       supabase,
@@ -133,8 +143,21 @@ async function main() {
       botToken: process.env.TELEGRAM_BOT_TOKEN,
       adminChatId: process.env.TELEGRAM_ADMIN_CHAT_ID,
     })
+  } else if (decision.kind === 'warning') {
+    await fireAlert({
+      supabase,
+      alertType: 'tg_channel_posts_content_shortage',
+      severity: 'warning',
+      entityKey: `day:${deliveryDate}`,
+      message: `Telegram channel posts: ${decision.dueSlots} due слотов пропущены из-за недостатка подходящих статей (skipped_low_articles); доставка не запускалась.`,
+      payload: { deliveryDate, dueSlots: decision.dueSlots, successCount: decision.successCount, reason: decision.reason },
+      botToken: process.env.TELEGRAM_BOT_TOKEN,
+      adminChatId: process.env.TELEGRAM_ADMIN_CHAT_ID,
+    })
+    await resolveAlert(supabase, TG_CHANNEL_ALERT_TYPE, `day:${deliveryDate}`)
   } else if (decision.kind === 'resolve') {
     await resolveAlert(supabase, TG_CHANNEL_ALERT_TYPE, `day:${deliveryDate}`)
+    await resolveAlert(supabase, TG_CHANNEL_CONTENT_SHORTAGE_ALERT_TYPE, `day:${deliveryDate}`)
   }
 }
 

@@ -1349,15 +1349,18 @@ ENV: `PUBLISHED_LOW_WINDOW_HOURS`, `PUBLISHED_LOW_WINDOW_QUIET_START_MSK`, `PUBL
 `bot/channel-post-core.ts`. Логика monitor-а (по МСК):
 
 - слот «должен был выйти» через 30 минут после планового времени (09:30/12:30/15:30/18:30/21:00);
-- если due-слотов ≥ 2 (≈ с 13:00 МСК), а success-доставок за день меньше due-slots —
-  `fireAlert('tg_channel_posts_missing', critical, cooldown 4ч)`; в payload различаются
-  `no_rows` (pg_cron мёртв), `no_success` (план есть, ломается отправка) и
-  `partial_success` (часть слотов отправлена, но missed planned slots/catch-up надо проверить);
+- после grace каждого due-слота отсутствие строки — `tg_channel_posts_missing` critical с причиной
+  `no_rows` (scheduler failure); due `planned`, `sending` или `failed_send` без `success` — critical
+  `delivery_failure`; при части успешных доставок — critical `partial_success`;
+- если все due-строки имеют `skipped_low_articles`, создаётся только
+  `tg_channel_posts_content_shortage` warning (cooldown 4ч): это нехватка подходящих статей,
+  а не попытка доставки и не critical «сломалась отправка»;
 - success-доставок не меньше due-slots — `resolveAlert`;
 - открытые `tg_channel_posts_missing` за прошлые `day:YYYY-MM-DD` автоматически переводятся в
   `resolved`, чтобы вчерашний incident не держал текущий ops-status красным после начала нового
   delivery-дня;
-- раньше 13:00 МСК — noop для текущего дня, но cleanup старых day-alerts всё равно выполняется.
+- до первого due-слота — noop для текущего дня, но cleanup старых day-alerts всё равно выполняется;
+  cleanup также закрывает устаревшие content-shortage alerts.
 
 Тесты: `tests/node/tg-channel-monitor.test.ts`.
 
