@@ -5,6 +5,7 @@ import {
   latestChannelPostSlotForMoscowTime,
   resolveChannelPostBackupSlot,
   TG_CHANNEL_BACKUP_CRON_BY_SLOT,
+  TG_CHANNEL_PRIMARY_SYSTEMD_CALENDAR_BY_SLOT,
 } from '../../lib/tg-channel-schedule'
 
 function mskTime(hours: number, minutes = 0): Date {
@@ -20,6 +21,18 @@ test('resolveChannelPostBackupSlot maps GitHub backup cron expressions to slots'
     resolveChannelPostBackupSlot({ eventSchedule: TG_CHANNEL_BACKUP_CRON_BY_SLOT[5] }),
     { slot: 5, source: 'github_schedule' },
   )
+})
+
+test('VPS primary calendar maps each canonical Moscow slot five minutes before GitHub backup', () => {
+  assert.deepEqual(TG_CHANNEL_PRIMARY_SYSTEMD_CALENDAR_BY_SLOT, {
+    1: '*-*-* 09:30:00 Europe/Moscow',
+    2: '*-*-* 12:30:00 Europe/Moscow',
+    3: '*-*-* 15:30:00 Europe/Moscow',
+    4: '*-*-* 18:30:00 Europe/Moscow',
+    5: '*-*-* 21:00:00 Europe/Moscow',
+  })
+  assert.equal(TG_CHANNEL_BACKUP_CRON_BY_SLOT[1], '35 6 * * *')
+  assert.equal(TG_CHANNEL_BACKUP_CRON_BY_SLOT[5], '5 18 * * *')
 })
 
 test('resolveChannelPostBackupSlot prefers explicit slot over GitHub schedule', () => {

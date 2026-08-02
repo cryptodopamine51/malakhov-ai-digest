@@ -543,6 +543,46 @@ expected fingerprint SHA256:QCYBWOPiJBAT3+AOvP2x6r5lm10KFeGMU2h1dyLQ4X4.
 
 ## 10. Progress / Handoff log
 
+### 2026-08-02 — Telegram scheduler reliability follow-up
+
+Status: PARTIAL — VPS primary live-accepted; default-branch workflow update awaits merge path
+
+- Root cause: GitHub Actions was made the sole Telegram primary after cutover,
+  but scheduled runs were delayed by 53–126 minutes; a hosted schedule is not
+  an exact scheduler.
+- Target architecture: VPS systemd primary at 09:30, 12:30, 15:30, 18:30,
+  21:00 Europe/Moscow; GitHub delayed backup five minutes later; the existing
+  conditional DB claim remains the shared duplicate guard.
+- Safety boundary: enable timers only; do not manually start a delivery unit
+  outside a natural slot. x-ui/xray and unrelated containers are out of scope.
+- Caveat: GitHub reads scheduled workflow definitions from default `main`; a
+  PR to the production release branch cannot alone activate a changed workflow
+  definition on `main`.
+- Implementation / commit: `codex/tg-vps-scheduler-reliability` /
+  `aaaf9fd` (`fix(telegram): restore VPS primary scheduler`), draft PR #26 to
+  `codex/vps-recovery-final`.
+- VPS: five `malakhov-tg-channel-post-{1..5}.timer` units installed and
+  enabled; `EnvironmentFile=/etc/malakhov-ai-digest/tg-channel-post.env` is
+  root-owned mode 0600. `systemd-analyze verify` and calendar validation
+  passed. Production has `pg_net` only; no `pg_cron` extension, `cron` schema
+  or Telegram DB jobs. x-ui/xray and unrelated containers were untouched.
+- Catch-up/live acceptance: after a fresh DB gate found zero rows in slot 1
+  with `success`/`sending`, and GitHub had no 2026-08-02 backup run, the
+  owner-authorized `systemctl start malakhov-tg-channel-post@1.service` ran at
+  10:19 MSK. It completed HTTP 2xx and produced exactly one `success` row for
+  `2026-08-02/slot=1`, `telegram_message_id=220`; DB count and distinct message
+  ID count are both one. Slots 2–4 remain planned, slot 5 is legitimately
+  `skipped_no_article`; no backup run or duplicate row appeared afterwards.
+- Validation: 415/415 `npm test`, `npx tsc --noEmit`, `npm run docs:check`,
+  actionlint, ShellCheck, `git diff --check`, and production build with
+  protected production public build inputs passed. PR #26 CI build/quality and
+  docs guard passed. Public site, RSS, sitemap and API feed returned HTTP 200;
+  app/Caddy/Postgres containers were healthy.
+- Remaining action: merge/reconcile the workflow file into default `main` (or
+  explicitly preserve its current backup after review). Until then, the active
+  `main` workflow retains its legacy manual-dispatch semantics; VPS systemd is
+  the live exact primary and the PR contains the safe delayed-backup replacement.
+
 Каждая итерация добавляет запись по шаблону, не удаляя предыдущие:
 
 ```text
