@@ -123,6 +123,29 @@ overlap when provider latency is high.
 > **Telegram-дайджест с 2026-05-02 ушёл из GitHub Actions в Vercel Cron** —
 > см. ниже. `tg-digest.yml` удалён.
 
+## Telegram channel posts: VPS primary and GitHub backup
+
+Точный production primary для пяти Telegram channel slots работает на VPS через
+systemd в явной timezone `Europe/Moscow`: 09:30, 12:30, 15:30, 18:30 и 21:00.
+Timers вызывают защищённый route `/api/cron/tg-channel-post?slot=1..5`; root-only
+`/etc/malakhov-ai-digest/tg-channel-post.env` содержит `CRON_SECRET` и имеет mode
+`0600`. Timer settings: `Persistent=true`, `RandomizedDelaySec=0`, `AccuracySec=1s`.
+
+Workflow `Telegram Channel Post Backup` остаётся delayed backup через пять минут
+после каждого primary slot: 09:35, 12:35, 15:35, 18:35 и 21:05 МСК. Scheduled run
+и manual run только с явным `send=true` вызывают тот же HTTPS route с GitHub secret
+`CRON_SECRET`; manual default `send=false` выполняет только tests и не отправляет
+пост. Workflow concurrency и conditional DB claim в `telegram_channel_posts`
+сохраняют idempotency при гонке primary/backup: уже claimed/success slot не отправляется
+вторично.
+
+Не включать рядом второй Telegram primary через pg_cron/pg_net или Vercel Cron.
+Rollback без изменения delivery history:
+
+```sh
+systemctl disable --now malakhov-tg-channel-post-{1,2,3,4,5}.timer
+```
+
 ## Cron-расписание Telegram-дайджеста
 
 Дайджест дёргается **двумя независимыми планировщиками одновременно**. UNIQUE-claim в `digest_runs (digest_date+channel_id)` гарантирует, что отправится **ровно один** пост — кто пришёл первым, тот и отправил, остальные ответят 200 с `status: 'skipped_already_claimed'`.
