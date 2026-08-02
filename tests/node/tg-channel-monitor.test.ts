@@ -20,22 +20,30 @@ test('dueSlotCount: до первого слота с грейсом — нол�
   assert.equal(dueSlotCount(mskTime(21, 31)), 5)
 })
 
-test('утром при пустом дне — noop (не шумим из-за одного слота)', () => {
-  const decision = decideTgChannelAlert([], mskTime(11, 0))
+test('до первого слота с грейсом — noop', () => {
+  const decision = decideTgChannelAlert([], mskTime(9, 45))
   assert.equal(decision.kind, 'noop')
 })
 
-test('к 13:01 при полном отсутствии строк — critical no_rows', () => {
-  const decision = decideTgChannelAlert([], mskTime(13, 1))
-  assert.deepEqual(decision, { kind: 'fire', reason: 'no_rows', dueSlots: 2, successCount: 0 })
+test('после due слота без строки — critical no_rows / scheduler failure', () => {
+  const decision = decideTgChannelAlert([], mskTime(10, 1))
+  assert.deepEqual(decision, { kind: 'fire', reason: 'no_rows', dueSlots: 1, successCount: 0 })
 })
 
-test('строки есть, но ни одной success — critical no_success', () => {
+test('failed_send, sending и planned due без success — critical delivery failure', () => {
   const decision = decideTgChannelAlert(
-    [{ status: 'planned' }, { status: 'failed_send' }],
+    [{ status: 'planned', slot_no: 1 }, { status: 'failed_send', slot_no: 2 }, { status: 'sending', slot_no: 3 }],
     mskTime(16, 30),
   )
-  assert.deepEqual(decision, { kind: 'fire', reason: 'no_success', dueSlots: 3, successCount: 0 })
+  assert.deepEqual(decision, { kind: 'fire', reason: 'delivery_failure', dueSlots: 3, successCount: 0 })
+})
+
+test('all skipped_low_articles is a content-shortage warning, never delivery critical', () => {
+  const decision = decideTgChannelAlert(
+    [{ status: 'skipped_low_articles', slot_no: 1 }, { status: 'skipped_low_articles', slot_no: 2 }],
+    mskTime(13, 1),
+  )
+  assert.deepEqual(decision, { kind: 'warning', reason: 'content_shortage', dueSlots: 2, successCount: 0 })
 })
 
 test('есть success, но меньше due slots — critical partial_success', () => {
