@@ -2,7 +2,7 @@ name: Telegram Channel Post Backup
 
 on:
   schedule:
-    # Backup 5 minutes after the primary Supabase pg_cron slot times.
+    # Delayed insurance only: VPS systemd owns the exact primary slots.
     - cron: '35 6 * * *'
     - cron: '35 9 * * *'
     - cron: '35 12 * * *'
@@ -14,6 +14,11 @@ on:
         description: 'Optional slot 1..5; empty uses current Moscow time'
         required: false
         type: string
+      send:
+        description: 'Actually send for a manual dispatch (default is test-only/no-send)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -31,8 +36,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # GitHub schedules are read from main, while production code lives on this branch.
-          ref: codex/evergreen-quality-standard-2026-05-21
+          # GitHub schedules are read from main. Keep manual test-only code
+          # pinned to the production release line until main is updated.
+          ref: codex/vps-recovery-final
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -43,17 +49,32 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run Telegram channel post backup
-        run: npm run tg-channel-post:backup
+      - name: Manual no-send validation
+        if: github.event_name == 'workflow_dispatch' && inputs.send != true
+        run: npx tsx --test tests/node/channel-post.test.ts tests/node/tg-channel-schedule.test.ts
+
+      - name: Run delayed Telegram channel post backup
+        if: github.event_name == 'schedule' || inputs.send == true
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          case "${GITHUB_EVENT_SCHEDULE:-}" in
+            '35 6 * * *') slot=1 ;;
+            '35 9 * * *') slot=2 ;;
+            '35 12 * * *') slot=3 ;;
+            '35 15 * * *') slot=4 ;;
+            '5 18 * * *') slot=5 ;;
+            '') slot="${TG_CHANNEL_POST_SLOT:?manual send requires slot 1..5}" ;;
+            *) printf '%s\n' 'Unsupported Telegram backup schedule' >&2; exit 64 ;;
+          esac
+          case "$slot" in 1|2|3|4|5) ;; *) printf '%s\n' 'slot must be 1..5' >&2; exit 64 ;; esac
+          : "${CRON_SECRET:?CRON_SECRET GitHub secret is required}"
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 75 \
+            --retry 2 --retry-all-errors --retry-delay 2 --output /dev/null \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "https://news.malakhovai.ru/api/cron/tg-channel-post?slot=${slot}"
+          printf 'Telegram channel backup slot=%s received HTTP 2xx\n' "$slot"
         env:
           GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule }}
           TG_CHANNEL_POST_SLOT: ${{ github.event.inputs.slot }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
-          NEXT_PUBLIC_SITE_URL: https://news.malakhovai.ru
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          DEEPSEEK_BASE_URL: https://api.deepseek.com
-          DEEPSEEK_TELEGRAM_CAPTION_MODEL: deepseek-v4-flash
-          DEEPSEEK_TELEGRAM_CAPTION_DAILY_BUDGET_USD: '0.05'
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
