@@ -200,8 +200,11 @@ Lead anchor check (`sentenceHasAnchor`, первое предложение ли
 Production `deepseek-only` обходит premium/degraded ветки: все категории идут в DeepSeek,
 provider/validation failures получают bounded retry, а `quality_ok=false` закрывается обычным
 reject без вызова Claude. `finish_reason='length'` вызывает один компактный повтор с лимитом
-6000 output-токенов, поэтому оборванный JSON не передаётся parser-у. Категория `ai-research`
-входит в validation context: body короче 1500 символов уходит в repair/retry до apply.
+6000 output-токенов, поэтому оборванный JSON не передаётся parser-у. Writer явно отправляет
+`thinking.type='disabled'`: у DeepSeek V4 thinking включён по умолчанию и reasoning tokens входят
+в `max_tokens`; для bounded editorial JSON это иначе повторно обрезало ответ ровно на 6000
+токенах и исчерпывало article retries. Категория `ai-research` входит в validation context: body
+короче 1500 символов уходит в repair/retry до apply.
 
 С 2026-06-21 `enrich.yml` запускает
 `npm run editorial:routing -- --mode=deepseek-only --limit=15 --apply --deepseek-daily-budget=1`
