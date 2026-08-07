@@ -13,6 +13,7 @@ import { getArticleUrl } from '../lib/article-slugs'
 import { readSiteUrlFromEnv } from '../lib/site'
 import { getServerClient } from '../lib/supabase'
 import type { Article } from '../lib/supabase'
+import { isChannelPostSlotDue } from '../lib/tg-channel-schedule'
 import { getMoscowDateKey } from '../lib/utils'
 import { hasStaleYearHallucination as hasStaleYearHallucinationInText } from '../lib/year-sanitizer'
 import { writeLlmUsageLog, ZERO_USAGE_TOTALS, type UsageTotals } from '../pipeline/llm-usage'
@@ -131,6 +132,7 @@ export type ChannelPostResult =
   | { status: 'skipped_no_article'; slot: number }
   | { status: 'skipped_no_plan'; slot: number }
   | { status: 'skipped_already_claimed'; slot: number }
+  | { status: 'skipped_not_due'; slot: number }
   | { status: 'failed'; slot: number; error: string }
   | { status: 'preflight_failed'; reason: string }
 
@@ -727,6 +729,36 @@ function articleUrl(siteUrl: string, article: Pick<ChannelPostCandidate, 'slug' 
   return `${getArticleUrl(siteUrl, article.slug!, article.primary_category)}?utm_source=tg&utm_medium=channel&utm_campaign=dayfeed_${campaign}&utm_content=slot_${slot}`
 }
 
+function plannedArticleRow(
+  article: ChannelPostCandidate,
+  slotNo: number,
+  options: {
+    deliveryDate: string
+    contentDate: string
+    channelId: string
+    siteUrl: string
+    plannedAt: string
+  },
+): ChannelPostPlanItem {
+  const caption = buildTelegramCaption(article)
+  const story = deriveDigestStory(article)
+  return {
+    delivery_date: options.deliveryDate,
+    content_date: options.contentDate,
+    slot_no: slotNo,
+    channel_id: options.channelId,
+    article_id: article.id,
+    status: 'planned',
+    caption,
+    caption_hash: captionHash(caption),
+    article_url: articleUrl(options.siteUrl, article, slotNo, options.deliveryDate),
+    cover_image_url: article.cover_image_url,
+    story_key: story.storyKey,
+    planned_at: options.plannedAt,
+    error_message: null,
+  }
+}
+
 export function buildChannelPostPlan(
   candidates: ChannelPostCandidate[],
   recentSentArticles: DigestSelectionArticle[],
@@ -787,24 +819,51 @@ export function buildChannelPostPlan(
       }
     }
 
-    const caption = buildTelegramCaption(article)
-    const story = deriveDigestStory(article)
-    return {
-      delivery_date: options.deliveryDate,
-      content_date: options.contentDate,
-      slot_no: slotNo,
-      channel_id: options.channelId,
-      article_id: article.id,
-      status: 'planned' as const,
-      caption,
-      caption_hash: captionHash(caption),
-      article_url: articleUrl(options.siteUrl, article, slotNo, options.deliveryDate),
-      cover_image_url: article.cover_image_url,
-      story_key: story.storyKey,
-      planned_at: plannedAt,
-      error_message: null,
-    }
+    return plannedArticleRow(article, slotNo, { ...options, plannedAt })
   })
+}
+
+export function buildChannelPostRefillPlan(
+  candidates: ChannelPostCandidate[],
+  recentSentArticles: DigestSelectionArticle[],
+  existingRows: TelegramChannelPostRow[],
+  options: {
+    deliveryDate: string
+    contentDate: string
+    channelId: string
+    siteUrl: string
+    plannedAt?: string
+  },
+): ChannelPostPlanItem[] {
+  const refillableRows = existingRows
+    .filter((row) => row.article_id === null && (
+      row.status === 'skipped_no_article' || row.status === 'skipped_low_articles'
+    ))
+    .sort((a, b) => a.slot_no - b.slot_no)
+  if (refillableRows.length === 0) return []
+
+  const existingArticleIds = new Set(
+    existingRows.map((row) => row.article_id).filter((id): id is string => Boolean(id)),
+  )
+  const existingStoryKeys = new Set(
+    existingRows.map((row) => row.story_key).filter((key): key is string => Boolean(key)),
+  )
+  const postableCandidates = rankDigestCandidates(candidates.filter((candidate) => {
+    const storyKey = deriveDigestStory(candidate).storyKey
+    return isPostableCandidate(candidate) &&
+      !existingArticleIds.has(candidate.id) &&
+      (!storyKey || !existingStoryKeys.has(storyKey))
+  }))
+  const selection = selectDigestArticles(postableCandidates, recentSentArticles, {
+    perSourceCap: 2,
+    perPrimaryEntityCap: 2,
+    target: refillableRows.length,
+  })
+  const plannedAt = options.plannedAt ?? new Date().toISOString()
+
+  return selection.articles.slice(0, refillableRows.length).map((article, index) => (
+    plannedArticleRow(article, refillableRows[index]!.slot_no, { ...options, plannedAt })
+  ))
 }
 
 async function isArticleLive(siteUrl: string, article: ChannelPostCandidate): Promise<boolean> {
@@ -967,20 +1026,10 @@ async function refreshExistingPlannedCaptions(
   return rows.map((row) => updatedById.get(row.id) ?? row)
 }
 
-async function ensureDailyPlan(
+async function fetchChannelPostCandidates(
   supabase: ChannelPostSupabase,
-  opts: {
-    deliveryDate: string
-    contentDate: string
-    from: string
-    to: string
-    channelId: string
-    siteUrl: string
-  },
-): Promise<TelegramChannelPostRow[]> {
-  const existing = await fetchExistingPlan(supabase, opts.deliveryDate, opts.channelId)
-  if (existing.length > 0) return refreshExistingPlannedCaptions(supabase, existing, opts.deliveryDate)
-
+  opts: { from: string; to: string; siteUrl: string },
+): Promise<ChannelPostCandidate[]> {
   const { data, error } = await supabase
     .from('articles')
     .select('*')
@@ -999,15 +1048,102 @@ async function ensureDailyPlan(
     .limit(50)
 
   if (error) throw new Error(`channel post candidate query failed: ${error.message}`)
+  return filterLiveArticles((data ?? []) as Article[], opts.siteUrl)
+}
 
-  const candidates = await filterLiveArticles((data ?? []) as Article[], opts.siteUrl)
-  const sinceIso = new Date(Date.now() - RECENT_STORY_MEMORY_HOURS * 60 * 60 * 1000).toISOString()
-  let recentSentArticles: Article[] = []
+async function fetchRecentChannelPostStories(
+  supabase: ChannelPostSupabase,
+  now: Date,
+): Promise<Article[]> {
+  const sinceIso = new Date(now.getTime() - RECENT_STORY_MEMORY_HOURS * 60 * 60 * 1000).toISOString()
   try {
-    recentSentArticles = await fetchRecentSentArticles(supabase, sinceIso)
+    return await fetchRecentSentArticles(supabase, sinceIso)
   } catch (err) {
     logError('Recent Telegram story memory failed; planning with same-day dedup only', err)
+    return []
   }
+}
+
+async function refillSkippedPlanRows(
+  supabase: ChannelPostSupabase,
+  rows: TelegramChannelPostRow[],
+  candidates: ChannelPostCandidate[],
+  recentSentArticles: Article[],
+  opts: {
+    deliveryDate: string
+    contentDate: string
+    channelId: string
+    siteUrl: string
+  },
+): Promise<TelegramChannelPostRow[]> {
+  let replacements = buildChannelPostRefillPlan(candidates, recentSentArticles, rows, opts)
+  if (replacements.length === 0) return rows
+
+  replacements = await applyGeneratedCaptionsToPlan(
+    replacements,
+    candidates,
+    await createCaptionGenerator(supabase, opts.deliveryDate),
+  )
+
+  let updatedCount = 0
+  for (const replacement of replacements) {
+    const existing = rows.find((row) => row.slot_no === replacement.slot_no)
+    if (!existing) continue
+
+    const { data, error } = await supabase
+      .from('telegram_channel_posts')
+      .update({
+        article_id: replacement.article_id,
+        status: replacement.status,
+        caption: replacement.caption,
+        caption_hash: replacement.caption_hash,
+        article_url: replacement.article_url,
+        cover_image_url: replacement.cover_image_url,
+        story_key: replacement.story_key,
+        planned_at: replacement.planned_at,
+        claimed_at: null,
+        failed_at: null,
+        error_message: null,
+      })
+      .eq('id', existing.id)
+      .is('article_id', null)
+      .in('status', ['skipped_no_article', 'skipped_low_articles'])
+      .select('id')
+
+    if (error) throw new Error(`telegram_channel_posts refill failed: ${error.message}`)
+    updatedCount += (data ?? []).length
+  }
+
+  if (updatedCount > 0) log(`Дозаполнено Telegram channel posts: ${updatedCount} слотов`)
+  return fetchExistingPlan(supabase, opts.deliveryDate, opts.channelId)
+}
+
+async function ensureDailyPlan(
+  supabase: ChannelPostSupabase,
+  opts: {
+    deliveryDate: string
+    contentDate: string
+    from: string
+    to: string
+    channelId: string
+    siteUrl: string
+    now: Date
+  },
+): Promise<TelegramChannelPostRow[]> {
+  const existing = await fetchExistingPlan(supabase, opts.deliveryDate, opts.channelId)
+  if (existing.length > 0) {
+    const refreshed = await refreshExistingPlannedCaptions(supabase, existing, opts.deliveryDate)
+    if (!refreshed.some((row) => (
+      row.article_id === null && (row.status === 'skipped_no_article' || row.status === 'skipped_low_articles')
+    ))) return refreshed
+
+    const candidates = await fetchChannelPostCandidates(supabase, opts)
+    const recentSentArticles = await fetchRecentChannelPostStories(supabase, opts.now)
+    return refillSkippedPlanRows(supabase, refreshed, candidates, recentSentArticles, opts)
+  }
+
+  const candidates = await fetchChannelPostCandidates(supabase, opts)
+  const recentSentArticles = await fetchRecentChannelPostStories(supabase, opts.now)
 
   let rows = buildChannelPostPlan(candidates, recentSentArticles, {
     deliveryDate: opts.deliveryDate,
@@ -1210,9 +1346,12 @@ export async function deliverDueChannelPostRows(
   return firstSuccess ?? requestedResult ?? lastResult ?? { status: 'skipped_no_plan', slot }
 }
 
-export async function runChannelPost(slotNo: number): Promise<ChannelPostResult> {
+export async function runChannelPost(slotNo: number, now = new Date()): Promise<ChannelPostResult> {
   const slot = parseSlot(slotNo)
   if (!slot) return { status: 'preflight_failed', reason: 'slot must be 1..5' }
+  if (!isChannelPostSlotDue(slot as 1 | 2 | 3 | 4 | 5, now)) {
+    return { status: 'skipped_not_due', slot }
+  }
 
   const botToken = process.env.TELEGRAM_BOT_TOKEN
   const channelId = process.env.TELEGRAM_CHANNEL_ID
@@ -1233,13 +1372,14 @@ export async function runChannelPost(slotNo: number): Promise<ChannelPostResult>
   }
 
   const supabase = getServerClient()
-  const window = moscowDayWindowForDelivery()
-  const deliveryDate = getMoscowDateKey()
+  const window = moscowDayWindowForDelivery(now)
+  const deliveryDate = getMoscowDateKey(now)
   const planRows = await ensureDailyPlan(supabase, {
     ...window,
     deliveryDate,
     channelId,
     siteUrl,
+    now,
   })
   return deliverDueChannelPostRows(supabase, planRows, slot, botToken)
 }
@@ -1251,6 +1391,7 @@ export const _internals = {
   truncatePlain,
   captionHash,
   articleUrl,
+  buildChannelPostRefillPlan,
   inferTelegramPhotoContentType,
   isDeliverableChannelPostRow,
   selectDueChannelPostRows,

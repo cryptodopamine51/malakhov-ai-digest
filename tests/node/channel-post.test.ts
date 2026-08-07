@@ -4,10 +4,12 @@ import assert from 'node:assert/strict'
 import {
   applyGeneratedCaptionsToPlan,
   buildChannelPostPlan,
+  buildChannelPostRefillPlan,
   buildTelegramCaption,
   buildTelegramCaptionFromDeepSeekJson,
   deliverDueChannelPostRows,
   deliverPlannedChannelPost,
+  runChannelPost,
   sendTelegramPhoto,
   selectDueChannelPostRows,
   type ChannelPostCandidate,
@@ -68,6 +70,59 @@ test('buildChannelPostPlan records skipped_low_articles for every slot below min
   assert.equal(rows.length, 5)
   assert.equal(rows.every((row) => row.status === 'skipped_low_articles'), true)
   assert.equal(rows.every((row) => row.article_id === null), true)
+})
+
+test('buildChannelPostRefillPlan fills only previously empty slots with new articles', () => {
+  const initial = plan([
+    article({ id: 'a1', source_name: 'OpenAI News', original_title: 'OpenAI launches GPT-5.5 for developers' }),
+    article({ id: 'a2', source_name: 'Google Blog', original_title: 'Google releases Gemini 3 for Workspace' }),
+    article({ id: 'a3', source_name: 'Mistral News', original_title: 'Mistral introduces Le Chat enterprise tools' }),
+  ]) as TelegramChannelPostRow[]
+  const candidates = [
+    article({ id: 'a1', source_name: 'OpenAI News', original_title: 'OpenAI launches GPT-5.5 for developers' }),
+    article({ id: 'a4', source_name: 'Nvidia Blog', original_title: 'Nvidia announces new Blackwell accelerator' }),
+    article({ id: 'a5', source_name: 'Yandex Blog', original_title: 'Yandex presents YandexGPT update' }),
+  ]
+
+  const replacements = buildChannelPostRefillPlan(candidates, [], initial, {
+    deliveryDate: '2026-06-01',
+    contentDate: '2026-05-31',
+    channelId: '@channel',
+    siteUrl: 'https://news.example.com',
+    plannedAt: '2026-06-01T09:30:00.000Z',
+  })
+
+  assert.deepEqual(replacements.map((row) => row.slot_no), [4, 5])
+  assert.deepEqual(new Set(replacements.map((row) => row.article_id)), new Set(['a4', 'a5']))
+  assert.equal(replacements.every((row) => row.status === 'planned'), true)
+  assert.match(replacements[0]!.article_url ?? '', /utm_content=slot_4/)
+})
+
+test('buildChannelPostRefillPlan recovers a low-inventory plan when articles arrive later', () => {
+  const initial = plan([
+    article({ id: 'a1', original_title: 'OpenAI launches GPT-5.5 for developers' }),
+    article({ id: 'a2', original_title: 'Google releases Gemini 3 for Workspace' }),
+  ]) as TelegramChannelPostRow[]
+  const candidates = Array.from({ length: 5 }, (_, index) => article({
+    id: `late-${index + 1}`,
+    source_name: `Source ${index + 1}`,
+    original_title: `Independent AI story ${index + 1}`,
+  }))
+
+  const replacements = buildChannelPostRefillPlan(candidates, [], initial, {
+    deliveryDate: '2026-06-01',
+    contentDate: '2026-05-31',
+    channelId: '@channel',
+    siteUrl: 'https://news.example.com',
+  })
+
+  assert.deepEqual(replacements.map((row) => row.slot_no), [1, 2, 3, 4, 5])
+  assert.equal(replacements.every((row) => row.article_id !== null), true)
+})
+
+test('runChannelPost ignores a future slot before touching runtime credentials', async () => {
+  const result = await runChannelPost(5, new Date('2026-08-07T00:10:00.000Z'))
+  assert.deepEqual(result, { status: 'skipped_not_due', slot: 5 })
 })
 
 test('buildChannelPostPlan deduplicates the same strong story across slots', () => {

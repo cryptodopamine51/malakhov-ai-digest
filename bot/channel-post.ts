@@ -16,6 +16,7 @@ import { parseSlot, runChannelPost } from './channel-post-core'
 export {
   applyGeneratedCaptionsToPlan,
   buildChannelPostPlan,
+  buildChannelPostRefillPlan,
   buildTelegramCaption,
   buildTelegramCaptionFromDeepSeekJson,
   deliverDueChannelPostRows,

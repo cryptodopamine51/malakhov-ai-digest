@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  isChannelPostSlotDue,
   latestChannelPostSlotForMoscowTime,
   resolveChannelPostBackupSlot,
   TG_CHANNEL_BACKUP_CRON_BY_SLOT,
@@ -48,6 +49,13 @@ test('latestChannelPostSlotForMoscowTime returns the latest passed Moscow slot',
   assert.equal(latestChannelPostSlotForMoscowTime(mskTime(9, 30)), 1)
   assert.equal(latestChannelPostSlotForMoscowTime(mskTime(15, 39)), 3)
   assert.equal(latestChannelPostSlotForMoscowTime(mskTime(21, 0)), 5)
+})
+
+test('isChannelPostSlotDue rejects delayed backup slots that crossed Moscow midnight', () => {
+  assert.equal(isChannelPostSlotDue(5, mskTime(3, 10)), false)
+  assert.equal(isChannelPostSlotDue(1, mskTime(9, 29)), false)
+  assert.equal(isChannelPostSlotDue(1, mskTime(9, 30)), true)
+  assert.equal(isChannelPostSlotDue(4, mskTime(21, 10)), true)
 })
 
 test('resolveChannelPostBackupSlot falls back to clock only when a slot is due', () => {

@@ -16,7 +16,7 @@ export const TG_CHANNEL_BACKUP_CRON_BY_SLOT = {
   5: '5 18 * * *',
 } as const
 
-type ChannelPostSlot = 1 | 2 | 3 | 4 | 5
+export type ChannelPostSlot = 1 | 2 | 3 | 4 | 5
 
 export type ChannelPostBackupSlotSource = 'explicit' | 'github_schedule' | 'clock'
 
@@ -53,6 +53,11 @@ export function latestChannelPostSlotForMoscowTime(now = new Date()): ChannelPos
   const minutesOfDay = msk.getUTCHours() * 60 + msk.getUTCMinutes()
   const dueSlots = TG_CHANNEL_SLOT_TIMES_MSK_MINUTES.filter((slotTime) => slotTime <= minutesOfDay).length
   return dueSlots >= 1 && dueSlots <= 5 ? dueSlots as ChannelPostSlot : null
+}
+
+export function isChannelPostSlotDue(slot: ChannelPostSlot, now = new Date()): boolean {
+  const latestDueSlot = latestChannelPostSlotForMoscowTime(now)
+  return latestDueSlot !== null && slot <= latestDueSlot
 }
 
 export function resolveChannelPostBackupSlot(

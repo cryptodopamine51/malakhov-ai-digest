@@ -270,19 +270,26 @@ select week_start, format, status, article_ids, telegram_message_id, error, upda
 
 ## Cron-расписание Telegram channel posts
 
-Telegram-посты в штатном режиме запускает только GitHub Actions workflow
-`.github/workflows/tg-channel-post-backup.yml` в пяти точных slot. Self-hosted Postgres не имеет
-`pg_cron`/`pg_net` sender jobs, а Vercel Cron отключён. Таблица `telegram_channel_posts` хранит plan/delivery
-state по каждому слоту; UNIQUE `(delivery_date, slot_no, channel_id)` гарантирует, что один
-slot не отправится дважды.
+Точный production primary — пять VPS `systemd` timers с timezone `Europe/Moscow`; GitHub Actions
+запускает delayed backup через 5 минут после каждого slot. Каждый запуск вызывает protected
+same-origin route `/api/cron/tg-channel-post?slot=1..5`. Таблица `telegram_channel_posts` хранит
+plan/delivery state по каждому слоту; UNIQUE `(delivery_date, slot_no, channel_id)` гарантирует,
+что один slot не отправится дважды.
 
 Если ранний cron/pg_net missed и дневной план впервые создаёт более поздний slot, runner не
 оставляет просроченные строки висеть: `runChannelPost(slot=N)` отправляет все `planned`/`failed_send` слоты
 `<= N` по порядку и затем текущий slot. Это catch-up только по строкам текущего `delivery_date`;
-`success`, `sending` и `skipped_*` не переотправляются, чтобы не дублировать уже забранный или
-заведомо пропущенный slot.
+`success` и `sending` не переотправляются. Строки `skipped_low_articles` и
+`skipped_no_article` больше не замораживают план на весь день: каждый следующий due-запуск снова
+проверяет live-кандидатов и атомарно дозаполняет пустые слоты, не меняя уже выбранные/отправленные
+статьи.
 
-### Historical Supabase schedule — disabled
+Endpoint проверяет московское расписание **до** чтения env и создания daily plan. Запрос будущего
+слота возвращает `skipped_not_due` без DB/Telegram side effects. Это защищает от задержанного
+GitHub schedule, который стартовал после московской полуночи: вчерашний slot 5 не может создать
+план следующего дня ночью.
+
+### Primary — VPS systemd (минутная точность)
 
 | Job | Расписание (UTC) | МСК | Дни |
 |---|---|---|---|
@@ -292,8 +299,18 @@ slot не отправится дважды.
 | `tg-channel-post-4` | `30 15 * * *` | 18:30 | ежедневно |
 | `tg-channel-post-5` | `0 18 * * *` | 21:00 | ежедневно |
 
-Эти пять значений сохранены только как историческая карта. В production нет extension/job,
-`vault` bearer и второго sender plane для них; не применять migration `017` как scheduler.
+Units: `malakhov-tg-channel-post-1.timer` … `malakhov-tg-channel-post-5.timer`, activating
+`malakhov-tg-channel-post@N.service`. Service uses a root-only environment file and calls the
+protected same-origin route. Self-hosted Postgres не имеет extension `pg_cron`; historical
+`pg_cron`/`pg_net` Telegram jobs должны оставаться disabled.
+
+Read-only diagnostics:
+
+```bash
+systemctl list-timers --all 'malakhov-tg-channel-post-*'
+systemctl status 'malakhov-tg-channel-post-*.timer' --no-pager
+journalctl -u 'malakhov-tg-channel-post@*.service' --since today --no-pager
+```
 
 Caption генерируется в `bot/channel-post-core.ts` как два абзаца: жирный заголовок и короткий
 редакционный body. При создании нового daily plan runner сначала пытается DeepSeek через
@@ -311,25 +328,19 @@ multipart upload. Это убирает класс отказов `Bad Request: 
 сторонний CDN доступен сайту/оператору, но Telegram не может скачать URL со своих IP. Если
 prefetch не проходит, слот остаётся `failed_send` с явной причиной `Telegram photo prefetch ...`.
 
-Историческая конфигурация находится в `supabase/migrations/017_telegram_channel_posts.sql`, но
-self-hosted production применяет scheduler-free adaptation `20260801000000_self_hosted_staging.sql`.
+Application delivery contract originates in `supabase/migrations/017_telegram_channel_posts.sql`;
+the migration's historical database schedule is not production scheduler configuration.
 
 Диагностика:
 
 ```sql
-SELECT jobid, jobname, schedule, active FROM cron.job WHERE jobname LIKE 'tg-channel-post-%';
-SELECT jobid, runid, start_time, status, return_message
-  FROM cron.job_run_details
- WHERE jobid IN (SELECT jobid FROM cron.job WHERE jobname LIKE 'tg-channel-post-%')
- ORDER BY runid DESC LIMIT 10;
-SELECT id, status_code, content::text, created FROM net._http_response ORDER BY id DESC LIMIT 5;
 SELECT delivery_date, slot_no, status, article_id, telegram_message_id, sent_at, error_message
   FROM telegram_channel_posts ORDER BY delivery_date DESC, slot_no DESC LIMIT 10;
 ```
 
-### Primary — GitHub Actions
+### Backup — GitHub Actions
 
-Workflow `.github/workflows/tg-channel-post-backup.yml` — единственный production primary:
+Workflow `.github/workflows/tg-channel-post-backup.yml` — delayed insurance, а не co-primary:
 
 | Cron (UTC) | МСК | Slot |
 |---|---:|---:|
@@ -339,11 +350,10 @@ Workflow `.github/workflows/tg-channel-post-backup.yml` — единственн
 | `35 15 * * *` | 18:35 | 4 |
 | `5 18 * * *` | 21:05 | 5 |
 
-Runner: `npm run tg-channel-post:backup`. Он мапит `github.event.schedule` на slot через
-`lib/tg-channel-schedule.ts`, а затем вызывает тот же `runChannelPost(slot)`, что и
-Supabase/Vercel route. Поэтому backup не создаёт второй delivery-path: idempotency остаётся в
-`telegram_channel_posts` (`status='success'` не переотправляется; `sending` считается уже
-забранным; missed `planned` и `failed_send` slots `<= N` catch-up-ятся по порядку).
+Workflow мапит `github.event.schedule` на slot и вызывает тот же protected route. Backup не
+создаёт второй delivery-path: idempotency остаётся в `telegram_channel_posts`. Если GitHub
+доставил scheduled event уже после московской полуночи и mapped slot ещё не наступил в новом
+дне, route безопасно отвечает `skipped_not_due`; daily plan не создаётся.
 
 Manual dispatch для проверки запускается только с `send=false`; он завершает test-only job и не
 вызывает Telegram. Локальный реальный runner не использовать как dry-run:
@@ -352,10 +362,8 @@ Manual dispatch для проверки запускается только с `
 npm run tg-channel-post:backup -- --slot=3
 ```
 
-GitHub Secrets, которые нужны backup workflow: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`,
-`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL_ID`; `DEEPSEEK_API_KEY` опционален, без него caption
-уйдёт через локальный fallback. `NEXT_PUBLIC_SITE_URL` в workflow зафиксирован как
-`https://news.malakhovai.ru`.
+GitHub backup нужен только secret `CRON_SECRET`; database и Telegram credentials остаются в
+root-only VPS production env.
 
 ### Supabase RLS на public-таблицах (advisor `rls_disabled_in_public`)
 
@@ -1374,6 +1382,12 @@ ENV: `PUBLISHED_LOW_WINDOW_HOURS`, `PUBLISHED_LOW_WINDOW_QUIET_START_MSK`, `PUBL
 запрошенный slot. Системный фикс — GitHub Actions backup-runner выше плюс catch-up в
 `bot/channel-post-core.ts`. Логика monitor-а (по МСК):
 
+Инцидент 2026-08-07: delayed GitHub event для slot 5 предыдущего дня пересёк московскую полночь,
+создал новый daily plan в 03:10 МСК при неполном article pool и оставил slot 4–5 в
+`skipped_no_article`. Защита состоит из due-time guard до создания plan и повторного дозаполнения
+`skipped_*` строк при каждом следующем due slot; HTTP 2xx от runner больше не может преждевременно
+зафиксировать неполный план на весь день.
+
 - слот «должен был выйти» через 30 минут после планового времени (09:30/12:30/15:30/18:30/21:00);
 - если due-слотов ≥ 2 (≈ с 13:00 МСК), а success-доставок за день меньше due-slots —
   `fireAlert('tg_channel_posts_missing', critical, cooldown 4ч)`; в payload различаются
@@ -1398,8 +1412,8 @@ ENV: `PUBLISHED_LOW_WINDOW_HOURS`, `PUBLISHED_LOW_WINDOW_QUIET_START_MSK`, `PUBL
 | `sending` | runner забрал слот, prefetch-ит обложку и отправляет `sendPhoto` multipart upload |
 | `success` | Telegram вернул `message_id`, строка содержит `sent_at` |
 | `failed_send` | ошибка prefetch обложки, Telegram API или runtime-ошибка отправки; следующий slot/backup может повторить отправку |
-| `skipped_low_articles` | в дневном pool меньше 3 подходящих статей, весь день пропущен |
-| `skipped_no_article` | для конкретного слота не хватило выбранных материалов |
+| `skipped_low_articles` | при последней проверке в дневном pool было меньше 3 подходящих статей; следующий due-запуск попробует дозаполнить план |
+| `skipped_no_article` | при последней проверке для слота не хватило выбранных материалов; следующий due-запуск попробует дозаполнить слот |
 
 Диагностика:
 
@@ -1456,7 +1470,7 @@ reason to operate two primaries.
 | Enrich, batch collect and retry | disabled | GitHub `enrich*.yml` / `retry-failed.yml` | manual workflow dispatch | UTC; workflow concurrency; database claim/release |
 | Publish verification | disabled | GitHub `publish-verify.yml` | manual workflow dispatch | UTC; `publish_article` returns already-live on repeat |
 | Pipeline health / ops report | disabled | GitHub `pipeline-health.yml` / `ops-report.yml` | manual workflow dispatch | UTC; alert fingerprints and report window |
-| Telegram channel slots | no `tg-*` DB cron | GitHub `tg-channel-post-backup.yml` (sole primary; five UTC schedules) | manual `send=false` test only | Moscow slots; workflow concurrency + `telegram_channel_posts` unique delivery key |
+| Telegram channel slots | no `tg-*` DB cron | five VPS `systemd` timers | GitHub `tg-channel-post-backup.yml` delayed insurance/manual | Moscow slots; route due-time guard + `telegram_channel_posts` unique delivery key |
 | Weekly Telegram report | no `tg-*` DB cron | GitHub `tg-weekly-report-backup.yml` (sole primary; Monday 08:20 UTC) | manual `send=false` dry-run only | workflow concurrency + `claim_weekly_report_run` |
 
 Before enabling either Telegram primary, set its backup runner disabled, perform the owner-approved

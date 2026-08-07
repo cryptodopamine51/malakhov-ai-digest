@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 /**
- * Vercel/Supabase pg_cron endpoint for one Telegram channel slot post.
+ * Protected endpoint used by the VPS systemd primary and delayed GitHub backup.
  *
  * Query:
  *   /api/cron/tg-channel-post?slot=1..5

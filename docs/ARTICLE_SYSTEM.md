@@ -210,10 +210,10 @@ The recovered corpus baseline is 741 live articles with zero duplicate `id`, `sl
 is not a valid runtime contract. The other service RPC contracts are `publish_article` and
 `claim_weekly_report_run`. No recovery sentinel or backup table may remain in `public`.
 
-GitHub workflows remain the only production scheduler plane. Telegram channel and weekly delivery
-each have one GitHub primary with a database uniqueness/claim guard; the self-hosted database has no
-`pg_cron` extension/job to create a second sender. Manual validation must use `send=false`/dry-run
-paths and must not make a test Telegram delivery.
+VPS `systemd` is the Telegram channel primary; GitHub is delayed insurance. The self-hosted
+database has no `pg_cron` extension/job to create a second sender. Database uniqueness/claim guards
+remain the delivery source of truth. Manual validation must use `send=false`/dry-run paths and must
+not make a test Telegram delivery.
 
 С 2026-05-11 `enrich.yml` запускает `npm run editorial:routing -- --mode=cheap --limit=15 --apply`
 каждые 30 минут. Это не удаляет Anthropic Batch: high-risk статьи, DeepSeek/API failures,
@@ -313,8 +313,9 @@ importance: масштаб события, известность игрока, 
 а не просто самые свежие/высокоскоровые. Caption-генерация дополнительно защищена
 год-санитайзером `hasStaleYearHallucination`: прошедший год в caption допустим только если он
 есть в текстах самой статьи — иначе retry/fallback (ловит галлюцинации вида «WWDC 2025»).
-Если после story-aware selection меньше 3 подходящих материалов, все 5 слотов дня пишутся как
-`skipped_low_articles` и канал не получает посты.
+Если после story-aware selection меньше 3 подходящих материалов, все 5 слотов временно пишутся как
+`skipped_low_articles`. При следующем due slot runner повторно читает pool и атомарно дозаполняет
+`skipped_low_articles`/`skipped_no_article`, не меняя уже выбранные или отправленные статьи.
 
 Slot 1 планирует весь день в `telegram_channel_posts`, но любой slot-runner умеет создать план,
 если предыдущий запуск не состоялся. Уникальность `(delivery_date, slot_no, channel_id)` защищает
@@ -322,6 +323,11 @@ Slot 1 планирует весь день в `telegram_channel_posts`, но л
 отправить одну статью в тот же канал. После успешной отправки строка получает `status='success'`,
 `telegram_message_id`, `sent_at`, а `articles.tg_sent` остаётся compatibility-флагом «материал
 уже отправлялся в Telegram».
+
+До создания daily plan `runChannelPost` проверяет, что запрошенный slot уже наступил по Москве.
+Будущий slot возвращает `skipped_not_due` без DB/Telegram side effects. Guard нужен для delayed
+GitHub schedules, которые могут стартовать уже после московской полуночи и иначе ошибочно создать
+план нового дня по вчерашнему slot number.
 
 Story selection переиспользует `bot/digest-selection.ts`: source cap `2`, entity cap `2`,
 dedup по deterministic `storyKey`, recent memory за 72 часа из legacy `digest_runs.article_ids`
