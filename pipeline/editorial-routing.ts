@@ -19,6 +19,32 @@ export function isTruncatedCompletion(finishReason: string | null | undefined): 
   return finishReason === 'length'
 }
 
+export function buildDeepSeekEditorialRequest(params: {
+  model: string
+  system: string
+  user: string
+  attempt: number
+  maxTokens: number
+}): Record<string, unknown> {
+  const userPrompt = params.attempt === 1
+    ? params.user
+    : `${params.user}\n\nThe previous response was truncated. Return compact valid JSON: keep editorial_body between 1200 and 1800 characters and avoid unnecessary detail.`
+
+  return {
+    model: params.model,
+    temperature: 0.4,
+    max_tokens: params.maxTokens,
+    response_format: { type: 'json_object' },
+    // DeepSeek V4 defaults thinking mode to enabled and counts reasoning tokens
+    // against max_tokens. Editorial generation needs bounded JSON, not CoT.
+    thinking: { type: 'disabled' },
+    messages: [
+      { role: 'system', content: params.system },
+      { role: 'user', content: userPrompt },
+    ],
+  }
+}
+
 export interface ArticleRoutingContext {
   sourceName: string
   originalTitle: string

@@ -18,6 +18,7 @@ import { buildBatchCustomId, buildBatchRequestParams as buildParams } from '../p
 import {
   allowsAnthropicFallback,
   buildClaudeReviewerPrompt,
+  buildDeepSeekEditorialRequest,
   buildDeterministicEditorialBrief,
   detectEditorialRiskFlags,
   getEditorialRoutingConfig,
@@ -536,21 +537,13 @@ async function callDeepSeekWriter(params: {
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const response = await client.chat.completions.create({
+      const response = await client.chat.completions.create(buildDeepSeekEditorialRequest({
         model: args.deepseekModel,
-        temperature: 0.4,
-        max_tokens: numberEnv('DEEPSEEK_EDITORIAL_MAX_TOKENS', DEFAULT_DEEPSEEK_MAX_TOKENS),
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: params.system },
-          {
-            role: 'user',
-            content: attempt === 1
-              ? params.user
-              : `${params.user}\n\nThe previous response was truncated. Return compact valid JSON: keep editorial_body between 1200 and 1800 characters and avoid unnecessary detail.`,
-          },
-        ],
-      } as any)
+        system: params.system,
+        user: params.user,
+        attempt,
+        maxTokens: numberEnv('DEEPSEEK_EDITORIAL_MAX_TOKENS', DEFAULT_DEEPSEEK_MAX_TOKENS),
+      }) as any)
 
       const usage = usageToTotals('deepseek', args.deepseekModel, deepSeekUsage(response.usage))
       totalUsage = addUsageTotals(totalUsage, usage)
@@ -575,6 +568,7 @@ async function callDeepSeekWriter(params: {
           attempt,
           finish_reason: finishReason,
           truncated,
+          thinking: 'disabled',
           prompt_chars: params.system.length + params.user.length,
           error: truncated ? 'response_truncated' : text ? null : 'empty_response',
         },

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import {
   allowsAnthropicFallback,
+  buildDeepSeekEditorialRequest,
   buildDeterministicEditorialBrief,
   detectEditorialRiskFlags,
   getEditorialRoutingConfig,
@@ -50,6 +51,29 @@ test('DeepSeek length finish reason is handled as a truncated response', () => {
   assert.equal(isTruncatedCompletion('length'), true)
   assert.equal(isTruncatedCompletion('stop'), false)
   assert.equal(isTruncatedCompletion(null), false)
+})
+
+test('DeepSeek editorial requests disable thinking and compact the retry', () => {
+  const first = buildDeepSeekEditorialRequest({
+    model: 'deepseek-v4-flash',
+    system: 'Return JSON.',
+    user: 'Source text',
+    attempt: 1,
+    maxTokens: 6000,
+  })
+  const retry = buildDeepSeekEditorialRequest({
+    model: 'deepseek-v4-flash',
+    system: 'Return JSON.',
+    user: 'Source text',
+    attempt: 2,
+    maxTokens: 6000,
+  })
+
+  assert.deepEqual(first.thinking, { type: 'disabled' })
+  assert.equal(first.max_tokens, 6000)
+  assert.deepEqual(first.response_format, { type: 'json_object' })
+  assert.equal((first.messages as Array<{ content: string }>)[1]?.content, 'Source text')
+  assert.match((retry.messages as Array<{ content: string }>)[1]?.content ?? '', /compact valid JSON/)
 })
 
 test('getEditorialRoutingConfig selects DeepSeek without reviewer for cheap mode', () => {
