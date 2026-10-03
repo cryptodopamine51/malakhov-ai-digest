@@ -1,0 +1,92 @@
+[
+  {
+    "slug": "gpt-6-1-sol-reliz-cena-api",
+    "prompt": "Use case: stylized-concept. Asset type: editorial cover for Malakhov AI Digest news, landscape composition safe for a 1200x630 crop. Topic: launch of GPT-6.1 Sol, a capable model for coding, document work and multi-step tasks with lower token costs than the flagship. Core metaphor: a compact precision engine doing substantial intellectual work. Create an original premium magazine editorial photomontage: a small polished metal computational module rests beside folded paper blueprints and a cropped keyboard, three clean lanes of paper flow through the module and emerge as organized documents. One strong focal point, asymmetrical composition, ample negative space, realistic object textures mixed with modernist paper cutout shapes, matte paper, very subtle print grain, restrained dusty teal, muted coral, graphite and off-white. Sophisticated editorial image, concept instantly readable. Do not show price labels, performance charts, logos or readable text. No humanoid robots, neon brains, glowing network spheres, stock-business people, dashboard stacks, watermarks, gradients or generic sci-fi. Deliver a single finished landscape cover, no grid.",
+    "filename": "gpt-6-1-sol-reliz-cena-api-cover.webp",
+    "alt": "Компактный вычислительный модуль обрабатывает документы — иллюстрация к GPT-6.1 Sol",
+    "caption": "Редакционная иллюстрация Malakhov AI, создана с помощью ИИ.",
+    "aspect": "1200:630",
+    "generation": "built-in imagegen"
+  },
+  {
+    "slug": "openai-dots-postoyannye-agenty",
+    "prompt": "Topic: persistent personal AI agents with their own cloud computer and connected apps, working between conversations. Scene HUMAN_SYSTEM: a cropped hand leaves a pencil beside a quiet desk at dusk while a tiny lit paper-cut window within the desk continues organizing three sheets. A subtle continuous looping paper ribbon connects the sheets to a small remote building silhouette, suggesting work continuing after the human leaves. Calm, tactile, credible metaphor; do not suggest unauthorized sending or autonomous purchases. Use case: stylized-concept. Create one finished premium editorial conceptual photomontage for Malakhov AI Digest. Wide landscape ratio 1.91:1, safe crop to 1200x630. Asymmetrical magazine composition, one clear focal idea, realistic photographic cutouts with layered matte paper geometry, subtle print texture and sparse grain. Restrained coral, ochre, teal, dusty blue, graphite, off-white. No readable text, no logos, no watermark, no neon brains, no humanoid robots, no dashboard grids, no glowing network spheres. No collage contact sheet; one cover image.",
+    "filename": "openai-dots-postoyannye-agenty-cover.webp",
+    "alt": "Работа продолжается в миниатюрном кабинете после ухода человека — иллюстрация к агентам dots",
+    "caption": "Редакционная иллюстрация Malakhov AI, создана с помощью ИИ.",
+    "aspect": "1200:630",
+    "generation": "built-in imagegen"
+  },
+  {
+    "slug": "claude-sonnet-5-5-skorost-stoimost",
+    "prompt": "Topic: Claude Sonnet 5.5 generates faster while token prices remain unchanged, task costs can fall through efficiency. Scene OBJECT_SYMBOL: a photographic metal metronome and a paper relay track; one precise amber paper arrow takes a shorter route through the track while a muted long ribbon bends around it. One elegant directional focal mass, no speed numbers or price numbers; engineering efficiency rather than racing car imagery. Use case: stylized-concept. Create one finished premium editorial conceptual photomontage for Malakhov AI Digest. Wide landscape ratio 1.91:1, safe crop to 1200x630. Asymmetrical magazine composition, one clear focal idea, realistic photographic cutouts with layered matte paper geometry, subtle print texture and sparse grain. Restrained coral, ochre, teal, dusty blue, graphite, off-white. No readable text, no logos, no watermark, no neon brains, no humanoid robots, no dashboard grids, no glowing network spheres. No collage contact sheet; one cover image.",
+    "filename": "claude-sonnet-5-5-skorost-stoimost-cover.webp",
+    "alt": "Короткий бумажный маршрут рядом с метрономом — иллюстрация к эффективности Claude Sonnet 5.5",
+    "caption": "Редакционная иллюстрация Malakhov AI, создана с помощью ИИ.",
+    "aspect": "1200:630",
+    "generation": "built-in imagegen"
+  },
+  {
+    "slug": "anthropic-frontier-academy-100-million",
+    "prompt": "Topic: Anthropic Frontier Academy investment to train 10,000 deployment engineers. Scene SOCIAL_EDITORIAL: a modern technical classroom seen diagonally, five adult engineers collaborating around a shared wooden desk with a simple paper-built bridge prototype, cropped black-and-white photographic people, a broad coral architectural arch and restrained teal line connecting the workshop to a distant industrial campus silhouette. Institutional, practical education mood; no brand logos, no fake real-event photographic claim. Use case: stylized-concept. Create one finished premium editorial conceptual photomontage for Malakhov AI Digest. Wide landscape ratio 1.91:1, safe crop to 1200x630. Asymmetrical magazine composition, one clear focal idea, realistic photographic cutouts with layered matte paper geometry, subtle print texture and sparse grain. Restrained coral, ochre, teal, dusty blue, graphite, off-white. No readable text, no logos, no watermark, no neon brains, no humanoid robots, no dashboard grids, no glowing network spheres. No collage contact sheet; one cover image.",
+    "filename": "anthropic-frontier-academy-100-million-cover.webp",
+    "alt": "Группа инженеров собирает модель моста в учебной мастерской — иллюстрация к Frontier Academy",
+    "caption": "Редакционная иллюстрация Malakhov AI, создана с помощью ИИ.",
+    "aspect": "1200:630",
+    "generation": "built-in imagegen"
+  },
+  {
+    "slug": "barclays-claude-code-polovina-razrabotchikov",
+    "prompt": "Topic: a large bank plans to deploy Claude Code to half its developers by year end. Scene ARCHITECTURE_TECH: a sharply cropped black-and-white stone banking facade at left, transitioning at the right into a real developer's hands above a keyboard. A single long teal paper bridge connects civic architecture and software work. A small coral semicircle creates asymmetric balance. Strategic institutional mood. Do not show bank logos, percentages, money piles, text, charts or recognizable real people. Paper and photographic surfaces, no fantasy mountains or generic sunsets. Use case: stylized-concept. Create one finished premium editorial conceptual photomontage for Malakhov AI Digest. Wide landscape ratio 1.91:1, safe crop to 1200x630. Asymmetrical magazine composition, one clear focal idea, realistic photographic cutouts with layered matte paper geometry, subtle print texture and sparse grain. Restrained coral, ochre, teal, dusty blue, graphite, off-white. No readable text, no logos, no watermark, no neon brains, no humanoid robots, no dashboard grids, no glowing network spheres. No collage contact sheet; one cover image.",
+    "filename": "barclays-claude-code-polovina-razrabotchikov-cover.webp",
+    "alt": "Мост соединяет здание банка и рабочее место разработчика — иллюстрация к внедрению Claude Code",
+    "caption": "Редакционная иллюстрация Malakhov AI, создана с помощью ИИ.",
+    "aspect": "1200:630",
+    "generation": "built-in imagegen"
+  },
+  {
+    "slug": "grok-4-7-amazon-bedrock",
+    "prompt": "Topic: Grok 4.7 arrives in Amazon Bedrock for coding, agent tasks and documents with a large context window. Scene OBJECT_SYMBOL: a precise cutout photograph of a dark server cabinet on a horizontal teal foundation slab; a thick fan of folded document pages is held in a clean graphite metal bracket beside the server, coral paper doorway behind suggests access through a managed platform. One weighty, readable connection between computational infrastructure and a large document workspace. No literal xAI/Amazon logos, no long numbers, no floating cloud icon, no fantasy scenery. Use case: stylized-concept. Create one finished premium editorial conceptual photomontage for Malakhov AI Digest. Wide landscape ratio 1.91:1, safe crop to 1200x630. Asymmetrical magazine composition, one clear focal idea, realistic photographic cutouts with layered matte paper geometry, subtle print texture and sparse grain. Restrained coral, ochre, teal, dusty blue, graphite, off-white. No readable text, no logos, no watermark, no neon brains, no humanoid robots, no dashboard grids, no glowing network spheres. No collage contact sheet; one cover image.",
+    "filename": "grok-4-7-amazon-bedrock-cover.webp",
+    "alt": "Серверная стойка и большой набор документов — иллюстрация к Grok 4.7 в Amazon Bedrock",
+    "caption": "Редакционная иллюстрация Malakhov AI, создана с помощью ИИ.",
+    "aspect": "1200:630",
+    "generation": "built-in imagegen"
+  },
+  {
+    "slug": "olmo-core-3-obuchenie-moe",
+    "prompt": "Topic: Ai2 opens Olmo-core 3 for efficient distributed training of mixture-of-experts models. Scene ABSTRACT_CONCEPT: an overhead closeup of four realistically photographed industrial metal switches, one incoming dark paper strip splits selectively into different ochre and teal lanes, each leading to a distinct compact module. A portion of server rack texture cropped in the corner. Open engineering and sparse expert routing metaphor, precise but editorial rather than technical diagram. One striking diagonal network of physical paper lanes. No arrows with labels, no performance numbers, no glass brain, no landscapes. Use case: stylized-concept. Create one finished premium editorial conceptual photomontage for Malakhov AI Digest. Wide landscape ratio 1.91:1, safe crop to 1200x630. Asymmetrical magazine composition, one clear focal idea, realistic photographic cutouts with layered matte paper geometry, subtle print texture and sparse grain. Restrained coral, ochre, teal, dusty blue, graphite, off-white. No readable text, no logos, no watermark, no neon brains, no humanoid robots, no dashboard grids, no glowing network spheres. No collage contact sheet; one cover image.",
+    "filename": "olmo-core-3-obuchenie-moe-cover.webp",
+    "alt": "Переключатели направляют бумажные потоки к отдельным вычислительным модулям — иллюстрация к Olmo-core 3",
+    "caption": "Редакционная иллюстрация Malakhov AI, создана с помощью ИИ.",
+    "aspect": "1200:630",
+    "generation": "built-in imagegen"
+  },
+  {
+    "slug": "astabrief-8b-nauchnye-otchety",
+    "prompt": "Topic: AstaBrief 8B transforms a research question and retrieved literature into a scientific report with citations. Scene OBJECT_SYMBOL: a large photographed magnifying lens hovers over an open journal, three narrow paper strips travel from separate book pages into a clean bound report, thin coral thread visually joins evidence and resulting report. Strong overhead asymmetric composition, quiet investigative library mood, tactile paper and graphite desk. No readable writing, no bibliography numbers, no fake equations, no charts or fantasy landscape. Use case: stylized-concept. Create one finished premium editorial conceptual photomontage for Malakhov AI Digest. Wide landscape ratio 1.91:1, safe crop to 1200x630. Asymmetrical magazine composition, one clear focal idea, realistic photographic cutouts with layered matte paper geometry, subtle print texture and sparse grain. Restrained coral, ochre, teal, dusty blue, graphite, off-white. No readable text, no logos, no watermark, no neon brains, no humanoid robots, no dashboard grids, no glowing network spheres. No collage contact sheet; one cover image.",
+    "filename": "astabrief-8b-nauchnye-otchety-cover.webp",
+    "alt": "Лупа и научные источники соединены с итоговым отчётом — иллюстрация к AstaBrief 8B",
+    "caption": "Редакционная иллюстрация Malakhov AI, создана с помощью ИИ.",
+    "aspect": "1200:630",
+    "generation": "built-in imagegen"
+  },
+  {
+    "slug": "holo4-agenty-gui-api-mcp",
+    "prompt": "Topic: Holo4 agent models combine screen interaction, code and API/MCP tools. Scene INTERFACE_METAPHOR: a real cropped hand controls a trackball beside one partially cutout computer screen showing only simple unlabeled geometric window shapes; a single continuous teal ribbon leaves the cursor area, passes through a coral metal connector and reaches an open physical switch, bridging screen interaction and software tools. Minimal number of parts, precision rather than automation hype. No readable code, no stack of floating windows, no logo, no humanoid assistant, no fantasy scenery. Use case: stylized-concept. Create one finished premium editorial conceptual photomontage for Malakhov AI Digest. Wide landscape ratio 1.91:1, safe crop to 1200x630. Asymmetrical magazine composition, one clear focal idea, realistic photographic cutouts with layered matte paper geometry, subtle print texture and sparse grain. Restrained coral, ochre, teal, dusty blue, graphite, off-white. No readable text, no logos, no watermark, no neon brains, no humanoid robots, no dashboard grids, no glowing network spheres. No collage contact sheet; one cover image.",
+    "filename": "holo4-agenty-gui-api-mcp-cover.webp",
+    "alt": "Курсор на экране связан с физическим переключателем — иллюстрация к агентам Holo4",
+    "caption": "Редакционная иллюстрация Malakhov AI, создана с помощью ИИ.",
+    "aspect": "1200:630",
+    "generation": "built-in imagegen"
+  },
+  {
+    "slug": "openai-otchet-distillyatsiya-sentyabr-2026",
+    "prompt": "Topic: OpenAI reports attempts to extract models' hidden reasoning, followed by account restrictions and technical defenses. Scene ABSTRACT_CONCEPT: a dense folded paper labyrinth sits inside a graphite protective housing, a thin coral probe approaches one guarded slit while a photographic metal shutter remains closed; the private interior is represented by obscured layers, not exposed documents. Tight asymmetric editorial macro composition, tense investigative mood, dark teal and graphite with sparse coral. Do not depict a successful breach, stolen user chats, broken encryption, real hacker faces, padlock clichés, logos or readable text. Use case: stylized-concept. Create one finished premium editorial conceptual photomontage for Malakhov AI Digest. Wide landscape ratio 1.91:1, safe crop to 1200x630. Asymmetrical magazine composition, one clear focal idea, realistic photographic cutouts with layered matte paper geometry, subtle print texture and sparse grain. Restrained coral, ochre, teal, dusty blue, graphite, off-white. No readable text, no logos, no watermark, no neon brains, no humanoid robots, no dashboard grids, no glowing network spheres. No collage contact sheet; one cover image.",
+    "filename": "openai-otchet-distillyatsiya-sentyabr-2026-cover.webp",
+    "alt": "Закрытый металлический затвор защищает бумажный лабиринт — иллюстрация к защите рассуждений моделей",
+    "caption": "Редакционная иллюстрация Malakhov AI, создана с помощью ИИ.",
+    "aspect": "1200:630",
+    "generation": "built-in imagegen"
+  }
+]
