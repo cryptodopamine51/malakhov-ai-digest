@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 Disallow: /search/
-Sitemap: https://news.malakhovai.ru/sitemap.xml
+Sitemap: https://cryptodopamine51.github.io/malakhov-ai-digest/sitemap.xml
