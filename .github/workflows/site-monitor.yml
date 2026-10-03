@@ -1,9 +1,6 @@
 name: Site Monitor
 
 on:
-  schedule:
-    # Каждые 15 минут — synthetic-check публичной ленты (total:0 / endpoint down).
-    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 concurrency:

@@ -1,9 +1,6 @@
 name: Retry Failed Articles
 
 on:
-  schedule:
-    # Every 4 hours — pick up retry_wait articles whose timer has expired
-    - cron: '30 */4 * * *'
   workflow_dispatch:
 
 jobs:

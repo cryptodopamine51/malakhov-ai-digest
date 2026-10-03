@@ -1,9 +1,6 @@
 name: Publish Verify
 
 on:
-  schedule:
-    # Every hour — verify newly enriched articles are live on site
-    - cron: '20 * * * *'
   workflow_dispatch:
 
 jobs:

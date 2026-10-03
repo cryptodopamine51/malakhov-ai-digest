@@ -1,13 +1,6 @@
 name: Telegram Ops Report
 
 on:
-  schedule:
-    # Morning report after the Telegram digest:
-    # weekdays 09:45 MSK, weekends 11:45 MSK.
-    - cron: '45 6 * * 1-5'
-    - cron: '45 8 * * 6,0'
-    # Evening report, every day 20:30 MSK.
-    - cron: '30 17 * * *'
   workflow_dispatch:
 
 jobs:

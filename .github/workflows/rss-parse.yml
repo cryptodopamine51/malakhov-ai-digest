@@ -2,9 +2,6 @@ name: RSS Parse
 
 on:
   # Запуск каждые 30 минут
-  schedule:
-    - cron: '*/30 * * * *'
-  # Ручной запуск через GitHub Actions UI
   workflow_dispatch:
 
 jobs:

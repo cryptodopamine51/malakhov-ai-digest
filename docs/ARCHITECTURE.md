@@ -1,5 +1,14 @@
 # Architecture
 
+## Активная архитектура с 2026-10-03
+
+Публичный сайт переведён в замороженный статический архив на GitHub Pages (`gh-pages:/`). HTML заранее отрисован из опубликованных recovery rows и существующих компонентов/гайдов. Сохраняются canonical article paths `/categories/<primary>/<clean-slug>`, категории, пагинация, источники, архив по датам, legal/about/services. Legacy aliases перенаправляют через HTML meta refresh. Поиск — browser JS + публичный JSON; изображения и шрифты сохранены с сайтом. Runtime database, LLM API, серверный optimizer и cron отсутствуют.
+
+741 новость восстановлена из snapshot 2026-08-01; более свежие данные с недоступного VPS не извлечены. 14 гайдов взяты из локального source. Старые pipeline modules остаются историческим исходным кодом. Они не являются активным обслуживанием архива. Десять scheduled GitHub workflows выключены и их расписания удалены. Недоступные VPS timers не считаются выключенными.
+
+Подробности публикации и ограничения — в начале `OPERATIONS.md`. Следующие разделы описывают предыдущую архитектуру.
+
+
 ## Верхний уровень
 
 Система разделена на четыре слоя:
@@ -113,3 +122,5 @@ RLS contract:
 - структуры данных и статусов;
 - ролей Supabase/Next.js/pipeline;
 - взаимодействия между публичным web и background jobs.
+
+Freeze note (2026-10-03): `vercel.json` also has an empty `crons` list, removing the two historical Telegram fallback schedules on the next production deployment. Vercel remains linked to main but is not the active public archive hosting.

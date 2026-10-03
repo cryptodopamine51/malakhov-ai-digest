@@ -1,9 +1,6 @@
 name: Generate AI Covers
 
 on:
-  schedule:
-    # Every 2 hours, with script-level daily budget cap.
-    - cron: '10 */2 * * *'
   workflow_dispatch:
 
 concurrency:

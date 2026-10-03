@@ -1,9 +1,6 @@
 name: Pipeline Health Check
 
 on:
-  schedule:
-    # Every 2 hours — check source health, backlog, and provider guard
-    - cron: '45 */2 * * *'
   workflow_dispatch:
 
 jobs:

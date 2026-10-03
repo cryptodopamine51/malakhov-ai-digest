@@ -1,5 +1,12 @@
 # Article System
 
+## Текущий режим: статьи сохранены в архиве (2026-10-03)
+
+Наполнение, enrichment, covers, retry и автопубликация остановлены по запросу владельца. Публичный сайт отдаёт готовые статические страницы 741 ранее опубликованной новости и 14 гайдов. Данные новостей — snapshot 2026-08-01; canonical URL и полный текст сохранены. Legacy URL дают HTML redirects. Поиск работает локально в браузере. 1000 доступных внешних изображений сохранены рядом со страницами; 25 недоступных исходников не восстанавливались.
+
+Описанный ниже lifecycle относится к историческому pipeline. Не запускать его и не возвращать расписания без нового указания владельца. См. актуальные `OPERATIONS.md` и `ARCHITECTURE.md`.
+
+
 ## Жизненный цикл статьи
 
 Статья проходит через последовательность:
@@ -486,3 +493,5 @@ Broad RSS feeds допускаются только с keyword filters:
 - slug и URL policy;
 - логики media extraction/rendering;
 - digest article selection.
+
+Freeze note (2026-10-03): `vercel.json` also has an empty `crons` list, removing the two historical Telegram fallback schedules on the next production deployment. Vercel remains linked to main but is not the active public archive hosting.

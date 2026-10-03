@@ -1,9 +1,6 @@
 name: Telegram Weekly Report Backup
 
 on:
-  schedule:
-    # 08:20 UTC = 11:20 Moscow, after primary Supabase pg_cron at 11:00.
-    - cron: '20 8 * * 1'
   workflow_dispatch:
 
 permissions:
