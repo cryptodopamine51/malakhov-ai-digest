@@ -129,3 +129,5 @@
 - Причина: динамический VPS недоступен, регулярные GitHub pipeline failures создают нежелательные письма; новое наполнение владельцу не требуется.
 - Решение: GitHub Pages (`gh-pages:/`), готовый HTML и локальные ресурсы, browser search, без database/API runtime. Восстановить 741 новость из recovery snapshot 2026-08-01 и 14 локальных гайдов. Выключить 10 scheduled workflows через API и удалить `schedule` в исходниках.
 - Последствия: новые материалы не создаются; более свежие строки с VPS не получены; недоступные VPS timers не остановлены. Подключение прежнего домена требует отдельной проверенной DNS-операции. Исторические Vercel/VPS deployment instructions superseded для публичного архива.
+
+Freeze note (2026-10-03): `vercel.json` also has an empty `crons` list, removing the two historical Telegram fallback schedules on the next production deployment. Vercel remains linked to main but is not the active public archive hosting.

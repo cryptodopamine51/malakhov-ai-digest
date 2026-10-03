@@ -760,3 +760,5 @@ npm run docs:check
 - `docs:check` смотрит изменённые файлы и требует обновить соответствующие канонические docs.
 
 В CI этот же guard запускается workflow `docs-guard.yml`.
+
+Freeze note (2026-10-03): `vercel.json` also has an empty `crons` list, removing the two historical Telegram fallback schedules on the next production deployment. Vercel remains linked to main but is not the active public archive hosting.

@@ -493,3 +493,5 @@ Broad RSS feeds допускаются только с keyword filters:
 - slug и URL policy;
 - логики media extraction/rendering;
 - digest article selection.
+
+Freeze note (2026-10-03): `vercel.json` also has an empty `crons` list, removing the two historical Telegram fallback schedules on the next production deployment. Vercel remains linked to main but is not the active public archive hosting.

@@ -102,3 +102,5 @@ npx tsx --test tests/node/pipeline-reliability.test.ts
 - Не менять pipeline или URL-логику без обновления `docs/ARTICLE_SYSTEM.md`.
 - Не менять env/deploy/runtime-процессы без обновления `docs/OPERATIONS.md`.
 - Не использовать `legacy/` как ориентир для нового кода.
+
+Freeze note (2026-10-03): `vercel.json` also has an empty `crons` list, removing the two historical Telegram fallback schedules on the next production deployment. Vercel remains linked to main but is not the active public archive hosting.

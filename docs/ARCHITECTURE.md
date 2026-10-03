@@ -122,3 +122,5 @@ RLS contract:
 - структуры данных и статусов;
 - ролей Supabase/Next.js/pipeline;
 - взаимодействия между публичным web и background jobs.
+
+Freeze note (2026-10-03): `vercel.json` also has an empty `crons` list, removing the two historical Telegram fallback schedules on the next production deployment. Vercel remains linked to main but is not the active public archive hosting.
