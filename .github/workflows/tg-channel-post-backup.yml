@@ -1,13 +1,6 @@
 name: Telegram Channel Post Backup
 
 on:
-  schedule:
-    # Delayed insurance only: VPS systemd owns the exact primary slots.
-    - cron: '35 6 * * *'
-    - cron: '35 9 * * *'
-    - cron: '35 12 * * *'
-    - cron: '35 15 * * *'
-    - cron: '5 18 * * *'
   workflow_dispatch:
     inputs:
       slot:

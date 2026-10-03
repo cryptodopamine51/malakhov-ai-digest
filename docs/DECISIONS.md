@@ -121,3 +121,11 @@
 - Context: model-routing lab показал, что DeepSeek может дать cheap editorial draft примерно за `$0.001` на статью, но production path не должен рисковать публикацией validator-failed или редакционно слабого материала.
 - Decision: production `enrich.yml` запускает `npm run editorial:routing -- --mode=cheap --limit=15 --apply --deepseek-daily-budget=0.25`. Low-risk output проходит deterministic repair + strict validator + provider-neutral apply gate. Любая provider/API/parse/validator/quality/reviewer проблема маршрутизируется в текущий Claude Batch fallback как `editorial_premium_fallback`.
 - Consequences: стоимость снижается на обычных low-risk статьях, но high-risk и failed cheap attempts остаются на Anthropic Batch. Fallback rate и провайдерские попытки видны в `llm_usage_logs`; live-публикация остаётся за `publish-verify` RPC. Если manual review покажет просадку качества, откат — вернуть `enrich.yml` на `npm run enrich-submit-batch`.
+
+## ADR-011 · Заморозка дайджеста на статическом хостинге
+
+- Дата: 2026-10-03
+- Статус: принято по прямому запросу владельца.
+- Причина: динамический VPS недоступен, регулярные GitHub pipeline failures создают нежелательные письма; новое наполнение владельцу не требуется.
+- Решение: GitHub Pages (`gh-pages:/`), готовый HTML и локальные ресурсы, browser search, без database/API runtime. Восстановить 741 новость из recovery snapshot 2026-08-01 и 14 локальных гайдов. Выключить 10 scheduled workflows через API и удалить `schedule` в исходниках.
+- Последствия: новые материалы не создаются; более свежие строки с VPS не получены; недоступные VPS timers не остановлены. Подключение прежнего домена требует отдельной проверенной DNS-операции. Исторические Vercel/VPS deployment instructions superseded для публичного архива.

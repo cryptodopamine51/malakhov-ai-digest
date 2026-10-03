@@ -1,9 +1,6 @@
 name: Enrich Articles
 
 on:
-  schedule:
-    # Каждые 30 минут — DeepSeek-only editorial routing.
-    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 concurrency:
