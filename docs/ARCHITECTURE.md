@@ -1,5 +1,14 @@
 # Architecture
 
+## Статус подключения домена (2026-10-03)
+
+Рабочий HTTPS-адрес архива: https://cryptodopamine51.github.io/malakhov-ai-digest/. GitHub Pages custom domain отключён после повторного отказа DNS health check (`InvalidDNSError`, `Dnsruby::ResolvTimeout`) и отсутствия сертификата; стандартный адрес восстановлен с `https_enforced=true`.
+
+В панели REG.RU DNS `news.malakhovai.ru` сохранён как A `185.199.108.153`, TTL 300. Google Public DNS и Cloudflare подтверждают новую запись. Эта запись сама по себе не завершает подключение домена. Для миграции на имеющийся REG.RU shared hosting (`server39.hosting.reg.ru`, IP `31.31.196.75`, web root `/www/news.malakhovai.ru`) подготовлен публичный release `archive-2026-10-03`, файл `digest-static-archive.tar.gz`, SHA256 `7082c61ef0986d786c41a801a56a2dbc0541a0710bb41a06b0d9b04a0d835810`. Размещение на REG ещё не подтверждено. Его текущий сертификат self-signed, не считать HTTPS рабочим.
+
+Следующие шаги требуют доступного управления REG: установить архив с сохранением прежнего web root, заменить только A news на `31.31.196.75`, получить Let's Encrypt для news и проверить HTTPS. В этой сессии управление Chrome зависает/отключается; владельцу предоставлена команда через Shell-клиент. Не считать запрос выполнить команду подтверждением выполнения. Все cron отключены независимо от незавершённого подключения домена.
+
+
 ## Активная архитектура с 2026-10-03
 
 Публичный сайт переведён в замороженный статический архив на GitHub Pages (`gh-pages:/`). HTML заранее отрисован из опубликованных recovery rows и существующих компонентов/гайдов. Сохраняются canonical article paths `/categories/<primary>/<clean-slug>`, категории, пагинация, источники, архив по датам, legal/about/services. Legacy aliases перенаправляют через HTML meta refresh. Поиск — browser JS + публичный JSON; изображения и шрифты сохранены с сайтом. Runtime database, LLM API, серверный optimizer и cron отсутствуют.
