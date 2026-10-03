@@ -1,0 +1,372 @@
+[
+  {
+    "key": "sol",
+    "slug": "gpt-6-1-sol-reliz-cena-api",
+    "rawBytes": 2282058,
+    "files": [
+      {
+        "filename": "gpt-6-1-sol-reliz-cena-api-cover.webp",
+        "width": 1200,
+        "height": 630,
+        "bytes": 111568,
+        "quality": 88,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      },
+      {
+        "filename": "gpt-6-1-sol-reliz-cena-api-cover-480.webp",
+        "width": 480,
+        "height": 252,
+        "bytes": 14392,
+        "quality": 72,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      },
+      {
+        "filename": "gpt-6-1-sol-reliz-cena-api-cover-768.webp",
+        "width": 768,
+        "height": 403,
+        "bytes": 33980,
+        "quality": 78,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      }
+    ]
+  },
+  {
+    "key": "dots",
+    "slug": "openai-dots-postoyannye-agenty",
+    "rawBytes": 2024283,
+    "files": [
+      {
+        "filename": "openai-dots-postoyannye-agenty-cover.webp",
+        "width": 1200,
+        "height": 630,
+        "bytes": 93634,
+        "quality": 88,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      },
+      {
+        "filename": "openai-dots-postoyannye-agenty-cover-480.webp",
+        "width": 480,
+        "height": 252,
+        "bytes": 12016,
+        "quality": 72,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      },
+      {
+        "filename": "openai-dots-postoyannye-agenty-cover-768.webp",
+        "width": 768,
+        "height": 403,
+        "bytes": 28414,
+        "quality": 78,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      }
+    ]
+  },
+  {
+    "key": "sonnet",
+    "slug": "claude-sonnet-5-5-skorost-stoimost",
+    "rawBytes": 2449710,
+    "files": [
+      {
+        "filename": "claude-sonnet-5-5-skorost-stoimost-cover.webp",
+        "width": 1200,
+        "height": 630,
+        "bytes": 106894,
+        "quality": 88,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0.6
+      },
+      {
+        "filename": "claude-sonnet-5-5-skorost-stoimost-cover-480.webp",
+        "width": 480,
+        "height": 252,
+        "bytes": 16400,
+        "quality": 72,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      },
+      {
+        "filename": "claude-sonnet-5-5-skorost-stoimost-cover-768.webp",
+        "width": 768,
+        "height": 403,
+        "bytes": 42650,
+        "quality": 78,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      }
+    ]
+  },
+  {
+    "key": "academy",
+    "slug": "anthropic-frontier-academy-100-million",
+    "rawBytes": 2566336,
+    "files": [
+      {
+        "filename": "anthropic-frontier-academy-100-million-cover.webp",
+        "width": 1200,
+        "height": 630,
+        "bytes": 98282,
+        "quality": 88,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0.6
+      },
+      {
+        "filename": "anthropic-frontier-academy-100-million-cover-480.webp",
+        "width": 480,
+        "height": 252,
+        "bytes": 17114,
+        "quality": 72,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      },
+      {
+        "filename": "anthropic-frontier-academy-100-million-cover-768.webp",
+        "width": 768,
+        "height": 403,
+        "bytes": 41220,
+        "quality": 78,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      }
+    ]
+  },
+  {
+    "key": "barclays",
+    "slug": "barclays-claude-code-polovina-razrabotchikov",
+    "rawBytes": 2729355,
+    "files": [
+      {
+        "filename": "barclays-claude-code-polovina-razrabotchikov-cover.webp",
+        "width": 1200,
+        "height": 630,
+        "bytes": 95400,
+        "quality": 88,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0.6
+      },
+      {
+        "filename": "barclays-claude-code-polovina-razrabotchikov-cover-480.webp",
+        "width": 480,
+        "height": 252,
+        "bytes": 14652,
+        "quality": 72,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      },
+      {
+        "filename": "barclays-claude-code-polovina-razrabotchikov-cover-768.webp",
+        "width": 768,
+        "height": 403,
+        "bytes": 38424,
+        "quality": 78,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      }
+    ]
+  },
+  {
+    "key": "grok",
+    "slug": "grok-4-7-amazon-bedrock",
+    "rawBytes": 2495153,
+    "files": [
+      {
+        "filename": "grok-4-7-amazon-bedrock-cover.webp",
+        "width": 1200,
+        "height": 630,
+        "bytes": 132818,
+        "quality": 88,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      },
+      {
+        "filename": "grok-4-7-amazon-bedrock-cover-480.webp",
+        "width": 480,
+        "height": 252,
+        "bytes": 11534,
+        "quality": 72,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      },
+      {
+        "filename": "grok-4-7-amazon-bedrock-cover-768.webp",
+        "width": 768,
+        "height": 403,
+        "bytes": 31692,
+        "quality": 78,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      }
+    ]
+  },
+  {
+    "key": "olmo",
+    "slug": "olmo-core-3-obuchenie-moe",
+    "rawBytes": 2734433,
+    "files": [
+      {
+        "filename": "olmo-core-3-obuchenie-moe-cover.webp",
+        "width": 1200,
+        "height": 630,
+        "bytes": 115332,
+        "quality": 88,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0.6
+      },
+      {
+        "filename": "olmo-core-3-obuchenie-moe-cover-480.webp",
+        "width": 480,
+        "height": 252,
+        "bytes": 17124,
+        "quality": 72,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      },
+      {
+        "filename": "olmo-core-3-obuchenie-moe-cover-768.webp",
+        "width": 768,
+        "height": 403,
+        "bytes": 45956,
+        "quality": 78,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      }
+    ]
+  },
+  {
+    "key": "asta",
+    "slug": "astabrief-8b-nauchnye-otchety",
+    "rawBytes": 2707432,
+    "files": [
+      {
+        "filename": "astabrief-8b-nauchnye-otchety-cover.webp",
+        "width": 1200,
+        "height": 630,
+        "bytes": 117444,
+        "quality": 88,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0.6
+      },
+      {
+        "filename": "astabrief-8b-nauchnye-otchety-cover-480.webp",
+        "width": 480,
+        "height": 252,
+        "bytes": 18288,
+        "quality": 72,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      },
+      {
+        "filename": "astabrief-8b-nauchnye-otchety-cover-768.webp",
+        "width": 768,
+        "height": 403,
+        "bytes": 48174,
+        "quality": 78,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      }
+    ]
+  },
+  {
+    "key": "holo",
+    "slug": "holo4-agenty-gui-api-mcp",
+    "rawBytes": 2662509,
+    "files": [
+      {
+        "filename": "holo4-agenty-gui-api-mcp-cover.webp",
+        "width": 1200,
+        "height": 630,
+        "bytes": 141654,
+        "quality": 88,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      },
+      {
+        "filename": "holo4-agenty-gui-api-mcp-cover-480.webp",
+        "width": 480,
+        "height": 252,
+        "bytes": 10320,
+        "quality": 72,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      },
+      {
+        "filename": "holo4-agenty-gui-api-mcp-cover-768.webp",
+        "width": 768,
+        "height": 403,
+        "bytes": 30366,
+        "quality": 78,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      }
+    ]
+  },
+  {
+    "key": "security",
+    "slug": "openai-otchet-distillyatsiya-sentyabr-2026",
+    "rawBytes": 2564568,
+    "files": [
+      {
+        "filename": "openai-otchet-distillyatsiya-sentyabr-2026-cover.webp",
+        "width": 1200,
+        "height": 630,
+        "bytes": 141878,
+        "quality": 88,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      },
+      {
+        "filename": "openai-otchet-distillyatsiya-sentyabr-2026-cover-480.webp",
+        "width": 480,
+        "height": 252,
+        "bytes": 13124,
+        "quality": 72,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      },
+      {
+        "filename": "openai-otchet-distillyatsiya-sentyabr-2026-cover-768.webp",
+        "width": 768,
+        "height": 403,
+        "bytes": 37738,
+        "quality": 78,
+        "effort": 6,
+        "smartSubsample": false,
+        "smoothing": 0
+      }
+    ]
+  }
+]
