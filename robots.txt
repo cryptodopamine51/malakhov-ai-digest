@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Disallow: /search/
+Sitemap: https://news.malakhovai.ru/sitemap.xml
