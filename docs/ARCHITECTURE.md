@@ -1,5 +1,7 @@
 # Architecture
 
+Режим уточнён новым запросом владельца 2026-10-03: допускается ручной разовый выпуск и доставка списка владельцу. Добавлено 10 новостей, всего 751; публичная поверхность `/weekly/2026-09-28/`. Хостинг остаётся статическим GitHub Pages, поиск — локальным. Cron и backend не возобновлены. Canonical/OG/JSON-LD используют действующий GitHub Pages URL. Пакет и порядок публикации — в начале `OPERATIONS.md`.
+
 ## Статус подключения домена (2026-10-03)
 
 Рабочий HTTPS-адрес архива: https://cryptodopamine51.github.io/malakhov-ai-digest/. GitHub Pages custom domain отключён после повторного отказа DNS health check (`InvalidDNSError`, `Dnsruby::ResolvTimeout`) и отсутствия сертификата; стандартный адрес восстановлен с `https_enforced=true`.
